@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { Plus, Download } from 'lucide-react';
+import { Plus, Download, Search } from 'lucide-react';
 import { exportToCsv } from '../../utils/exportCsv';
 import MovementForm from './MovementForm';
 import { formatDate } from '../../utils/formatUtils';
@@ -11,6 +11,29 @@ const MovementList = () => {
   const [editingMovement, setEditingMovement] = useState(null);
   
   const isAdmin = currentUser?.role === 'admin';
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredMovements = movements.filter(mov => {
+    const searchLow = searchTerm.toLowerCase();
+    
+    // Buscar en datos generales del movimiento
+    const inMovement = 
+      (mov.refNumber || '').toLowerCase().includes(searchLow) ||
+      (mov.refType || '').toLowerCase().includes(searchLow) ||
+      (mov.carrier || '').toLowerCase().includes(searchLow) ||
+      (mov.equipment || '').toLowerCase().includes(searchLow) ||
+      (mov.auditUser || '').toLowerCase().includes(searchLow) ||
+      (mov.date || '').toLowerCase().includes(searchLow);
+
+    // Buscar en los productos dentro del movimiento
+    const inProducts = mov.items?.some(it => {
+      const p = products.find(prod => prod.id === it.productId);
+      if (!p) return false;
+      return p.sku.toLowerCase().includes(searchLow) || p.description.toLowerCase().includes(searchLow);
+    });
+
+    return inMovement || inProducts;
+  });
 
   const getProductName = (id) => {
     const product = products.find(p => p.id === id);
@@ -91,6 +114,23 @@ const MovementList = () => {
         </div>
       </div>
 
+      <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1.25rem' }}>
+        <div style={{ position: 'relative', flex: 1, maxWidth: '500px' }}>
+          <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-light)' }} />
+          <input 
+            type="text" 
+            className="form-input" 
+            placeholder="Buscar por documento, transporte, auditor o producto..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{ paddingLeft: '2.5rem', marginBottom: 0 }}
+          />
+        </div>
+        <div style={{ marginLeft: 'auto', fontSize: '0.875rem', color: 'var(--color-text-light)' }}>
+          Mostrando <strong>{filteredMovements.length}</strong> de {movements.length} movimientos
+        </div>
+      </div>
+
       <div className="card" style={{ padding: '0' }}>
         <div className="table-container" style={{ border: 'none', boxShadow: 'none' }}>
           <table>
@@ -107,12 +147,14 @@ const MovementList = () => {
               </tr>
             </thead>
             <tbody>
-              {movements.length === 0 ? (
+              {filteredMovements.length === 0 ? (
                 <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '2rem' }}>No hay movimientos registrados</td>
+                  <td colSpan={isAdmin ? "8" : "7"} style={{ textAlign: 'center', padding: '2rem' }}>
+                    {searchTerm ? `No se encontraron movimientos que coincidan con "${searchTerm}"` : 'No hay movimientos registrados'}
+                  </td>
                 </tr>
               ) : (
-                movements.map(mov => (
+                filteredMovements.map(mov => (
                   <tr key={mov.id}>
                     <td>
                       <div>{formatDate(mov.date)}</div>

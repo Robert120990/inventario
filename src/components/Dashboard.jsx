@@ -82,13 +82,14 @@ const Dashboard = () => {
                 <th>Tipo</th>
                 <th style={{ textAlign: 'center' }}>Unid.</th>
                 <th style={{ textAlign: 'center' }}>Lbs.</th>
+                <th style={{ textAlign: 'center' }}>Cestas</th>
                 <th>Usuario</th>
               </tr>
             </thead>
             <tbody>
               {todaysItems.length === 0 ? (
                 <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '2rem' }}>No se han registrado movimientos el día de hoy</td>
+                  <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>No se han registrado movimientos el día de hoy</td>
                 </tr>
               ) : (
                 todaysItems.map(item => (
@@ -103,6 +104,7 @@ const Dashboard = () => {
                     </td>
                     <td style={{ textAlign: 'center' }}>{item.qtyUnits}</td>
                     <td style={{ textAlign: 'center' }}>{item.qtyPounds || 0}</td>
+                    <td style={{ textAlign: 'center' }}>{item.qtyBaskets || 0}</td>
                     <td>{item.user}</td>
                   </tr>
                 ))
