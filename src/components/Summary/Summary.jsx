@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { FileText, Download, FileOutput } from 'lucide-react';
 import { exportToCsv } from '../../utils/exportCsv';
-import jsPDF from 'jsPDF';
+import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 const Summary = () => {
