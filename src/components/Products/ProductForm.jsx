@@ -100,7 +100,7 @@ const ProductForm = ({ onCancel, initialData }) => {
             <input 
               type="number" 
               name="price" 
-              step="0.01" 
+              step="0.001" 
               className="form-input" 
               value={formData.price} 
               onChange={handleChange} 

@@ -134,7 +134,7 @@ const Summary = () => {
       Entradas: d.entradas,
       Salidas: d.salidas,
       'Stock Final': d.stockFinal,
-      'Precio ($)': d.precio.toFixed(2),
+      'Precio ($)': d.precio.toFixed(3),
       'Total ($)': d.total.toFixed(2)
     }));
 
@@ -174,7 +174,7 @@ const Summary = () => {
           row.entradas.toString(),
           row.salidas.toString(),
           row.stockFinal.toString(),
-          `$${row.precio.toFixed(2)}`,
+          `$${row.precio.toFixed(3)}`,
           `$${row.total.toFixed(2)}`
         ]);
       });
@@ -304,7 +304,7 @@ const Summary = () => {
                         <td style={{ color: 'var(--color-success)', textAlign: 'center' }}>{row.entradas}</td>
                         <td style={{ color: 'var(--color-danger)', textAlign: 'center' }}>{row.salidas}</td>
                         <td style={{ fontWeight: '500', textAlign: 'center' }}>{row.stockFinal}</td>
-                        <td style={{ textAlign: 'right' }}>${row.precio.toFixed(2)}</td>
+                        <td style={{ textAlign: 'right' }}>${row.precio.toFixed(3)}</td>
                         <td style={{ textAlign: 'right', fontWeight: '500' }}>${row.total.toFixed(2)}</td>
                       </tr>
                     ))}

@@ -61,7 +61,7 @@ const ProductList = () => {
                     <td>
                       <span className="badge badge-gray">{prod.category}</span>
                     </td>
-                    <td>${Number(prod.price).toFixed(2)}</td>
+                    <td>${Number(prod.price).toFixed(3)}</td>
                     <td>{prod.stockUnits}</td>
                     <td>{prod.stockPounds}</td>
                     <td>{prod.stockBaskets}</td>
