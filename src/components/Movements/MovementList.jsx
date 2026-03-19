@@ -5,9 +5,11 @@ import { exportToCsv } from '../../utils/exportCsv';
 import MovementForm from './MovementForm';
 
 const MovementList = () => {
-  const { movements, products, deleteMovement } = useInventory();
+  const { movements, products, deleteMovement, currentUser } = useInventory();
   const [isAdding, setIsAdding] = useState(false);
   const [editingMovement, setEditingMovement] = useState(null);
+  
+  const isAdmin = currentUser?.role === 'admin';
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
@@ -109,7 +111,7 @@ const MovementList = () => {
                 <th>Cantidades</th>
                 <th>Logística / Transp.</th>
                 <th>Usuario</th>
-                <th>Acciones</th>
+                {isAdmin && <th>Acciones</th>}
               </tr>
             </thead>
             <tbody>
@@ -144,12 +146,14 @@ const MovementList = () => {
                       <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>Eq: {mov.equipment}</div>
                     </td>
                     <td>{mov.auditUser}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={() => { setEditingMovement(mov); setIsAdding(true); }} className="btn btn-outline" style={{ padding: '0.25rem 0.5rem' }}>Editar</button>
-                        <button onClick={() => { if(window.confirm('¿Seguro que deseas eliminar este movimiento? Afectará el stock disponible.')) deleteMovement(mov.id); }} className="btn btn-danger" style={{ padding: '0.25rem 0.5rem' }}>Eliminar</button>
-                      </div>
-                    </td>
+                    {isAdmin && (
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button onClick={() => { setEditingMovement(mov); setIsAdding(true); }} className="btn btn-outline" style={{ padding: '0.25rem 0.5rem' }}>Editar</button>
+                          <button onClick={() => { if(window.confirm('¿Seguro que deseas eliminar este movimiento? Afectará el stock disponible.')) deleteMovement(mov.id); }} className="btn btn-danger" style={{ padding: '0.25rem 0.5rem' }}>Eliminar</button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

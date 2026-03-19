@@ -6,9 +6,11 @@ import { exportToCsv } from '../../utils/exportCsv';
 import ProductForm from './ProductForm';
 
 const ProductList = () => {
-  const { products, deleteProduct } = useInventory();
+  const { products, deleteProduct, currentUser } = useInventory();
   const [isAdding, setIsAdding] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  
+  const isAdmin = currentUser?.role === 'admin';
 
   const handleExport = () => {
     exportToCsv(products, `productos_${new Date().toISOString().split('T')[0]}.csv`);
@@ -23,9 +25,11 @@ const ProductList = () => {
           <button className="btn btn-outline" onClick={handleExport}>
             <Download size={18} /> Exportar CSV
           </button>
-          <button className="btn btn-primary" onClick={() => { setEditingProduct(null); setIsAdding(true); }}>
-            <Plus size={18} /> Nuevo Producto
-          </button>
+          {isAdmin && (
+            <button className="btn btn-primary" onClick={() => { setEditingProduct(null); setIsAdding(true); }}>
+              <Plus size={18} /> Nuevo Producto
+            </button>
+          )}
         </div>
       </div>
 
@@ -41,13 +45,13 @@ const ProductList = () => {
                 <th>Stock (Unidades)</th>
                 <th>Stock (Libras)</th>
                 <th>Stock (Cestas)</th>
-                <th>Acciones</th>
+                {isAdmin && <th>Acciones</th>}
               </tr>
             </thead>
             <tbody>
               {products.length === 0 ? (
                 <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '2rem' }}>No hay productos registrados</td>
+                  <td colSpan={isAdmin ? "8" : "7"} style={{ textAlign: 'center', padding: '2rem' }}>No hay productos registrados</td>
                 </tr>
               ) : (
                 products.map(prod => (
@@ -61,17 +65,19 @@ const ProductList = () => {
                     <td>{prod.stockUnits}</td>
                     <td>{prod.stockPounds}</td>
                     <td>{prod.stockBaskets}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={() => { setEditingProduct(prod); setIsAdding(true); }} className="btn btn-outline" style={{ padding: '0.25rem 0.5rem' }}>Editar</button>
-                        <button onClick={() => { 
-                          if(window.confirm('¿Seguro que deseas eliminar este producto?')) {
-                            deleteProduct(prod.id);
-                            toast.success('Producto eliminado');
-                          }
-                        }} className="btn btn-danger" style={{ padding: '0.25rem 0.5rem' }}>Eliminar</button>
-                      </div>
-                    </td>
+                    {isAdmin && (
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button onClick={() => { setEditingProduct(prod); setIsAdding(true); }} className="btn btn-outline" style={{ padding: '0.25rem 0.5rem' }}>Editar</button>
+                          <button onClick={() => { 
+                            if(window.confirm('¿Seguro que deseas eliminar este producto?')) {
+                              deleteProduct(prod.id);
+                              toast.success('Producto eliminado');
+                            }
+                          }} className="btn btn-danger" style={{ padding: '0.25rem 0.5rem' }}>Eliminar</button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
