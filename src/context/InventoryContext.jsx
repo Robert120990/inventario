@@ -32,8 +32,8 @@ const initialCategories = ['Electrónicos', 'Perecederos', 'Hogar', 'Abarrotes']
 const initialDocumentTypes = ['Factura', 'Guía', 'Traslado', 'Ajuste'];
 
 const initialUsers = [
-  { id: '1', username: 'admin', password: '123', role: 'admin' },
-  { id: '2', username: 'user', password: '123', role: 'user' }
+  { id: '1', username: 'admin', password: '123', role: 'admin', isActive: true },
+  { id: '2', username: 'user', password: '123', role: 'user', isActive: true }
 ];
 export const InventoryProvider = ({ children }) => {
   const [products, setProducts] = useState(() => {
@@ -80,7 +80,11 @@ export const InventoryProvider = ({ children }) => {
     const saved = localStorage.getItem('inv_users');
     if (saved) {
       const parsedUsers = JSON.parse(saved);
-      return parsedUsers.map(u => ({ ...u, password: u.password || '123' }));
+      return parsedUsers.map(u => ({ 
+        ...u, 
+        password: u.password || '123',
+        isActive: u.isActive !== false
+      }));
     }
     return initialUsers;
   });
@@ -236,13 +240,18 @@ export const InventoryProvider = ({ children }) => {
     setUsers(prev => [...prev, { ...user, id: crypto.randomUUID() }]);
   };
 
+  const updateUser = (id, updatedUser) => {
+    setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updatedUser } : u));
+  };
+
   const login = (username, password) => {
     const user = users.find(u => u.username === username && u.password === password);
     if (user) {
+      if (user.isActive === false) return { success: false, message: 'Cuenta desactivada por el administrador.' };
       setCurrentUser(user);
-      return true;
+      return { success: true };
     }
-    return false;
+    return { success: false, message: 'Credenciales incorrectas.' };
   };
 
   const logout = () => {
@@ -270,6 +279,7 @@ export const InventoryProvider = ({ children }) => {
       addDocumentType,
       deleteDocumentType,
       addUser,
+      updateUser,
       login,
       logout,
       totalStock

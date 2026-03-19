@@ -3,10 +3,9 @@ import { useInventory } from '../../context/InventoryContext';
 import { Plus, Trash2 } from 'lucide-react';
 
 const Settings = () => {
-  const { categories, documentTypes, users, addCategory, deleteCategory, addDocumentType, deleteDocumentType, addUser } = useInventory();
+  const { categories, documentTypes, addCategory, deleteCategory, addDocumentType, deleteDocumentType } = useInventory();
   const [newCat, setNewCat] = useState('');
   const [newDocType, setNewDocType] = useState('');
-  const [newUser, setNewUser] = useState({ username: '', password: '', role: 'user' });
 
   const handleAddCat = (e) => {
     e.preventDefault();
@@ -21,14 +20,6 @@ const Settings = () => {
     if (newDocType.trim()) {
       addDocumentType(newDocType.trim());
       setNewDocType('');
-    }
-  };
-
-  const handleAddUser = (e) => {
-    e.preventDefault();
-    if (newUser.username.trim() && newUser.password.trim()) {
-      addUser({ username: newUser.username.trim(), password: newUser.password.trim(), role: newUser.role });
-      setNewUser({ username: '', password: '', role: 'user' });
     }
   };
 
@@ -73,27 +64,6 @@ const Settings = () => {
           </ul>
         </div>
 
-        {/* Users */}
-        <div className="card">
-          <h2 style={{ fontSize: '1.2rem', marginBottom: '1rem', color: 'var(--color-primary)' }}>Usuarios</h2>
-          <form onSubmit={handleAddUser} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem' }}>
-            <input type="text" className="form-input" value={newUser.username} onChange={(e) => setNewUser({...newUser, username: e.target.value})} placeholder="Nombre de usuario" required />
-            <input type="password" className="form-input" value={newUser.password} onChange={(e) => setNewUser({...newUser, password: e.target.value})} placeholder="Contraseña" required />
-            <select className="form-select" value={newUser.role} onChange={(e) => setNewUser({...newUser, role: e.target.value})}>
-              <option value="user">Usuario normal</option>
-              <option value="admin">Administrador</option>
-            </select>
-            <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start' }}><Plus size={18} /> Agregar</button>
-          </form>
-          <ul style={{ listStyle: 'none', padding: 0 }}>
-            {users.map((u, idx) => (
-              <li key={idx} style={{ padding: '0.5rem 0', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
-                <span>{u.username}</span>
-                <span className={`badge ${u.role === 'admin' ? 'badge-primary' : 'badge-gray'}`}>{u.role}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
       </div>
     </div>
   );

@@ -10,8 +10,9 @@ const Login = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!login(username, password)) {
-      setError('Credenciales incorrectas.');
+    const result = login(username, password);
+    if (!result.success) {
+      setError(result.message);
     }
   };
 

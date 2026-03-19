@@ -7,11 +7,13 @@ import MovementList from './components/Movements/MovementList';
 import Summary from './components/Summary/Summary';
 import Settings from './components/Settings/Settings';
 import Login from './components/Login/Login';
+import UserList from './components/Users/UserList'; // Added this import
 import './App.css';
 
 function AppContent() {
   const { currentUser } = useInventory();
-  const [currentView, setCurrentView] = useState('dashboard');
+  const [currentView, setCurrentView] = useState('products');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   if (!currentUser) {
     return <Login />;
@@ -27,6 +29,8 @@ function AppContent() {
         return <MovementList />;
       case 'summary':
         return <Summary />;
+      case 'users':
+        return <UserList />;
       case 'settings':
         return <Settings />;
       default:
@@ -36,10 +40,15 @@ function AppContent() {
 
   return (
     <div className="app-container">
-      <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
-      <main className="main-content">
+      <Sidebar 
+        currentView={currentView} 
+        setCurrentView={setCurrentView} 
+        isCollapsed={isSidebarCollapsed}
+        setIsCollapsed={setIsSidebarCollapsed}
+      />
+      <div className="main-content">
         {renderView()}
-      </main>
+      </div>
     </div>
   );
 }

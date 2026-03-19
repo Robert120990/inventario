@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { FileText, Download } from 'lucide-react';
+import { FileText, Download, FileOutput } from 'lucide-react';
 import { exportToCsv } from '../../utils/exportCsv';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const Summary = () => {
   const { products, movements } = useInventory();
@@ -89,15 +91,60 @@ const Summary = () => {
     exportToCsv(exportData, `resumen_${startDate}_al_${endDate}.csv`);
   };
 
+  const handleExportPDF = () => {
+    const doc = new jsPDF();
+    doc.text(`Resumen de Inventario (${startDate} al ${endDate})`, 14, 15);
+    
+    const tableColumn = ["Fecha", "Producto", "Categoria", "S. Inicial", "Ent.", "Sal.", "S. Final", "Precio", "Total"];
+    const tableRows = [];
+
+    summaryData.forEach(row => {
+      tableRows.push([
+        row.fecha,
+        row.producto,
+        row.categoria,
+        row.stockInicial.toString(),
+        row.entradas.toString(),
+        row.salidas.toString(),
+        row.stockFinal.toString(),
+        `$${row.precio.toFixed(2)}`,
+        `$${row.total.toFixed(2)}`
+      ]);
+    });
+
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: 20,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [41, 128, 185] },
+      columnStyles: {
+        3: { halign: 'center' },
+        4: { halign: 'center' },
+        5: { halign: 'center' },
+        6: { halign: 'center' },
+        7: { halign: 'right' },
+        8: { halign: 'right' }
+      }
+    });
+
+    doc.save(`resumen_${startDate}_al_${endDate}.pdf`);
+  };
+
   const totalValue = summaryData.reduce((acc, curr) => acc + curr.total, 0);
 
   return (
     <div>
       <div className="topbar">
         <h1 className="page-title">Resumen de Inventario</h1>
-        <button className="btn btn-outline" onClick={handleExport}>
-          <Download size={18} /> Exportar CSV
-        </button>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <button className="btn btn-outline" onClick={handleExport}>
+            <Download size={18} /> Exportar CSV
+          </button>
+          <button className="btn btn-primary" style={{ backgroundColor: '#e74c3c', borderColor: '#e74c3c' }} onClick={handleExportPDF}>
+            <FileOutput size={18} /> Exportar PDF
+          </button>
+        </div>
       </div>
 
       <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>

@@ -141,6 +141,16 @@ body {
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
+  transition: width 0.3s ease, padding 0.3s ease;
+}
+
+.sidebar.collapsed {
+  width: 80px;
+  padding: 1.5rem 0.75rem;
+}
+
+.sidebar.collapsed .nav-link {
+  padding: 0.75rem;
 }
 
 .sidebar-logo {
