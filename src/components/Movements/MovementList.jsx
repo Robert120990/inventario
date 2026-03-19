@@ -9,28 +9,73 @@ const MovementList = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingMovement, setEditingMovement] = useState(null);
 
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    const parts = dateString.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateString;
+  };
+
   const getProductName = (id) => {
     const product = products.find(p => p.id === id);
     return product ? `${product.sku} - ${product.description}` : 'Desconocido';
   };
 
+  const renderProductPreview = (mov) => {
+    if (!mov.items || mov.items.length === 0) return 'Sin productos';
+    if (mov.items.length === 1) return getProductName(mov.items[0].productId);
+    return `Varios Productos (${mov.items.length})`;
+  };
+
+  const renderQuantities = (mov) => {
+    if (!mov.items || mov.items.length === 0) return null;
+    const totalUnits = mov.items.reduce((acc, curr) => acc + Number(curr.qtyUnits || 0), 0);
+    const totalPounds = mov.items.reduce((acc, curr) => acc + Number(curr.qtyPounds || 0), 0);
+    const totalBaskets = mov.items.reduce((acc, curr) => acc + Number(curr.qtyBaskets || 0), 0);
+    
+    return (
+      <>
+        <div>{totalUnits} Unid.</div>
+        {(totalPounds > 0 || totalBaskets > 0) && (
+          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>
+            {totalPounds} lbs • {totalBaskets} cestas
+          </div>
+        )}
+      </>
+    );
+  };
+
   const handleExport = () => {
-    // Format data for export
-    const exportData = movements.map(mov => ({
-      Fecha: new Date(mov.createdAt).toLocaleString(),
-      Tipo: mov.type === 'in' ? 'Entrada' : 'Salida',
-      'Doc Tipo': mov.refType,
-      'Doc Número': mov.refNumber,
-      Producto: getProductName(mov.productId),
-      'Cant. Unidades': mov.qtyUnits,
-      'Cant. Libras': mov.qtyPounds,
-      'Cant. Cestas': mov.qtyBaskets,
-      Transportista: mov.carrier,
-      Equipo: mov.equipment,
-      Marchamo: mov.seal,
-      Temperatura: mov.temperature,
-      Usuario: mov.auditUser
-    }));
+    const exportData = [];
+    movements.forEach(mov => {
+      const baseRow = {
+        Fecha: new Date(mov.createdAt).toLocaleString(),
+        Tipo: mov.type === 'in' ? 'Entrada' : 'Salida',
+        'Doc Tipo': mov.refType,
+        'Doc Número': mov.refNumber,
+        Transportista: mov.carrier,
+        Equipo: mov.equipment,
+        Marchamo: mov.seal,
+        Usuario: mov.auditUser
+      };
+      
+      if (mov.items && mov.items.length > 0) {
+        mov.items.forEach(item => {
+          exportData.push({
+            ...baseRow,
+            Producto: getProductName(item.productId),
+            Temperatura: item.temperature,
+            'Cant. Unidades': item.qtyUnits,
+            'Cant. Libras': item.qtyPounds,
+            'Cant. Cestas': item.qtyBaskets
+          });
+        });
+      } else {
+        exportData.push(baseRow);
+      }
+    });
     exportToCsv(exportData, `movimientos_${new Date().toISOString().split('T')[0]}.csv`);
   };
 
@@ -76,7 +121,7 @@ const MovementList = () => {
                 movements.map(mov => (
                   <tr key={mov.id}>
                     <td>
-                      <div>{mov.date}</div>
+                      <div>{formatDate(mov.date)}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>
                         {mov.timeStart} - {mov.timeEnd}
                       </div>
@@ -90,14 +135,9 @@ const MovementList = () => {
                       <div style={{ fontWeight: '500' }}>{mov.refType}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>#{mov.refNumber}</div>
                     </td>
-                    <td>{getProductName(mov.productId)}</td>
+                    <td style={{ fontWeight: '500' }}>{renderProductPreview(mov)}</td>
                     <td>
-                      <div>{mov.qtyUnits} Unid.</div>
-                      {(mov.qtyPounds > 0 || mov.qtyBaskets > 0) && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>
-                          {mov.qtyPounds} lbs • {mov.qtyBaskets} cestas
-                        </div>
-                      )}
+                      {renderQuantities(mov)}
                     </td>
                     <td>
                       <div>{mov.carrier}</div>

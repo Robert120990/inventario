@@ -20,8 +20,8 @@ const Summary = () => {
     const end = new Date(endDate + 'T23:59:59');
 
     return products.map(p => {
-      // Movimientos del producto
-      const pMovs = movements.filter(m => m.productId === p.id);
+      // Movimientos del producto (si alguno de los items incluye el producto)
+      const pMovs = movements.filter(m => m.items && m.items.some(it => it.productId === p.id));
       
       // Stock final actual
       let stockFinal = Number(p.stockUnits);
@@ -33,8 +33,11 @@ const Summary = () => {
       });
 
       afterEnd.forEach(m => {
-        if (m.type === 'in') stockFinal -= Number(m.qtyUnits);
-        if (m.type === 'out') stockFinal += Number(m.qtyUnits);
+        const item = m.items.find(it => it.productId === p.id);
+        if (item) {
+          if (m.type === 'in') stockFinal -= Number(item.qtyUnits);
+          if (m.type === 'out') stockFinal += Number(item.qtyUnits);
+        }
       });
 
       // Movimientos EN EL RANGO
@@ -46,8 +49,11 @@ const Summary = () => {
       let entradas = 0;
       let salidas = 0;
       inRange.forEach(m => {
-        if (m.type === 'in') entradas += Number(m.qtyUnits);
-        if (m.type === 'out') salidas += Number(m.qtyUnits);
+        const item = m.items.find(it => it.productId === p.id);
+        if (item) {
+          if (m.type === 'in') entradas += Number(item.qtyUnits);
+          if (m.type === 'out') salidas += Number(item.qtyUnits);
+        }
       });
 
       // Stock inicial en la startDate

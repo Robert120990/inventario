@@ -43,7 +43,27 @@ export const InventoryProvider = ({ children }) => {
 
   const [movements, setMovements] = useState(() => {
     const saved = localStorage.getItem('inv_movements');
-    return saved ? JSON.parse(saved) : [];
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed.map(m => {
+        if (m.items) return m;
+        const doc = { ...m };
+        doc.items = [{
+          productId: m.productId,
+          temperature: m.temperature,
+          qtyUnits: m.qtyUnits,
+          qtyPounds: m.qtyPounds,
+          qtyBaskets: m.qtyBaskets
+        }];
+        delete doc.productId;
+        delete doc.temperature;
+        delete doc.qtyUnits;
+        delete doc.qtyPounds;
+        delete doc.qtyBaskets;
+        return doc;
+      });
+    }
+    return [];
   });
 
   const [categories, setCategories] = useState(() => {
@@ -111,20 +131,25 @@ export const InventoryProvider = ({ children }) => {
   };
 
   const addMovement = (movement) => {
-    const { productId, qtyUnits, qtyPounds, qtyBaskets, type } = movement;
-    const factor = type === 'out' ? -1 : 1;
+    const factor = movement.type === 'out' ? -1 : 1;
 
-    setProducts(prev => prev.map(p => {
-      if (p.id === productId) {
-        return {
-          ...p,
-          stockUnits: Number(p.stockUnits) + (Number(qtyUnits || 0) * factor),
-          stockPounds: Number(p.stockPounds) + (Number(qtyPounds || 0) * factor),
-          stockBaskets: Number(p.stockBaskets) + (Number(qtyBaskets || 0) * factor)
-        };
-      }
-      return p;
-    }));
+    setProducts(prev => {
+      let temp = [...prev];
+      movement.items.forEach(item => {
+        temp = temp.map(p => {
+          if (p.id === item.productId) {
+            return {
+              ...p,
+              stockUnits: Number(p.stockUnits) + (Number(item.qtyUnits || 0) * factor),
+              stockPounds: Number(p.stockPounds) + (Number(item.qtyPounds || 0) * factor),
+              stockBaskets: Number(p.stockBaskets) + (Number(item.qtyBaskets || 0) * factor)
+            };
+          }
+          return p;
+        });
+      });
+      return temp;
+    });
 
     setMovements(prev => [{ ...movement, id: crypto.randomUUID(), createdAt: new Date().toISOString() }, ...prev]);
   };
@@ -134,17 +159,23 @@ export const InventoryProvider = ({ children }) => {
     if (!mov) return;
     
     const factor = mov.type === 'out' ? 1 : -1;
-    setProducts(prev => prev.map(p => {
-      if (p.id === mov.productId) {
-        return {
-          ...p,
-          stockUnits: Number(p.stockUnits) + (Number(mov.qtyUnits || 0) * factor),
-          stockPounds: Number(p.stockPounds) + (Number(mov.qtyPounds || 0) * factor),
-          stockBaskets: Number(p.stockBaskets) + (Number(mov.qtyBaskets || 0) * factor)
-        };
-      }
-      return p;
-    }));
+    setProducts(prev => {
+      let temp = [...prev];
+      mov.items.forEach(item => {
+        temp = temp.map(p => {
+          if (p.id === item.productId) {
+            return {
+              ...p,
+              stockUnits: Number(p.stockUnits) + (Number(item.qtyUnits || 0) * factor),
+              stockPounds: Number(p.stockPounds) + (Number(item.qtyPounds || 0) * factor),
+              stockBaskets: Number(p.stockBaskets) + (Number(item.qtyBaskets || 0) * factor)
+            };
+          }
+          return p;
+        });
+      });
+      return temp;
+    });
     setMovements(prev => prev.filter(m => m.id !== id));
   };
 
@@ -152,23 +183,30 @@ export const InventoryProvider = ({ children }) => {
     const oldMov = movements.find(m => m.id === id);
     if (!oldMov) return;
 
-    // We can just reverse the old stock and apply the new stock sequentially
     setProducts(prevProducts => {
+      let temp = [...prevProducts];
+
       const factorOld = oldMov.type === 'out' ? 1 : -1;
-      let temp = prevProducts.map(p => p.id === oldMov.productId ? {
-        ...p,
-        stockUnits: Number(p.stockUnits) + (Number(oldMov.qtyUnits || 0) * factorOld),
-        stockPounds: Number(p.stockPounds) + (Number(oldMov.qtyPounds || 0) * factorOld),
-        stockBaskets: Number(p.stockBaskets) + (Number(oldMov.qtyBaskets || 0) * factorOld)
-      } : p);
+      oldMov.items.forEach(item => {
+        temp = temp.map(p => p.id === item.productId ? {
+          ...p,
+          stockUnits: Number(p.stockUnits) + (Number(item.qtyUnits || 0) * factorOld),
+          stockPounds: Number(p.stockPounds) + (Number(item.qtyPounds || 0) * factorOld),
+          stockBaskets: Number(p.stockBaskets) + (Number(item.qtyBaskets || 0) * factorOld)
+        } : p);
+      });
 
       const factorNew = updatedMovement.type === 'out' ? -1 : 1;
-      return temp.map(p => p.id === updatedMovement.productId ? {
-        ...p,
-        stockUnits: Number(p.stockUnits) + (Number(updatedMovement.qtyUnits || 0) * factorNew),
-        stockPounds: Number(p.stockPounds) + (Number(updatedMovement.qtyPounds || 0) * factorNew),
-        stockBaskets: Number(p.stockBaskets) + (Number(updatedMovement.qtyBaskets || 0) * factorNew)
-      } : p);
+      updatedMovement.items.forEach(item => {
+        temp = temp.map(p => p.id === item.productId ? {
+          ...p,
+          stockUnits: Number(p.stockUnits) + (Number(item.qtyUnits || 0) * factorNew),
+          stockPounds: Number(p.stockPounds) + (Number(item.qtyPounds || 0) * factorNew),
+          stockBaskets: Number(p.stockBaskets) + (Number(item.qtyBaskets || 0) * factorNew)
+        } : p);
+      });
+
+      return temp;
     });
 
     setMovements(prev => prev.map(m => m.id === id ? { ...updatedMovement, id, createdAt: m.createdAt } : m));
