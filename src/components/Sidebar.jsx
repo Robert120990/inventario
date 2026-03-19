@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Package, ArrowRightLeft, Settings, LogOut, FileText, Menu, ChevronLeft, Users } from 'lucide-react';
+import { LayoutDashboard, Package, ArrowRightLeft, Settings, LogOut, FileText, Menu, ChevronLeft, Users, UserCircle } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 
 const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) => {
@@ -84,18 +84,68 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) =
         )}
       </nav>
 
-      <div style={{ marginTop: 'auto', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1.5rem' }}>
-        {!isCollapsed && (
-          <div className="user-info" style={{ marginBottom: '1rem' }}>
-            <div style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.7)' }}>Conectado como:</div>
-            <div style={{ fontWeight: '600' }}>{currentUser.username} <span className="badge badge-primary" style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: 'white' }}>{currentUser.role}</span></div>
+      <div style={{ marginTop: 'auto', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1rem' }}>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '0.75rem', 
+          padding: isCollapsed ? '0.5rem' : '0.75rem 1rem',
+          margin: '0.5rem',
+          borderRadius: 'var(--radius)',
+          backgroundColor: 'rgba(255,255,255,0.05)',
+          marginBottom: '1rem'
+        }}>
+          <div style={{ 
+            width: '32px', 
+            height: '32px', 
+            borderRadius: '50%', 
+            backgroundColor: 'var(--color-primary)', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            color: 'white',
+            flexShrink: 0
+          }}>
+            <UserCircle size={20} />
           </div>
-        )}
+          {!isCollapsed && (
+            <div style={{ overflow: 'hidden' }}>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', lineHeight: '1' }}>Usuario</div>
+              <div style={{ fontWeight: '600', fontSize: '0.9rem', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                {currentUser.username}
+              </div>
+              <span style={{ 
+                fontSize: '0.65rem', 
+                padding: '1px 6px', 
+                borderRadius: '10px', 
+                backgroundColor: currentUser.role === 'admin' ? '#f1c40f' : 'rgba(255,255,255,0.2)',
+                color: currentUser.role === 'admin' ? '#000' : '#fff',
+                textTransform: 'uppercase',
+                fontWeight: 'bold',
+                marginTop: '4px',
+                display: 'inline-block'
+              }}>
+                {currentUser.role}
+              </span>
+            </div>
+          )}
+        </div>
+
         <button
           className="nav-link"
           onClick={logout}
           title={isCollapsed ? "Cerrar Sesión" : ""}
-          style={{ background: 'transparent', border: 'none', width: '100%', textAlign: 'left', color: '#ff7675', justifyContent: isCollapsed ? 'center' : 'flex-start' }}
+          style={{ 
+            background: 'transparent', 
+            border: 'none', 
+            width: 'calc(100% - 1rem)', 
+            margin: '0 0.5rem',
+            textAlign: 'left', 
+            color: '#ff7675', 
+            justifyContent: isCollapsed ? 'center' : 'flex-start',
+            padding: '0.75rem',
+            borderRadius: 'var(--radius)'
+          }}
         >
           <LogOut size={20} />
           {!isCollapsed && <span>Cerrar Sesión</span>}
