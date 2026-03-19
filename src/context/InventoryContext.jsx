@@ -35,6 +35,11 @@ const initialUsers = [
   { id: '1', username: 'admin', password: '123', role: 'admin', isActive: true },
   { id: '2', username: 'user', password: '123', role: 'user', isActive: true }
 ];
+
+const initialSettings = {
+  name: 'Inventario Pro',
+  logo: null
+};
 export const InventoryProvider = ({ children }) => {
   const [products, setProducts] = useState(() => {
     const saved = localStorage.getItem('inv_products');
@@ -94,6 +99,11 @@ export const InventoryProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : null;
   });
 
+  const [settings, setSettings] = useState(() => {
+    const saved = localStorage.getItem('inv_settings');
+    return saved ? JSON.parse(saved) : initialSettings;
+  });
+
   useEffect(() => {
     localStorage.setItem('inv_products', JSON.stringify(products));
   }, [products]);
@@ -121,6 +131,10 @@ export const InventoryProvider = ({ children }) => {
       localStorage.removeItem('inv_current_user');
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    localStorage.setItem('inv_settings', JSON.stringify(settings));
+  }, [settings]);
 
   const addProduct = (product) => {
     setProducts(prev => [...prev, { ...product, id: crypto.randomUUID() }]);
@@ -240,6 +254,10 @@ export const InventoryProvider = ({ children }) => {
     setUsers(prev => [...prev, { ...user, id: crypto.randomUUID() }]);
   };
 
+  const updateSettings = (newSettings) => {
+    setSettings(prev => ({ ...prev, ...newSettings }));
+  };
+
   const updateUser = (id, updatedUser) => {
     setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updatedUser } : u));
   };
@@ -268,6 +286,7 @@ export const InventoryProvider = ({ children }) => {
       documentTypes,
       users,
       currentUser,
+      settings,
       addProduct,
       updateProduct,
       deleteProduct,
@@ -280,6 +299,7 @@ export const InventoryProvider = ({ children }) => {
       deleteDocumentType,
       addUser,
       updateUser,
+      updateSettings,
       login,
       logout,
       totalStock

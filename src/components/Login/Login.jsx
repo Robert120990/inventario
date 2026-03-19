@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { LogIn } from 'lucide-react';
+import { LogIn, Package } from 'lucide-react';
 
 const Login = () => {
-  const { login } = useInventory();
+  const { login, settings } = useInventory();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -19,8 +19,15 @@ const Login = () => {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', backgroundColor: 'var(--color-bg)' }}>
       <div className="card" style={{ width: '100%', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '1.5rem', alignItems: 'center' }}>
-        <h2 style={{ color: 'var(--color-primary)' }}>Inventario Pro</h2>
-        <h3 style={{ fontSize: '1.2rem' }}>Iniciar Sesión</h3>
+        <div style={{ textAlign: 'center' }}>
+          {settings.logo ? (
+            <img src={settings.logo} alt="Logo" style={{ width: '64px', height: '64px', objectFit: 'contain', marginBottom: '1rem' }} />
+          ) : (
+            <Package size={48} style={{ color: 'var(--color-primary)', marginBottom: '1rem' }} />
+          )}
+          <h2 style={{ color: 'var(--color-primary)', margin: 0 }}>{settings.name}</h2>
+        </div>
+        <h3 style={{ fontSize: '1.2rem', color: 'var(--color-text-light)' }}>Iniciar Sesión</h3>
         <form onSubmit={handleSubmit} style={{ width: '100%' }}>
           <div className="form-group">
             <label className="form-label">Usuario</label>

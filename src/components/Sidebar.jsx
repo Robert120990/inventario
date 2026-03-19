@@ -3,14 +3,18 @@ import { LayoutDashboard, Package, ArrowRightLeft, Settings, LogOut, FileText, M
 import { useInventory } from '../context/InventoryContext';
 
 const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) => {
-  const { currentUser, logout } = useInventory();
+  const { currentUser, settings, logout } = useInventory();
 
   return (
     <div className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-logo" style={{ justifyContent: isCollapsed ? 'center' : 'space-between', marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <Package size={28} />
-          {!isCollapsed && <span>Inventario</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden' }}>
+          {settings.logo ? (
+            <img src={settings.logo} alt="Logo" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
+          ) : (
+            <Package size={28} />
+          )}
+          {!isCollapsed && <span style={{ whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{settings.name}</span>}
         </div>
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
