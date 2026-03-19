@@ -104,6 +104,11 @@ export const InventoryProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : initialSettings;
   });
 
+  const [categoryUnits, setCategoryUnits] = useState(() => {
+    const saved = localStorage.getItem('inv_category_units');
+    return saved ? JSON.parse(saved) : {};
+  });
+
   useEffect(() => {
     localStorage.setItem('inv_products', JSON.stringify(products));
   }, [products]);
@@ -135,6 +140,10 @@ export const InventoryProvider = ({ children }) => {
   useEffect(() => {
     localStorage.setItem('inv_settings', JSON.stringify(settings));
   }, [settings]);
+
+  useEffect(() => {
+    localStorage.setItem('inv_category_units', JSON.stringify(categoryUnits));
+  }, [categoryUnits]);
 
   const addProduct = (product) => {
     setProducts(prev => [...prev, { ...product, id: crypto.randomUUID() }]);
@@ -258,6 +267,10 @@ export const InventoryProvider = ({ children }) => {
     setSettings(prev => ({ ...prev, ...newSettings }));
   };
 
+  const updateCategoryUnit = (category, unit) => {
+    setCategoryUnits(prev => ({ ...prev, [category]: unit }));
+  };
+
   const updateUser = (id, updatedUser) => {
     setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updatedUser } : u));
   };
@@ -287,6 +300,7 @@ export const InventoryProvider = ({ children }) => {
       users,
       currentUser,
       settings,
+      categoryUnits,
       addProduct,
       updateProduct,
       deleteProduct,
@@ -300,6 +314,7 @@ export const InventoryProvider = ({ children }) => {
       addUser,
       updateUser,
       updateSettings,
+      updateCategoryUnit,
       login,
       logout,
       totalStock

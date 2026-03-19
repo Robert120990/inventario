@@ -1,8 +1,10 @@
+import React, { useState } from 'react';
+import { useInventory } from '../../context/InventoryContext';
 import { Plus, Trash2, Home, Save, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 const Settings = () => {
-  const { categories, documentTypes, settings, addCategory, deleteCategory, addDocumentType, deleteDocumentType, updateSettings } = useInventory();
+  const { categories, documentTypes, settings, categoryUnits, addCategory, deleteCategory, addDocumentType, deleteDocumentType, updateSettings, updateCategoryUnit } = useInventory();
   const [newCat, setNewCat] = useState('');
   const [newDocType, setNewDocType] = useState('');
   const [systemName, setSystemName] = useState(settings.name);
@@ -137,9 +139,22 @@ const Settings = () => {
           </form>
           <ul style={{ listStyle: 'none', padding: 0 }}>
             {categories.map((c, idx) => (
-              <li key={idx} style={{ padding: '0.5rem 0', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>{c}</span>
-                <button type="button" onClick={() => { deleteCategory(c); toast.success('Categoría eliminada'); }} className="btn btn-danger" style={{ padding: '0.25rem' }}><Trash2 size={14} /></button>
+              <li key={idx} style={{ padding: '0.75rem 0', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                <span style={{ flex: 1 }}>{c}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>Métrica:</label>
+                  <select 
+                    className="form-select" 
+                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.875rem', width: 'auto' }}
+                    value={categoryUnits[c] || 'units'}
+                    onChange={(e) => updateCategoryUnit(c, e.target.value)}
+                  >
+                    <option value="units">Unidades</option>
+                    <option value="pounds">Libras</option>
+                    <option value="baskets">Cestas</option>
+                  </select>
+                  <button type="button" onClick={() => { deleteCategory(c); toast.success('Categoría eliminada'); }} className="btn btn-danger" style={{ padding: '0.25rem' }}><Trash2 size={14} /></button>
+                </div>
               </li>
             ))}
           </ul>
