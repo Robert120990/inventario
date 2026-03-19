@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { Save, X, Eye, EyeOff } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 const UserForm = ({ onCancel, initialData }) => {
   const { addUser, updateUser, users } = useInventory();
@@ -39,8 +40,10 @@ const UserForm = ({ onCancel, initialData }) => {
 
     if (initialData) {
       updateUser(initialData.id, formData);
+      toast.success('Usuario actualizado');
     } else {
       addUser({...formData, isActive: true });
+      toast.success('Usuario creado exitosamente');
     }
     
     onCancel();

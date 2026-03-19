@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { Save, X } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 const ProductForm = ({ onCancel, initialData }) => {
   const { addProduct, updateProduct, categories } = useInventory();
@@ -33,8 +34,10 @@ const ProductForm = ({ onCancel, initialData }) => {
 
     if (initialData) {
       updateProduct(initialData.id, dataToSave);
+      toast.success('Producto actualizado exitosamente');
     } else {
       addProduct(dataToSave);
+      toast.success('Producto creado exitosamente');
     }
     
     onCancel(); // Return to list

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Sidebar from './components/Sidebar';
+import { Toaster } from 'react-hot-toast';
 import Dashboard from './components/Dashboard';
 import { InventoryProvider, useInventory } from './context/InventoryContext';
 import ProductList from './components/Products/ProductList';
@@ -40,6 +41,7 @@ function AppContent() {
 
   return (
     <div className="app-container">
+      <Toaster position="bottom-right" toastOptions={{ duration: 3000, style: { background: 'var(--color-card)', color: 'var(--color-text)', border: '1px solid var(--color-border)' } }} />
       <Sidebar 
         currentView={currentView} 
         setCurrentView={setCurrentView} 

@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
-import { useInventory } from '../../context/InventoryContext';
 import { Plus, Trash2, Home, Save, Image as ImageIcon } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 const Settings = () => {
   const { categories, documentTypes, settings, addCategory, deleteCategory, addDocumentType, deleteDocumentType, updateSettings } = useInventory();
@@ -14,6 +13,7 @@ const Settings = () => {
     if (newCat.trim()) {
       addCategory(newCat.trim());
       setNewCat('');
+      toast.success('Categoría agregada');
     }
   };
 
@@ -22,6 +22,7 @@ const Settings = () => {
     if (newDocType.trim()) {
       addDocumentType(newDocType.trim());
       setNewDocType('');
+      toast.success('Tipo de documento agregado');
     }
   };
 
@@ -39,7 +40,7 @@ const Settings = () => {
   const handleSaveSettings = (e) => {
     e.preventDefault();
     updateSettings({ name: systemName, logo: systemLogo });
-    alert('Configuración del sistema guardada con éxito.');
+    toast.success('Configuración del sistema guardada');
   };
 
   return (
@@ -138,7 +139,7 @@ const Settings = () => {
             {categories.map((c, idx) => (
               <li key={idx} style={{ padding: '0.5rem 0', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>{c}</span>
-                <button type="button" onClick={() => deleteCategory(c)} className="btn btn-danger" style={{ padding: '0.25rem' }}><Trash2 size={14} /></button>
+                <button type="button" onClick={() => { deleteCategory(c); toast.success('Categoría eliminada'); }} className="btn btn-danger" style={{ padding: '0.25rem' }}><Trash2 size={14} /></button>
               </li>
             ))}
           </ul>
@@ -155,7 +156,7 @@ const Settings = () => {
             {documentTypes.map((d, idx) => (
               <li key={idx} style={{ padding: '0.5rem 0', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>{d}</span>
-                <button type="button" onClick={() => deleteDocumentType(d)} className="btn btn-danger" style={{ padding: '0.25rem' }}><Trash2 size={14} /></button>
+                <button type="button" onClick={() => { deleteDocumentType(d); toast.success('Tipo de documento eliminado'); }} className="btn btn-danger" style={{ padding: '0.25rem' }}><Trash2 size={14} /></button>
               </li>
             ))}
           </ul>

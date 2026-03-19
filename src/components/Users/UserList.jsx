@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { Plus, UserCheck, UserX } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import UserForm from './UserForm';
 
 const UserList = () => {
@@ -14,6 +15,7 @@ const UserList = () => {
       return;
     }
     updateUser(user.id, { isActive: !user.isActive });
+    toast.success(user.isActive ? 'Usuario desactivado' : 'Usuario reactivado');
   };
 
   if (isAdding) {

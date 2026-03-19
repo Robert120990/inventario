@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { Save, X, Plus, Trash2 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 const MovementForm = ({ onCancel, initialData }) => {
   const { products, addMovement, updateMovement, documentTypes, currentUser } = useInventory();
@@ -84,8 +85,10 @@ const MovementForm = ({ onCancel, initialData }) => {
 
     if (initialData) {
       updateMovement(initialData.id, movementToSave);
+      toast.success('Movimiento actualizado');
     } else {
       addMovement(movementToSave);
+      toast.success('Movimiento registrado exitosamente');
     }
     
     onCancel();

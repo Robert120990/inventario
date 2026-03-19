@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { Plus, Download } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { exportToCsv } from '../../utils/exportCsv';
 import ProductForm from './ProductForm';
 
@@ -11,6 +12,7 @@ const ProductList = () => {
 
   const handleExport = () => {
     exportToCsv(products, `productos_${new Date().toISOString().split('T')[0]}.csv`);
+    toast.success('Listado de productos exportado');
   };
 
   return (
@@ -62,7 +64,12 @@ const ProductList = () => {
                     <td>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button onClick={() => { setEditingProduct(prod); setIsAdding(true); }} className="btn btn-outline" style={{ padding: '0.25rem 0.5rem' }}>Editar</button>
-                        <button onClick={() => { if(window.confirm('¿Seguro que deseas eliminar este producto?')) deleteProduct(prod.id); }} className="btn btn-danger" style={{ padding: '0.25rem 0.5rem' }}>Eliminar</button>
+                        <button onClick={() => { 
+                          if(window.confirm('¿Seguro que deseas eliminar este producto?')) {
+                            deleteProduct(prod.id);
+                            toast.success('Producto eliminado');
+                          }
+                        }} className="btn btn-danger" style={{ padding: '0.25rem 0.5rem' }}>Eliminar</button>
                       </div>
                     </td>
                   </tr>
