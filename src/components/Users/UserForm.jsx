@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { Save, X } from 'lucide-react';
+import { Save, X, Eye, EyeOff } from 'lucide-react';
 
 const UserForm = ({ onCancel, initialData }) => {
   const { addUser, updateUser, users } = useInventory();
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   
   const [formData, setFormData] = useState(initialData || {
     username: '',
@@ -74,14 +75,35 @@ const UserForm = ({ onCancel, initialData }) => {
         </div>
         <div className="form-group">
           <label className="form-label">Contraseña</label>
-          <input 
-            type="text" 
-            name="password" 
-            className="form-input" 
-            value={formData.password} 
-            onChange={handleChange} 
-            required 
-          />
+          <div style={{ position: 'relative' }}>
+            <input 
+              type={showPassword ? "text" : "password"} 
+              name="password" 
+              className="form-input" 
+              value={formData.password} 
+              onChange={handleChange} 
+              required 
+              style={{ paddingRight: '2.5rem' }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                position: 'absolute',
+                right: '0.75rem',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                color: 'var(--color-text-light)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center'
+              }}
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
         </div>
         <div className="form-group">
           <label className="form-label">Rol del Sistema</label>
