@@ -1,6 +1,7 @@
 import React from 'react';
 import { useInventory } from '../context/InventoryContext';
 import { Package, ArrowRightLeft, TrendingUp } from 'lucide-react';
+import { formatDate } from '../utils/formatUtils';
 
 const Dashboard = () => {
   const { totalStock, products, movements } = useInventory();
@@ -67,7 +68,7 @@ const Dashboard = () => {
 
       <div className="card" style={{ padding: '0' }}>
         <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: '600', color: 'var(--color-text)' }}>Productos Movidos Hoy ({today})</h2>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: '600', color: 'var(--color-text)' }}>Productos Movidos Hoy ({formatDate(today)})</h2>
           <span className="badge badge-gray">{todaysItems.length} registros</span>
         </div>
         

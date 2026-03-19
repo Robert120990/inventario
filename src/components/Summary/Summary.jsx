@@ -4,6 +4,7 @@ import { FileText, Download, FileOutput } from 'lucide-react';
 import { exportToCsv } from '../../utils/exportCsv';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils';
 
 const Summary = () => {
   const { products, movements, categoryUnits } = useInventory();
@@ -134,23 +135,23 @@ const Summary = () => {
       Entradas: d.entradas,
       Salidas: d.salidas,
       'Stock Final': d.stockFinal,
-      'Precio ($)': d.precio.toFixed(3),
-      'Total ($)': d.total.toFixed(2)
+      'Precio ($)': formatPrice(d.precio),
+      'Total ($)': formatCurrency(d.total)
     }));
 
     const servicesExport = servicesData.map(s => ({
-      Fecha: s.date,
+      Fecha: formatDate(s.date),
       Referencia: s.ref,
       Descripción: s.description,
-      'Valor ($)': s.value.toFixed(2)
+      'Valor ($)': formatCurrency(s.value)
     }));
 
     const totalsExport = [
       {},
       { Producto: 'FIN DEL REPORTE' },
-      { Producto: 'SUBTOTAL (INV + SERV)', 'Total ($)': reportSubtotal.toFixed(2) },
-      { Producto: 'IVA (13%)', 'Total ($)': reportIva.toFixed(2) },
-      { Producto: 'TOTAL CON IMPUESTOS', 'Total ($)': reportGrandTotal.toFixed(2) }
+      { Producto: 'SUBTOTAL (INV + SERV)', 'Total ($)': formatCurrency(reportSubtotal) },
+      { Producto: 'IVA (13%)', 'Total ($)': formatCurrency(reportIva) },
+      { Producto: 'TOTAL CON IMPUESTOS', 'Total ($)': formatCurrency(reportGrandTotal) }
     ];
 
     exportToCsv([...exportData, {}, { Producto: 'SERVICIOS EXTRAORDINARIOS' }, ...servicesExport, ...totalsExport], `resumen_completo_${startDate}_al_${endDate}.csv`);
@@ -174,8 +175,8 @@ const Summary = () => {
           row.entradas.toString(),
           row.salidas.toString(),
           row.stockFinal.toString(),
-          `$${row.precio.toFixed(3)}`,
-          `$${row.total.toFixed(2)}`
+          `$${formatPrice(row.precio)}`,
+          `$${formatCurrency(row.total)}`
         ]);
       });
 
@@ -183,7 +184,7 @@ const Summary = () => {
         { content: `Total ${cat}`, colSpan: 5, styles: { fontStyle: 'bold', halign: 'right' } },
         { content: groupedData[cat].totalStock.toString(), styles: { fontStyle: 'bold', halign: 'center' } },
         '',
-        { content: `$${groupedData[cat].totalMonto.toFixed(2)}`, styles: { fontStyle: 'bold', halign: 'right' } }
+        { content: `$${formatCurrency(groupedData[cat].totalMonto)}`, styles: { fontStyle: 'bold', halign: 'right' } }
       ]);
     });
 
@@ -213,7 +214,7 @@ const Summary = () => {
       
       autoTable(doc, {
         head: [["Fecha", "Ref. Mov", "Descripción Servicio", "Valor"]],
-        body: servicesData.map(s => [s.date, s.ref, s.description, `$${s.value.toFixed(2)}`]),
+        body: servicesData.map(s => [formatDate(s.date), s.ref, s.description, `$${formatCurrency(s.value)}`]),
         startY: currentY + 5,
         styles: { fontSize: 7 },
         headStyles: { fillColor: [52, 152, 219] }
@@ -227,16 +228,16 @@ const Summary = () => {
     doc.setFont(undefined, 'normal');
     
     if (totalServices > 0) {
-      doc.text(`Total Servicios: $${totalServices.toFixed(2)}`, 140, currentY);
+      doc.text(`Total Servicios: $${formatCurrency(totalServices)}`, 140, currentY);
       currentY += 6;
     }
     
-    doc.text(`Subtotal: $${reportSubtotal.toFixed(2)}`, 140, currentY);
+    doc.text(`Subtotal: $${formatCurrency(reportSubtotal)}`, 140, currentY);
     currentY += 6;
-    doc.text(`IVA (13%): $${reportIva.toFixed(2)}`, 140, currentY);
+    doc.text(`IVA (13%): $${formatCurrency(reportIva)}`, 140, currentY);
     currentY += 6;
     doc.setFont(undefined, 'bold');
-    doc.text(`TOTAL REPORTE: $${reportGrandTotal.toFixed(2)}`, 140, currentY);
+    doc.text(`TOTAL REPORTE: $${formatCurrency(reportGrandTotal)}`, 140, currentY);
 
     doc.save(`resumen_${startDate}_al_${endDate}.pdf`);
   };
@@ -304,15 +305,15 @@ const Summary = () => {
                         <td style={{ color: 'var(--color-success)', textAlign: 'center' }}>{row.entradas}</td>
                         <td style={{ color: 'var(--color-danger)', textAlign: 'center' }}>{row.salidas}</td>
                         <td style={{ fontWeight: '500', textAlign: 'center' }}>{row.stockFinal}</td>
-                        <td style={{ textAlign: 'right' }}>${row.precio.toFixed(3)}</td>
-                        <td style={{ textAlign: 'right', fontWeight: '500' }}>${row.total.toFixed(2)}</td>
+                        <td style={{ textAlign: 'right' }}>${formatPrice(row.precio)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: '500' }}>${formatCurrency(row.total)}</td>
                       </tr>
                     ))}
                     <tr style={{ borderBottom: '2px solid var(--color-border)' }}>
                       <td colSpan="5" style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--color-text-light)', fontSize: '0.875rem' }}>Total {cat}:</td>
                       <td style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--color-primary)' }}>{groupedData[cat].totalStock}</td>
                       <td></td>
-                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--color-primary)' }}>${groupedData[cat].totalMonto.toFixed(2)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--color-primary)' }}>${formatCurrency(groupedData[cat].totalMonto)}</td>
                     </tr>
                   </React.Fragment>
                 ))
@@ -322,7 +323,7 @@ const Summary = () => {
               <tfoot>
                 <tr style={{ backgroundColor: 'var(--color-surface)', fontWeight: 'bold' }}>
                   <td colSpan="7" style={{ textAlign: 'right', padding: '1rem' }}>VALORACIÓN INVENTARIO:</td>
-                  <td style={{ textAlign: 'right', padding: '1rem', color: 'var(--color-primary)' }}>${invTotal.toFixed(2)}</td>
+                  <td style={{ textAlign: 'right', padding: '1rem', color: 'var(--color-primary)' }}>${formatCurrency(invTotal)}</td>
                 </tr>
               </tfoot>
             )}
@@ -349,10 +350,10 @@ const Summary = () => {
                 <tbody>
                   {servicesData.map((s, idx) => (
                     <tr key={idx}>
-                      <td>{s.date}</td>
+                      <td>{formatDate(s.date)}</td>
                       <td>{s.ref}</td>
                       <td style={{ fontWeight: '500' }}>{s.description}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 'bold' }}>${s.value.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 'bold' }}>${formatCurrency(s.value)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -373,15 +374,15 @@ const Summary = () => {
           <div style={{ display: 'inline-block', backgroundColor: 'var(--color-primary)', color: 'white', padding: '1.5rem', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)', textAlign: 'right', minWidth: '350px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', opacity: 0.9 }}>
               <span>Subtotal (Inv + Serv):</span>
-              <span>${reportSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+              <span>${formatCurrency(reportSubtotal)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.3)', paddingBottom: '0.5rem', opacity: 0.9 }}>
               <span>IVA (13%):</span>
-              <span>${reportIva.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+              <span>${formatCurrency(reportIva)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.5rem', fontWeight: 'bold' }}>
               <span>GRAN TOTAL:</span>
-              <span>${reportGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+              <span>${formatCurrency(reportGrandTotal)}</span>
             </div>
           </div>
         </div>

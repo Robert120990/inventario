@@ -54,30 +54,39 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) =
         <button
           className={`nav-link ${currentView === 'summary' ? 'active' : ''}`}
           onClick={() => setCurrentView('summary')}
-          title={isCollapsed ? "Resumen" : ""}
+          title={isCollapsed ? "Resumen Detallado" : ""}
           style={{ background: 'transparent', border: 'none', width: '100%', textAlign: 'left', justifyContent: isCollapsed ? 'center' : 'flex-start' }}
         >
           <FileText size={20} />
-          {!isCollapsed && <span>Resumen</span>}
+          {!isCollapsed && <span>Resumen Detallado</span>}
+        </button>
+        <button
+          className={`nav-link ${currentView === 'summary2' ? 'active' : ''}`}
+          onClick={() => setCurrentView('summary2')}
+          title={isCollapsed ? "Resumen Diario" : ""}
+          style={{ background: 'transparent', border: 'none', width: '100%', textAlign: 'left', justifyContent: isCollapsed ? 'center' : 'flex-start' }}
+        >
+          <FileText size={20} style={{ opacity: 0.7 }} />
+          {!isCollapsed && <span>Resumen Diario</span>}
         </button>
         {currentUser?.role === 'admin' && (
           <>
-            <button 
+            <button
               className={`nav-link ${currentView === 'users' ? 'active' : ''}`}
               onClick={() => setCurrentView('users')}
               title={isCollapsed ? "Usuarios" : ""}
               style={{ background: 'transparent', border: 'none', width: '100%', textAlign: 'left', justifyContent: isCollapsed ? 'center' : 'flex-start' }}
             >
-              <Users size={20} /> 
+              <Users size={20} />
               {!isCollapsed && <span>Usuarios</span>}
             </button>
-            <button 
+            <button
               className={`nav-link ${currentView === 'settings' ? 'active' : ''}`}
               onClick={() => setCurrentView('settings')}
               title={isCollapsed ? "Configuración" : ""}
               style={{ background: 'transparent', border: 'none', width: '100%', textAlign: 'left', justifyContent: isCollapsed ? 'center' : 'flex-start' }}
             >
-              <Settings size={20} /> 
+              <Settings size={20} />
               {!isCollapsed && <span>Configuración</span>}
             </button>
           </>
@@ -85,23 +94,23 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) =
       </nav>
 
       <div style={{ marginTop: 'auto', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1rem' }}>
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: '0.75rem', 
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
           padding: isCollapsed ? '0.5rem' : '0.75rem 1rem',
           margin: '0.5rem',
           borderRadius: 'var(--radius)',
           backgroundColor: 'rgba(255,255,255,0.05)',
           marginBottom: '1rem'
         }}>
-          <div style={{ 
-            width: '32px', 
-            height: '32px', 
-            borderRadius: '50%', 
-            backgroundColor: 'var(--color-primary)', 
-            display: 'flex', 
-            alignItems: 'center', 
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '50%',
+            backgroundColor: 'var(--color-primary)',
+            display: 'flex',
+            alignItems: 'center',
             justifyContent: 'center',
             color: 'white',
             flexShrink: 0
@@ -114,10 +123,10 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) =
               <div style={{ fontWeight: '600', fontSize: '0.9rem', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
                 {currentUser.username}
               </div>
-              <span style={{ 
-                fontSize: '0.65rem', 
-                padding: '1px 6px', 
-                borderRadius: '10px', 
+              <span style={{
+                fontSize: '0.65rem',
+                padding: '1px 6px',
+                borderRadius: '10px',
                 backgroundColor: currentUser.role === 'admin' ? '#f1c40f' : 'rgba(255,255,255,0.2)',
                 color: currentUser.role === 'admin' ? '#000' : '#fff',
                 textTransform: 'uppercase',
@@ -135,13 +144,13 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) =
           className="nav-link"
           onClick={logout}
           title={isCollapsed ? "Cerrar Sesión" : ""}
-          style={{ 
-            background: 'transparent', 
-            border: 'none', 
-            width: 'calc(100% - 1rem)', 
+          style={{
+            background: 'transparent',
+            border: 'none',
+            width: 'calc(100% - 1rem)',
             margin: '0 0.5rem',
-            textAlign: 'left', 
-            color: '#ff7675', 
+            textAlign: 'left',
+            color: '#ff7675',
             justifyContent: isCollapsed ? 'center' : 'flex-start',
             padding: '0.75rem',
             borderRadius: 'var(--radius)'

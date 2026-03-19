@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { Plus, Download } from 'lucide-react';
+import { Plus, Edit2, Trash2, Package, Download } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { exportToCsv } from '../../utils/exportCsv';
 import ProductForm from './ProductForm';
+import { formatPrice } from '../../utils/formatUtils';
 
 const ProductList = () => {
   const { products, deleteProduct, currentUser } = useInventory();
@@ -58,11 +59,9 @@ const ProductList = () => {
                   <tr key={prod.id}>
                     <td style={{ fontWeight: '500' }}>{prod.sku}</td>
                     <td>{prod.description}</td>
-                    <td>
-                      <span className="badge badge-gray">{prod.category}</span>
-                    </td>
-                    <td>${Number(prod.price).toFixed(3)}</td>
-                    <td>{prod.stockUnits}</td>
+                    <td>{prod.category}</td>
+                    <td>${formatPrice(prod.price)}</td>
+                    <td style={{ textAlign: 'center' }}>{prod.stockUnits}</td>
                     <td>{prod.stockPounds}</td>
                     <td>{prod.stockBaskets}</td>
                     {isAdmin && (

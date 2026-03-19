@@ -6,6 +6,7 @@ import { InventoryProvider, useInventory } from './context/InventoryContext';
 import ProductList from './components/Products/ProductList';
 import MovementList from './components/Movements/MovementList';
 import Summary from './components/Summary/Summary';
+import Summary2 from './components/Summary/Summary2';
 import Settings from './components/Settings/Settings';
 import Login from './components/Login/Login';
 import UserList from './components/Users/UserList'; // Added this import
@@ -30,6 +31,8 @@ function AppContent() {
         return <MovementList />;
       case 'summary':
         return <Summary />;
+      case 'summary2':
+        return <Summary2 />;
       case 'users':
         return <UserList />;
       case 'settings':

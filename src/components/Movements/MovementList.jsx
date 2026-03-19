@@ -3,6 +3,7 @@ import { useInventory } from '../../context/InventoryContext';
 import { Plus, Download } from 'lucide-react';
 import { exportToCsv } from '../../utils/exportCsv';
 import MovementForm from './MovementForm';
+import { formatDate } from '../../utils/formatUtils';
 
 const MovementList = () => {
   const { movements, products, deleteMovement, currentUser } = useInventory();
@@ -10,15 +11,6 @@ const MovementList = () => {
   const [editingMovement, setEditingMovement] = useState(null);
   
   const isAdmin = currentUser?.role === 'admin';
-
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    const parts = dateString.split('-');
-    if (parts.length === 3) {
-      return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    }
-    return dateString;
-  };
 
   const getProductName = (id) => {
     const product = products.find(p => p.id === id);
