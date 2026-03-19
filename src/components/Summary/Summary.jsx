@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { FileText, Download, FileOutput } from 'lucide-react';
 import { exportToCsv } from '../../utils/exportCsv';
-import jsPDF from 'jspdf';
+import jsPDF from 'jsPDF';
 import autoTable from 'jspdf-autotable';
 
 const Summary = () => {
@@ -62,7 +62,7 @@ const Summary = () => {
       });
 
       const stockInicial = stockAtEnd - entradas + salidas;
-      const precio = Number(p.price);
+      const precio = Number(p.price || 0);
       const total = stockAtEnd * precio;
 
       return {
@@ -70,7 +70,6 @@ const Summary = () => {
         producto: `${p.sku} - ${p.description}`,
         categoria: p.category,
         unidad: unitLabel,
-        unitType,
         stockInicial,
         entradas,
         salidas,
@@ -98,6 +97,34 @@ const Summary = () => {
     return groups;
   }, [summaryData]);
 
+  const servicesData = useMemo(() => {
+    if (!startDate || !endDate) return [];
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T23:59:59');
+
+    const services = [];
+    movements.forEach(m => {
+      const mDate = new Date(m.date + 'T12:00:00');
+      if (mDate >= start && mDate <= end && m.services) {
+        m.services.forEach(s => {
+          services.push({
+            date: m.date,
+            description: s.description,
+            value: Number(s.value || 0),
+            ref: m.refNumber
+          });
+        });
+      }
+    });
+    return services;
+  }, [movements, startDate, endDate]);
+
+  const totalServices = servicesData.reduce((acc, curr) => acc + curr.value, 0);
+  const invTotal = summaryData.reduce((acc, curr) => acc + curr.total, 0);
+  const reportSubtotal = invTotal + totalServices;
+  const reportIva = reportSubtotal * 0.13;
+  const reportGrandTotal = reportSubtotal + reportIva;
+
   const handleExport = () => {
     const exportData = summaryData.map(d => ({
       Producto: d.producto,
@@ -110,7 +137,23 @@ const Summary = () => {
       'Precio ($)': d.precio.toFixed(2),
       'Total ($)': d.total.toFixed(2)
     }));
-    exportToCsv(exportData, `resumen_activos_${startDate}_al_${endDate}.csv`);
+
+    const servicesExport = servicesData.map(s => ({
+      Fecha: s.date,
+      Referencia: s.ref,
+      Descripción: s.description,
+      'Valor ($)': s.value.toFixed(2)
+    }));
+
+    const totalsExport = [
+      {},
+      { Producto: 'FIN DEL REPORTE' },
+      { Producto: 'SUBTOTAL (INV + SERV)', 'Total ($)': reportSubtotal.toFixed(2) },
+      { Producto: 'IVA (13%)', 'Total ($)': reportIva.toFixed(2) },
+      { Producto: 'TOTAL CON IMPUESTOS', 'Total ($)': reportGrandTotal.toFixed(2) }
+    ];
+
+    exportToCsv([...exportData, {}, { Producto: 'SERVICIOS EXTRAORDINARIOS' }, ...servicesExport, ...totalsExport], `resumen_completo_${startDate}_al_${endDate}.csv`);
   };
 
   const handleExportPDF = () => {
@@ -121,7 +164,6 @@ const Summary = () => {
     const tableRows = [];
 
     Object.keys(groupedData).forEach(cat => {
-      // Category Header
       tableRows.push([{ content: cat, colSpan: 8, styles: { fillColor: [240, 240, 240], fontStyle: 'bold' } }]);
       
       groupedData[cat].items.forEach(row => {
@@ -137,7 +179,6 @@ const Summary = () => {
         ]);
       });
 
-      // Category Total
       tableRows.push([
         { content: `Total ${cat}`, colSpan: 5, styles: { fontStyle: 'bold', halign: 'right' } },
         { content: groupedData[cat].totalStock.toString(), styles: { fontStyle: 'bold', halign: 'center' } },
@@ -162,10 +203,43 @@ const Summary = () => {
       }
     });
 
+    let currentY = doc.lastAutoTable.finalY + 10;
+
+    if (servicesData.length > 0) {
+      if (currentY > 250) { doc.addPage(); currentY = 20; }
+      
+      doc.setFont(undefined, 'bold');
+      doc.text("Detalle de Servicios Extraordinarios", 14, currentY);
+      
+      autoTable(doc, {
+        head: [["Fecha", "Ref. Mov", "Descripción Servicio", "Valor"]],
+        body: servicesData.map(s => [s.date, s.ref, s.description, `$${s.value.toFixed(2)}`]),
+        startY: currentY + 5,
+        styles: { fontSize: 7 },
+        headStyles: { fillColor: [52, 152, 219] }
+      });
+      currentY = doc.lastAutoTable.finalY + 10;
+    }
+
+    if (currentY > 250) { doc.addPage(); currentY = 20; }
+    
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    
+    if (totalServices > 0) {
+      doc.text(`Total Servicios: $${totalServices.toFixed(2)}`, 140, currentY);
+      currentY += 6;
+    }
+    
+    doc.text(`Subtotal: $${reportSubtotal.toFixed(2)}`, 140, currentY);
+    currentY += 6;
+    doc.text(`IVA (13%): $${reportIva.toFixed(2)}`, 140, currentY);
+    currentY += 6;
+    doc.setFont(undefined, 'bold');
+    doc.text(`TOTAL REPORTE: $${reportGrandTotal.toFixed(2)}`, 140, currentY);
+
     doc.save(`resumen_${startDate}_al_${endDate}.pdf`);
   };
-
-  const grandTotal = summaryData.reduce((acc, curr) => acc + curr.total, 0);
 
   return (
     <div>
@@ -191,8 +265,8 @@ const Summary = () => {
           <input type="date" className="form-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
         </div>
         <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-          <h3 style={{ fontSize: '0.875rem', color: 'var(--color-text-light)' }}>Valoración Total del Rango</h3>
-          <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--color-primary)' }}>${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+          <h3 style={{ fontSize: '0.875rem', color: 'var(--color-text-light)' }}>Valoración Total (C/Impuestos)</h3>
+          <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--color-primary)' }}>${reportGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
         </div>
       </div>
 
@@ -247,14 +321,71 @@ const Summary = () => {
             {summaryData.length > 0 && (
               <tfoot>
                 <tr style={{ backgroundColor: 'var(--color-surface)', fontWeight: 'bold' }}>
-                  <td colSpan="7" style={{ textAlign: 'right', padding: '1rem' }}>VALORACIÓN TOTAL:</td>
-                  <td style={{ textAlign: 'right', padding: '1rem', color: 'var(--color-primary)', fontSize: '1.1rem' }}>${grandTotal.toFixed(2)}</td>
+                  <td colSpan="7" style={{ textAlign: 'right', padding: '1rem' }}>VALORACIÓN INVENTARIO:</td>
+                  <td style={{ textAlign: 'right', padding: '1rem', color: 'var(--color-primary)' }}>${invTotal.toFixed(2)}</td>
                 </tr>
               </tfoot>
             )}
           </table>
         </div>
       </div>
+
+      {servicesData.length > 0 && (
+        <div style={{ marginTop: '2.5rem' }}>
+          <h2 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <FileText size={20} /> Servicios Extraordinarios del Periodo
+          </h2>
+          <div className="card" style={{ padding: '0' }}>
+            <div className="table-container" style={{ border: 'none', boxShadow: 'none' }}>
+              <table>
+                <thead>
+                  <tr style={{ backgroundColor: 'var(--color-bg)' }}>
+                    <th>Fecha</th>
+                    <th>Ref. Movimiento</th>
+                    <th>Descripción del Servicio</th>
+                    <th style={{ textAlign: 'right' }}>Valor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {servicesData.map((s, idx) => (
+                    <tr key={idx}>
+                      <td>{s.date}</td>
+                      <td>{s.ref}</td>
+                      <td style={{ fontWeight: '500' }}>{s.description}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 'bold' }}>${s.value.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ fontWeight: 'bold', backgroundColor: 'var(--color-surface)' }}>
+                    <td colSpan="3" style={{ textAlign: 'right', padding: '1rem' }}>TOTAL SERVICIOS:</td>
+                    <td style={{ textAlign: 'right', padding: '1rem', color: 'var(--color-primary)' }}>${totalServices.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(invTotal > 0 || totalServices > 0) && (
+        <div style={{ marginTop: '2rem', textAlign: 'right', padding: '1.5rem' }}>
+          <div style={{ display: 'inline-block', backgroundColor: 'var(--color-primary)', color: 'white', padding: '1.5rem', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)', textAlign: 'right', minWidth: '350px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', opacity: 0.9 }}>
+              <span>Subtotal (Inv + Serv):</span>
+              <span>${reportSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.3)', paddingBottom: '0.5rem', opacity: 0.9 }}>
+              <span>IVA (13%):</span>
+              <span>${reportIva.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.5rem', fontWeight: 'bold' }}>
+              <span>GRAN TOTAL:</span>
+              <span>${reportGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

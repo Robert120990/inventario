@@ -11,6 +11,7 @@ const MovementForm = ({ onCancel, initialData }) => {
     if (initialData) {
       return {
         ...initialData,
+        services: initialData.services || [],
         items: initialData.items.map(it => {
           const p = products.find(prod => prod.id === it.productId);
           return {
@@ -32,7 +33,8 @@ const MovementForm = ({ onCancel, initialData }) => {
       timeStart: '',
       timeEnd: '',
       auditUser: currentUser?.username || '',
-      items: [{ productId: '', searchQuery: '', showDropdown: false, temperature: '', qtyUnits: '', qtyPounds: '', qtyBaskets: '' }]
+      items: [{ productId: '', searchQuery: '', showDropdown: false, temperature: '', qtyUnits: '', qtyPounds: '', qtyBaskets: '' }],
+      services: []
     };
   });
 
@@ -62,6 +64,26 @@ const MovementForm = ({ onCancel, initialData }) => {
     setFormData({ ...formData, items: newItems });
   };
 
+  const addService = () => {
+    setFormData(prev => ({
+      ...prev,
+      services: [...prev.services, { description: '', value: '' }]
+    }));
+  };
+
+  const removeService = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      services: prev.services.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleServiceChange = (index, field, value) => {
+    const newServices = [...formData.services];
+    newServices[index][field] = value;
+    setFormData({ ...formData, services: newServices });
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     
@@ -80,6 +102,10 @@ const MovementForm = ({ onCancel, initialData }) => {
         qtyUnits: Number(it.qtyUnits),
         qtyPounds: Number(it.qtyPounds || 0),
         qtyBaskets: Number(it.qtyBaskets || 0)
+      })),
+      services: formData.services.map(s => ({
+        description: s.description,
+        value: Number(s.value || 0)
       }))
     };
 
@@ -278,6 +304,53 @@ const MovementForm = ({ onCancel, initialData }) => {
               </div>
             );
           })}
+        </div>
+
+        {/* Section 4: Servicios Extraordinarios */}
+        <div style={{ marginTop: '2.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '2px solid var(--color-border)', paddingBottom: '0.5rem', marginBottom: '1.5rem' }}>
+            <h3 style={{ fontSize: '1.125rem', color: 'var(--color-primary)', margin: 0 }}>
+              Servicios Extraordinarios
+            </h3>
+            <button type="button" className="btn btn-outline" onClick={addService} style={{ fontSize: '0.875rem', padding: '0.25rem 0.75rem' }}>
+              <Plus size={16} /> Agregar Servicio
+            </button>
+          </div>
+
+          {formData.services.length === 0 ? (
+            <p style={{ color: 'var(--color-text-light)', fontSize: '0.875rem', fontStyle: 'italic' }}>No se han agregado servicios a este movimiento.</p>
+          ) : (
+            <div className="grid grid-cols-1" style={{ gap: '0.75rem' }}>
+              {formData.services.map((service, sIndex) => (
+                <div key={sIndex} style={{ display: 'flex', gap: '1rem', alignItems: 'center', backgroundColor: 'var(--color-bg)', padding: '0.75rem', borderRadius: 'var(--radius)' }}>
+                  <div style={{ flex: 1 }}>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="Descripción del servicio (ej. Carga de Exportación)" 
+                      value={service.description}
+                      onChange={(e) => handleServiceChange(sIndex, 'description', e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div style={{ width: '150px' }}>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      className="form-input" 
+                      placeholder="Valor $" 
+                      value={service.value}
+                      onChange={(e) => handleServiceChange(sIndex, 'value', e.target.value)}
+                      required
+                    />
+                  </div>
+                  <button type="button" className="btn btn-danger" onClick={() => removeService(sIndex)} style={{ padding: '0.5rem' }}>
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
