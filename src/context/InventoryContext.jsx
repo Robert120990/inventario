@@ -246,12 +246,35 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
-  const updateCategoryUnit = (category, unit) => {
+  const updateCategoryUnit = async (category, unit) => {
     setCategoryUnits(prev => ({ ...prev, [category]: unit }));
+    try {
+      await fetch(`${API_BASE_URL}/api/config/categories/${encodeURIComponent(category)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unit_type: unit })
+      });
+    } catch (error) {
+      console.error('Error updating category unit:', error);
+    }
   };
 
-  const updateUser = (id, updatedUser) => {
-    setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updatedUser } : u));
+  const updateUser = async (id, updatedUser) => {
+    try {
+      const current = users.find(u => u.id === id);
+      const merged = { ...current, ...updatedUser };
+      const res = await fetch(`${API_BASE_URL}/api/users/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(merged)
+      });
+      if (res.ok) {
+        const userRes = await fetch(`${API_BASE_URL}/api/users`).then(r => r.json());
+        setUsers(userRes);
+      }
+    } catch (error) {
+      console.error('Error updating user:', error);
+    }
   };
 
   const login = (username, password) => {

@@ -149,7 +149,7 @@ router.delete('/movements/:id', async (req, res) => {
 // Users
 router.get('/users', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT id, username, password, role FROM users');
+        const [rows] = await pool.query('SELECT id, username, password, role, isActive FROM users');
         res.json(rows);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -159,7 +159,21 @@ router.get('/users', async (req, res) => {
 router.post('/users', async (req, res) => {
     const { username, password, role } = req.body;
     try {
-        await pool.query('INSERT INTO users (username, password, role) VALUES (?, ?, ?)', [username, password, role || 'user']);
+        await pool.query('INSERT INTO users (username, password, role, isActive) VALUES (?, ?, ?, 1)', [username, password, role || 'user']);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.put('/users/:id', async (req, res) => {
+    const { id } = req.params;
+    const { username, password, role, isActive } = req.body;
+    try {
+        await pool.query(
+            'UPDATE users SET username=?, password=?, role=?, isActive=? WHERE id=?',
+            [username, password, role || 'user', isActive !== false ? 1 : 0, id]
+        );
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -189,6 +203,16 @@ router.post('/config/categories', async (req, res) => {
     const { name, unit_type } = req.body;
     try {
         await pool.query('INSERT INTO categories (name, unit_type) VALUES (?, ?)', [name, unit_type || 'units']);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.put('/config/categories/:name', async (req, res) => {
+    const { unit_type } = req.body;
+    try {
+        await pool.query('UPDATE categories SET unit_type=? WHERE name=?', [unit_type, decodeURIComponent(req.params.name)]);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
