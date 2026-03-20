@@ -29,7 +29,13 @@ function AppContent() {
       <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--color-bg)' }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ width: '40px', height: '40px', border: '4px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }}></div>
-          <p style={{ color: 'var(--color-text-light)' }}>Cargando datos del servidor...</p>
+          <p style={{ color: 'var(--color-text-light)', marginBottom: '1rem' }}>Cargando datos del servidor...</p>
+          <button 
+            onClick={() => refreshData()}
+            style={{ padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--color-border)', borderRadius: '4px', color: 'var(--color-text-light)', cursor: 'pointer', fontSize: '0.8rem' }}
+          >
+            Reintentar
+          </button>
         </div>
         <style>{`
           @keyframes spin { to { transform: rotate(360deg); } }
