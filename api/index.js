@@ -9,21 +9,28 @@ const router = express.Router();
 app.use(cors());
 app.use(express.json());
 
-// Initialize Schema once per cold start
-let schemaInitialized = false;
+// Initialize Schema once per cold start - safely
+let initializationPromise = null;
+
+const initializeApp = () => {
+    if (!initializationPromise) {
+        initializationPromise = ensureSchema();
+    }
+    return initializationPromise;
+};
 
 app.use(async (req, res, next) => {
-    if (!schemaInitialized) {
-        schemaInitialized = await ensureSchema();
-    }
+    await initializeApp();
     next();
 });
 
 // Diagnostics
 router.get('/health', async (req, res) => {
     let dbStatus = 'checking...';
+    let userCount = 0;
     try {
-        await pool.query('SELECT 1');
+        const [rows] = await pool.query('SELECT COUNT(*) as count FROM users');
+        userCount = rows[0].count;
         dbStatus = 'connected';
     } catch (err) {
         dbStatus = `error: ${err.message}`;
@@ -31,6 +38,7 @@ router.get('/health', async (req, res) => {
     res.json({ 
         status: 'ok', 
         db: dbStatus,
+        users: userCount,
         time: new Date().toISOString(), 
         env: process.env.NODE_ENV,
         hasHost: !!process.env.DB_HOST,
