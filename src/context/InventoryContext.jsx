@@ -74,14 +74,35 @@ export const InventoryProvider = ({ children }) => {
     };
 
     fetchData();
-    
-    // Polling: auto-refresh every 30 seconds
-    const intervalId = setInterval(fetchData, 30000);
-    
-    return () => {
-      clearInterval(intervalId);
-    };
   }, []);
+
+  const refreshData = async () => {
+    try {
+      const [prodRes, movRes, userRes, configRes, settingsRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/products`).then(res => res.json()),
+        fetch(`${API_BASE_URL}/api/movements`).then(res => res.json()),
+        fetch(`${API_BASE_URL}/api/users`).then(res => res.json()),
+        fetch(`${API_BASE_URL}/api/config`).then(res => res.json()),
+        fetch(`${API_BASE_URL}/api/settings`).then(res => res.json())
+      ]);
+
+      if (Array.isArray(prodRes)) setProducts(prodRes);
+      if (Array.isArray(movRes)) setMovements(movRes);
+      if (Array.isArray(userRes)) setUsers(userRes);
+      if (configRes && !configRes.error) {
+        if (configRes.categories) setCategories(configRes.categories.map(c => c.name));
+        if (configRes.docTypes) setDocumentTypes(configRes.docTypes.map(d => d.name));
+        const units = {};
+        if (configRes.categories) {
+          configRes.categories.forEach(c => { units[c.name] = c.unit_type; });
+          setCategoryUnits(units);
+        }
+      }
+      if (settingsRes && !settingsRes.error) setSettings(settingsRes);
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    }
+  };
 
   // Sync current user to local storage for session persistence
   useEffect(() => {
@@ -342,6 +363,7 @@ export const InventoryProvider = ({ children }) => {
       updateUser,
       updateSettings,
       updateCategoryUnit,
+      refreshData,
       login,
       logout,
       totalStock

@@ -13,9 +13,16 @@ import UserList from './components/Users/UserList'; // Added this import
 import './App.css';
 
 function AppContent() {
-  const { currentUser, loading } = useInventory();
+  const { currentUser, loading, refreshData } = useInventory();
   const [currentView, setCurrentView] = useState('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // Refresh data whenever the view changes to ensure sync between devices
+  React.useEffect(() => {
+    if (currentUser) {
+      refreshData();
+    }
+  }, [currentView, currentUser]);
 
   if (loading) {
     return (
