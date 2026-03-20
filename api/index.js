@@ -185,6 +185,26 @@ router.get('/config', async (req, res) => {
     }
 });
 
+router.get('/settings', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM settings WHERE id = 1');
+        res.json(rows[0] || { name: 'Inventario Pro', logo: null });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/settings', async (req, res) => {
+    const { name, logo } = req.body;
+    try {
+        await pool.query('INSERT INTO settings (id, name, logo) VALUES (1, ?, ?) ON DUPLICATE KEY UPDATE name = ?, logo = ?', 
+        [name, logo, name, logo]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Mount router under /api
 app.use('/api', router);
 

@@ -84,6 +84,12 @@ export const ensureSchema = async () => {
                 value DECIMAL(15, 2) DEFAULT 0.00,
                 FOREIGN KEY (movementId) REFERENCES movements(id) ON DELETE CASCADE
             )`,
+            `CREATE TABLE IF NOT EXISTS settings (
+                id INT PRIMARY KEY DEFAULT 1,
+                name VARCHAR(255) DEFAULT 'Inventario Pro',
+                logo LONGTEXT
+            )`,
+            `INSERT IGNORE INTO settings (id, name) VALUES (1, 'Inventario Pro')`,
             `INSERT IGNORE INTO users (username, password, role) VALUES ('admin', 'admin123', 'admin')`,
             `INSERT IGNORE INTO categories (name, unit_type) VALUES ('Frutas', 'pounds'), ('Vegetales', 'pounds'), ('Abarrotes', 'units')`,
             `INSERT IGNORE INTO document_types (name) VALUES ('Factura'), ('Remisión'), ('Orden de Compra')`

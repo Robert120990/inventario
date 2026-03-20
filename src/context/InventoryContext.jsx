@@ -29,11 +29,12 @@ export const InventoryProvider = ({ children }) => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [prodRes, movRes, userRes, configRes] = await Promise.all([
+        const [prodRes, movRes, userRes, configRes, settingsRes] = await Promise.all([
           fetch(`${API_BASE_URL}/api/products`).then(res => res.json()),
           fetch(`${API_BASE_URL}/api/movements`).then(res => res.json()),
           fetch(`${API_BASE_URL}/api/users`).then(res => res.json()),
-          fetch(`${API_BASE_URL}/api/config`).then(res => res.json())
+          fetch(`${API_BASE_URL}/api/config`).then(res => res.json()),
+          fetch(`${API_BASE_URL}/api/settings`).then(res => res.json())
         ]);
 
         setProducts(prodRes);
@@ -41,6 +42,7 @@ export const InventoryProvider = ({ children }) => {
         setUsers(userRes);
         setCategories(configRes.categories.map(c => c.name));
         setDocumentTypes(configRes.docTypes.map(d => d.name));
+        setSettings(settingsRes);
         
         const units = {};
         configRes.categories.forEach(c => {
@@ -190,8 +192,20 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
-  const updateSettings = (newSettings) => {
-    setSettings(prev => ({ ...prev, ...newSettings }));
+  const updateSettings = async (newSettings) => {
+    const updated = { ...settings, ...newSettings };
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+      if (res.ok) {
+        setSettings(updated);
+      }
+    } catch (error) {
+      console.error('Error updating settings:', error);
+    }
   };
 
   const updateCategoryUnit = (category, unit) => {

@@ -39,10 +39,14 @@ const Settings = () => {
     }
   };
 
-  const handleSaveSettings = (e) => {
+  const handleSaveSettings = async (e) => {
     e.preventDefault();
-    updateSettings({ name: systemName, logo: systemLogo });
-    toast.success('Configuración del sistema guardada');
+    try {
+      await updateSettings({ name: systemName, logo: systemLogo });
+      toast.success('Configuración del sistema guardada');
+    } catch (error) {
+      toast.error('Error al guardar la configuración');
+    }
   };
 
   return (
