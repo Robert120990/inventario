@@ -68,7 +68,7 @@ router.delete('/products/:id', async (req, res) => {
 // Movements
 router.get('/movements', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM movements ORDER BY created_at DESC');
+        const [rows] = await pool.query("SELECT id, type, equipment, carrier, seal, refType, refNumber, DATE_FORMAT(date, '%Y-%m-%d') as date, timeStart, timeEnd, auditUser, created_at FROM movements ORDER BY created_at DESC");
         for (const mov of rows) {
             const [items] = await pool.query('SELECT * FROM movement_items WHERE movementId=?', [mov.id]);
             const [services] = await pool.query('SELECT * FROM services WHERE movementId=?', [mov.id]);
@@ -189,3 +189,14 @@ app.use('/api', router);
 
 // Export for Vercel
 export default app;
+
+// Standalone execution for local development
+const isDirectRun = import.meta.url.startsWith('file:') && 
+                   (process.argv[1] && (process.argv[1].endsWith('index.js') || process.argv[1].endsWith('api\\index.js')));
+
+if (isDirectRun || process.env.NODE_ENV === 'development') {
+    const PORT = process.env.PORT || 3001;
+    app.listen(PORT, () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+    });
+}

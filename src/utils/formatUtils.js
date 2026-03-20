@@ -5,7 +5,11 @@
  */
 export const formatDate = (dateString) => {
   if (!dateString) return '';
-  const parts = dateString.split('-');
+  
+  // If it's an ISO string (contains T), extract only the date part
+  const dateOnly = dateString.includes('T') ? dateString.split('T')[0] : dateString;
+  
+  const parts = dateOnly.split('-');
   if (parts.length === 3) {
     return `${parts[2]}/${parts[1]}/${parts[0]}`;
   }
