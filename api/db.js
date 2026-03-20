@@ -89,22 +89,37 @@ export const ensureSchema = async () => {
                 id INT PRIMARY KEY DEFAULT 1,
                 name VARCHAR(255) DEFAULT 'Inventario Pro',
                 logo LONGTEXT
-            )`,
-            `INSERT IGNORE INTO settings (id, name) VALUES (1, 'Inventario Pro')`,
-            `INSERT IGNORE INTO users (username, password, role) VALUES ('admin', 'admin123', 'admin')`,
-            `INSERT IGNORE INTO categories (name, unit_type) VALUES ('Frutas', 'pounds'), ('Vegetales', 'pounds'), ('Abarrotes', 'units')`,
-            `INSERT IGNORE INTO document_types (name) VALUES ('Factura'), ('Remisión'), ('Orden de Compra')`
+            )`
         ];
 
         for (const q of queries) {
             await pool.query(q);
         }
 
+        // Asegurar que exista la configuración básica
+        await pool.query(`INSERT IGNORE INTO settings (id, name) VALUES (1, 'Inventario Pro')`);
+
         // Migración manual para agregar isActive si no existe
         try {
             await pool.query("ALTER TABLE users ADD COLUMN isActive TINYINT(1) DEFAULT 1 AFTER role");
         } catch (e) {
             // Ignorar error si la columna ya existe
+        }
+
+        // Inserciones por defecto solo si las tablas están vacías
+        const [catRows] = await pool.query('SELECT COUNT(*) as count FROM categories');
+        if (catRows[0].count === 0) {
+            await pool.query(`INSERT IGNORE INTO categories (name, unit_type) VALUES ('Frutas', 'pounds'), ('Vegetales', 'pounds'), ('Abarrotes', 'units')`);
+        }
+
+        const [docRows] = await pool.query('SELECT COUNT(*) as count FROM document_types');
+        if (docRows[0].count === 0) {
+            await pool.query(`INSERT IGNORE INTO document_types (name) VALUES ('Factura'), ('Remisión'), ('Orden de Compra')`);
+        }
+
+        const [userRows] = await pool.query('SELECT COUNT(*) as count FROM users');
+        if (userRows[0].count === 0) {
+            await pool.query(`INSERT IGNORE INTO users (username, password, role) VALUES ('admin', 'admin123', 'admin')`);
         }
 
         return true;
