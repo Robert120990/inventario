@@ -3,6 +3,7 @@ import cors from 'cors';
 import pool, { ensureSchema } from './db.js';
 
 const app = express();
+const router = express.Router();
 
 app.use(cors());
 app.use(express.json());
@@ -17,10 +18,13 @@ app.use(async (req, res, next) => {
     next();
 });
 
-// API ROUTES
+// Diagnostics
+router.get('/health', (req, res) => {
+    res.json({ status: 'ok', time: new Date().toISOString(), environment: process.env.NODE_ENV });
+});
 
 // Products
-app.get('/api/products', async (req, res) => {
+router.get('/products', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM products ORDER BY created_at DESC');
         res.json(rows);
@@ -29,7 +33,7 @@ app.get('/api/products', async (req, res) => {
     }
 });
 
-app.post('/api/products', async (req, res) => {
+router.post('/products', async (req, res) => {
     const { id, sku, description, category, price, stockUnits, stockPounds, stockBaskets } = req.body;
     try {
         await pool.query('INSERT INTO products (id, sku, description, category, price, stockUnits, stockPounds, stockBaskets) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
@@ -40,7 +44,7 @@ app.post('/api/products', async (req, res) => {
     }
 });
 
-app.put('/api/products/:id', async (req, res) => {
+router.put('/products/:id', async (req, res) => {
     const { id } = req.params;
     const { sku, description, category, price, stockUnits, stockPounds, stockBaskets } = req.body;
     try {
@@ -52,7 +56,7 @@ app.put('/api/products/:id', async (req, res) => {
     }
 });
 
-app.delete('/api/products/:id', async (req, res) => {
+router.delete('/products/:id', async (req, res) => {
     try {
         await pool.query('DELETE FROM products WHERE id=?', [req.params.id]);
         res.json({ success: true });
@@ -62,7 +66,7 @@ app.delete('/api/products/:id', async (req, res) => {
 });
 
 // Movements
-app.get('/api/movements', async (req, res) => {
+router.get('/movements', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM movements ORDER BY created_at DESC');
         for (const mov of rows) {
@@ -77,7 +81,7 @@ app.get('/api/movements', async (req, res) => {
     }
 });
 
-app.post('/api/movements', async (req, res) => {
+router.post('/movements', async (req, res) => {
     const { id, type, equipment, carrier, seal, refType, refNumber, date, timeStart, timeEnd, auditUser, items, services } = req.body;
     const connection = await pool.getConnection();
     try {
@@ -112,7 +116,7 @@ app.post('/api/movements', async (req, res) => {
     }
 });
 
-app.delete('/api/movements/:id', async (req, res) => {
+router.delete('/movements/:id', async (req, res) => {
     const { id } = req.params;
     const connection = await pool.getConnection();
     try {
@@ -142,7 +146,7 @@ app.delete('/api/movements/:id', async (req, res) => {
 });
 
 // Users
-app.get('/api/users', async (req, res) => {
+router.get('/users', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT id, username, role FROM users');
         res.json(rows);
@@ -151,7 +155,7 @@ app.get('/api/users', async (req, res) => {
     }
 });
 
-app.post('/api/users', async (req, res) => {
+router.post('/users', async (req, res) => {
     const { username, password, role } = req.body;
     try {
         await pool.query('INSERT INTO users (username, password, role) VALUES (?, ?, ?)', [username, password, role || 'user']);
@@ -161,7 +165,7 @@ app.post('/api/users', async (req, res) => {
     }
 });
 
-app.delete('/api/users/:id', async (req, res) => {
+router.delete('/users/:id', async (req, res) => {
     try {
         await pool.query('DELETE FROM users WHERE id=?', [req.params.id]);
         res.json({ success: true });
@@ -170,7 +174,7 @@ app.delete('/api/users/:id', async (req, res) => {
     }
 });
 
-app.get('/api/config', async (req, res) => {
+router.get('/config', async (req, res) => {
     try {
         const [categories] = await pool.query('SELECT * FROM categories');
         const [docTypes] = await pool.query('SELECT * FROM document_types');
@@ -179,6 +183,9 @@ app.get('/api/config', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+// Mount router under /api
+app.use('/api', router);
 
 // Export for Vercel
 export default app;

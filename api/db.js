@@ -9,10 +9,9 @@ const pool = mysql.createPool({
     password: DB_PASS,
     database: DB_NAME,
     waitForConnections: true,
-    connectionLimit: 1, // Minimize connections in serverless environments
+    connectionLimit: 1, 
     queueLimit: 0,
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 0
+    connectTimeout: 10000 // 10s timeout for remote DB
 });
 
 export default pool;
