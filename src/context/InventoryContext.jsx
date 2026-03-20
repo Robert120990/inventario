@@ -74,6 +74,13 @@ export const InventoryProvider = ({ children }) => {
     };
 
     fetchData();
+    
+    // Polling: auto-refresh every 30 seconds
+    const intervalId = setInterval(fetchData, 30000);
+    
+    return () => {
+      clearInterval(intervalId);
+    };
   }, []);
 
   // Sync current user to local storage for session persistence
