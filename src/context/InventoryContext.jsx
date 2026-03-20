@@ -156,24 +156,62 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
-  const addCategory = (category) => {
-    if (!categories.includes(category)) {
-      setCategories(prev => [...prev, category]);
+  const addCategory = async (category, unit_type = 'units') => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/config/categories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: category, unit_type })
+      });
+      if (res.ok) {
+        const configRes = await fetch(`${API_BASE_URL}/api/config`).then(r => r.json());
+        setCategories(configRes.categories.map(c => c.name));
+        const units = {};
+        configRes.categories.forEach(c => { units[c.name] = c.unit_type; });
+        setCategoryUnits(units);
+      }
+    } catch (error) {
+      console.error('Error adding category:', error);
     }
   };
 
-  const deleteCategory = (category) => {
-    setCategories(prev => prev.filter(c => c !== category));
-  };
-
-  const addDocumentType = (docType) => {
-    if (!documentTypes.includes(docType)) {
-      setDocumentTypes(prev => [...prev, docType]);
+  const deleteCategory = async (category) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/config/categories/${encodeURIComponent(category)}`, { method: 'DELETE' });
+      if (res.ok) {
+        setCategories(prev => prev.filter(c => c !== category));
+        setCategoryUnits(prev => { const u = { ...prev }; delete u[category]; return u; });
+      }
+    } catch (error) {
+      console.error('Error deleting category:', error);
     }
   };
 
-  const deleteDocumentType = (docType) => {
-    setDocumentTypes(prev => prev.filter(d => d !== docType));
+  const addDocumentType = async (docType) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/config/document-types`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: docType })
+      });
+      if (res.ok) {
+        const configRes = await fetch(`${API_BASE_URL}/api/config`).then(r => r.json());
+        setDocumentTypes(configRes.docTypes.map(d => d.name));
+      }
+    } catch (error) {
+      console.error('Error adding document type:', error);
+    }
+  };
+
+  const deleteDocumentType = async (docType) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/config/document-types/${encodeURIComponent(docType)}`, { method: 'DELETE' });
+      if (res.ok) {
+        setDocumentTypes(prev => prev.filter(d => d !== docType));
+      }
+    } catch (error) {
+      console.error('Error deleting document type:', error);
+    }
   };
 
   const addUser = async (user) => {

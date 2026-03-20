@@ -185,6 +185,44 @@ router.get('/config', async (req, res) => {
     }
 });
 
+router.post('/config/categories', async (req, res) => {
+    const { name, unit_type } = req.body;
+    try {
+        await pool.query('INSERT INTO categories (name, unit_type) VALUES (?, ?)', [name, unit_type || 'units']);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.delete('/config/categories/:name', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM categories WHERE name = ?', [decodeURIComponent(req.params.name)]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/config/document-types', async (req, res) => {
+    const { name } = req.body;
+    try {
+        await pool.query('INSERT INTO document_types (name) VALUES (?)', [name]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.delete('/config/document-types/:name', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM document_types WHERE name = ?', [decodeURIComponent(req.params.name)]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 router.get('/settings', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM settings WHERE id = 1');
