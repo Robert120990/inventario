@@ -149,7 +149,7 @@ router.delete('/movements/:id', async (req, res) => {
 // Users
 router.get('/users', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT id, username, role FROM users');
+        const [rows] = await pool.query('SELECT id, username, password, role FROM users');
         res.json(rows);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -196,7 +196,7 @@ const isDirectRun = import.meta.url.startsWith('file:') &&
                    (process.argv[1] && (process.argv[1].endsWith('index.js') || process.argv[1].endsWith('api\\index.js')));
 
 if (isDirectRun || process.env.NODE_ENV === 'development') {
-    const PORT = process.env.PORT || 3001;
+    const PORT = process.env.PORT || 3001; 
     app.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`);
     });

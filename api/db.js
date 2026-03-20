@@ -1,6 +1,6 @@
 import mysql from 'mysql2/promise';
 
-const { DB_HOST, DB_USER, DB_PASS, DB_NAME } = process.env;
+const { DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT } = process.env;
 
 // Connection Pool with automatic recovery
 const pool = mysql.createPool({
@@ -8,11 +8,14 @@ const pool = mysql.createPool({
     user: DB_USER,
     password: DB_PASS,
     database: DB_NAME,
+    port: DB_PORT || 3306,
     waitForConnections: true,
     connectionLimit: 1, 
     queueLimit: 0,
     connectTimeout: 10000 // 10s timeout for remote DB
 });
+
+console.log(`[Backend] Connecting to DB Host: ${process.env.DB_HOST || 'localhost'} on port: ${process.env.DB_PORT || 3306}`);
 
 export default pool;
 
