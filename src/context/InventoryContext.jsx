@@ -37,18 +37,26 @@ export const InventoryProvider = ({ children }) => {
           fetch(`${API_BASE_URL}/api/settings`).then(res => res.json())
         ]);
 
-        setProducts(prodRes);
-        setMovements(movRes);
-        setUsers(userRes);
-        setCategories(configRes.categories.map(c => c.name));
-        setDocumentTypes(configRes.docTypes.map(d => d.name));
-        setSettings(settingsRes);
+        if (Array.isArray(prodRes)) setProducts(prodRes);
+        if (Array.isArray(movRes)) setMovements(movRes);
+        if (Array.isArray(userRes)) setUsers(userRes);
         
-        const units = {};
-        configRes.categories.forEach(c => {
-          units[c.name] = c.unit_type;
-        });
-        setCategoryUnits(units);
+        if (configRes && !configRes.error) {
+          if (configRes.categories) setCategories(configRes.categories.map(c => c.name));
+          if (configRes.docTypes) setDocumentTypes(configRes.docTypes.map(d => d.name));
+          
+          const units = {};
+          if (configRes.categories) {
+            configRes.categories.forEach(c => {
+              units[c.name] = c.unit_type;
+            });
+            setCategoryUnits(units);
+          }
+        }
+        
+        if (settingsRes && !settingsRes.error) {
+          setSettings(settingsRes);
+        }
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {

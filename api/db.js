@@ -30,6 +30,7 @@ export const ensureSchema = async () => {
                 username VARCHAR(50) UNIQUE NOT NULL,
                 password VARCHAR(255) NOT NULL,
                 role ENUM('admin', 'user') DEFAULT 'user',
+                isActive TINYINT(1) DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )`,
             `CREATE TABLE IF NOT EXISTS categories (
@@ -98,6 +99,14 @@ export const ensureSchema = async () => {
         for (const q of queries) {
             await pool.query(q);
         }
+
+        // Migración manual para agregar isActive si no existe
+        try {
+            await pool.query("ALTER TABLE users ADD COLUMN isActive TINYINT(1) DEFAULT 1 AFTER role");
+        } catch (e) {
+            // Ignorar error si la columna ya existe
+        }
+
         return true;
     } catch (err) {
         console.error('Schema initialization error:', err);
