@@ -12,7 +12,7 @@ const pool = mysql.createPool({
     waitForConnections: true,
     connectionLimit: 10, 
     queueLimit: 0,
-    connectTimeout: 10000 // 10s timeout for remote DB
+    connectTimeout: 5000 // 5s timeout for remote DB
 });
 
 console.log(`[Backend] Connecting to DB Host: ${process.env.DB_HOST || 'localhost'} on port: ${process.env.DB_PORT || 3306}`);

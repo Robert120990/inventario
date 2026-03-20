@@ -27,11 +27,11 @@ export const InventoryProvider = ({ children }) => {
   // Initial Fetch
   useEffect(() => {
     const fetchData = async () => {
-      // Fail-safe: Force stop loading after 15 seconds
+      // Fail-safe: Force stop loading after 8 seconds
       const timeoutId = setTimeout(() => {
         setLoading(false);
-        console.warn('Initial fetch timed out after 15s');
-      }, 15000);
+        console.warn('Initial fetch timed out after 8s');
+      }, 8000);
 
       try {
         setLoading(true);
