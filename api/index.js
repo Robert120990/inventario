@@ -1,33 +1,21 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
-import fs from 'fs/promises';
-import path from 'path';
-import pool from './db.js';
-
-dotenv.config();
+import pool, { ensureSchema } from './db.js';
 
 const app = express();
-const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
 
-// Initialize Database Schema
-const initDb = async () => {
-    try {
-        const schema = await fs.readFile(path.join(process.cwd(), 'schema.sql'), 'utf-8');
-        const commands = schema.split(';').filter(cmd => cmd.trim());
-        for (const cmd of commands) {
-            await pool.query(cmd);
-        }
-        console.log('Database schema checked/initialized.');
-    } catch (error) {
-        console.error('Error initializing database schema:', error);
-    }
-};
+// Initialize Schema once per cold start
+let schemaInitialized = false;
 
-await initDb();
+app.use(async (req, res, next) => {
+    if (!schemaInitialized) {
+        schemaInitialized = await ensureSchema();
+    }
+    next();
+});
 
 // API ROUTES
 
@@ -98,18 +86,15 @@ app.post('/api/movements', async (req, res) => {
         await connection.query('INSERT INTO movements (id, type, equipment, carrier, seal, refType, refNumber, date, timeStart, timeEnd, auditUser) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [id, type, equipment || '', carrier || '', seal || '', refType || '', refNumber || '', date, timeStart, timeEnd, auditUser]);
         
-        // Items & Stock update
         for (const item of items) {
             await connection.query('INSERT INTO movement_items (movementId, productId, temperature, qtyUnits, qtyPounds, qtyBaskets) VALUES (?, ?, ?, ?, ?, ?)',
             [id, item.productId, item.temperature, item.qtyUnits, item.qtyPounds, item.qtyBaskets]);
             
-            // Stock logic: if 'in' -> add, if 'out' -> subtract
             const multiplier = type === 'in' ? 1 : -1;
             await connection.query('UPDATE products SET stockUnits = stockUnits + ?, stockPounds = stockPounds + ?, stockBaskets = stockBaskets + ? WHERE id = ?',
             [item.qtyUnits * multiplier, item.qtyPounds * multiplier, item.qtyBaskets * multiplier, item.productId]);
         }
         
-        // Services
         if (services && services.length > 0) {
             for (const s of services) {
                 await connection.query('INSERT INTO services (movementId, description, value) VALUES (?, ?, ?)',
@@ -133,12 +118,11 @@ app.delete('/api/movements/:id', async (req, res) => {
     try {
         await connection.beginTransaction();
         
-        // Revert stock before deleting
         const [movRows] = await connection.query('SELECT * FROM movements WHERE id=?', [id]);
         if (movRows.length > 0) {
             const mov = movRows[0];
             const [items] = await connection.query('SELECT * FROM movement_items WHERE movementId=?', [id]);
-            const multiplier = mov.type === 'in' ? -1 : 1; // Reverse the previous change
+            const multiplier = mov.type === 'in' ? -1 : 1;
             
             for (const item of items) {
                 await connection.query('UPDATE products SET stockUnits = stockUnits + ?, stockPounds = stockPounds + ?, stockBaskets = stockBaskets + ? WHERE id = ?',
@@ -186,7 +170,6 @@ app.delete('/api/users/:id', async (req, res) => {
     }
 });
 
-// Categories & Document Types
 app.get('/api/config', async (req, res) => {
     try {
         const [categories] = await pool.query('SELECT * FROM categories');
@@ -197,6 +180,5 @@ app.get('/api/config', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-});
+// Export for Vercel
+export default app;

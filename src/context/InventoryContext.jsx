@@ -4,6 +4,9 @@ const InventoryContext = createContext();
 
 export const useInventory = () => useContext(InventoryContext);
 
+// Base API URL from environment variable or empty for local proxy
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
 export const InventoryProvider = ({ children }) => {
   const [products, setProducts] = useState([]);
   const [movements, setMovements] = useState([]);
@@ -27,10 +30,10 @@ export const InventoryProvider = ({ children }) => {
       try {
         setLoading(true);
         const [prodRes, movRes, userRes, configRes] = await Promise.all([
-          fetch('/api/products').then(res => res.json()),
-          fetch('/api/movements').then(res => res.json()),
-          fetch('/api/users').then(res => res.json()),
-          fetch('/api/config').then(res => res.json())
+          fetch(`${API_BASE_URL}/api/products`).then(res => res.json()),
+          fetch(`${API_BASE_URL}/api/movements`).then(res => res.json()),
+          fetch(`${API_BASE_URL}/api/users`).then(res => res.json()),
+          fetch(`${API_BASE_URL}/api/config`).then(res => res.json())
         ]);
 
         setProducts(prodRes);
@@ -66,7 +69,7 @@ export const InventoryProvider = ({ children }) => {
   const addProduct = async (product) => {
     const newProduct = { ...product, id: crypto.randomUUID() };
     try {
-      const res = await fetch('/api/products', {
+      const res = await fetch(`${API_BASE_URL}/api/products`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newProduct)
@@ -81,7 +84,7 @@ export const InventoryProvider = ({ children }) => {
 
   const updateProduct = async (id, updatedProduct) => {
     try {
-      const res = await fetch(`/api/products/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/products/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedProduct)
@@ -96,7 +99,7 @@ export const InventoryProvider = ({ children }) => {
 
   const deleteProduct = async (id) => {
     try {
-      const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE_URL}/api/products/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setProducts(prev => prev.filter(p => p.id !== id));
       }
@@ -108,16 +111,15 @@ export const InventoryProvider = ({ children }) => {
   const addMovement = async (movement) => {
     const newMovement = { ...movement, id: crypto.randomUUID() };
     try {
-      const res = await fetch('/api/movements', {
+      const res = await fetch(`${API_BASE_URL}/api/movements`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newMovement)
       });
       if (res.ok) {
-        // Refresh products and movements to get updated stocks and new movement
         const [prodRes, movRes] = await Promise.all([
-          fetch('/api/products').then(res => res.json()),
-          fetch('/api/movements').then(res => res.json())
+          fetch(`${API_BASE_URL}/api/products`).then(res => res.json()),
+          fetch(`${API_BASE_URL}/api/movements`).then(res => res.json())
         ]);
         setProducts(prodRes);
         setMovements(movRes);
@@ -129,11 +131,11 @@ export const InventoryProvider = ({ children }) => {
 
   const deleteMovement = async (id) => {
     try {
-      const res = await fetch(`/api/movements/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE_URL}/api/movements/${id}`, { method: 'DELETE' });
       if (res.ok) {
         const [prodRes, movRes] = await Promise.all([
-          fetch('/api/products').then(res => res.json()),
-          fetch('/api/movements').then(res => res.json())
+          fetch(`${API_BASE_URL}/api/products`).then(res => res.json()),
+          fetch(`${API_BASE_URL}/api/movements`).then(res => res.json())
         ]);
         setProducts(prodRes);
         setMovements(movRes);
@@ -144,11 +146,6 @@ export const InventoryProvider = ({ children }) => {
   };
 
   const updateMovement = async (id, updatedMovement) => {
-    // Note: Update movement in backend might be complex depending on full logic.
-    // Simplifying: Delete then Re-add if backend supports it, or just use a PUT endpoint.
-    // For now, let's just refresh after a theoretical update or handle logic in backend.
-    // Since I didn't implement PUT /api/movements, I'll recommend adding it or using POST for new.
-    // Logic: Delete old, add new.
     try {
       await deleteMovement(id);
       await addMovement(updatedMovement);
@@ -158,7 +155,6 @@ export const InventoryProvider = ({ children }) => {
   };
 
   const addCategory = (category) => {
-    // Currently UI only, could be moved to API if needed
     if (!categories.includes(category)) {
       setCategories(prev => [...prev, category]);
     }
@@ -180,13 +176,13 @@ export const InventoryProvider = ({ children }) => {
 
   const addUser = async (user) => {
     try {
-      const res = await fetch('/api/users', {
+      const res = await fetch(`${API_BASE_URL}/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(user)
       });
       if (res.ok) {
-        const userRes = await fetch('/api/users').then(res => res.json());
+        const userRes = await fetch(`${API_BASE_URL}/api/users`).then(res => res.json());
         setUsers(userRes);
       }
     } catch (error) {
@@ -203,13 +199,10 @@ export const InventoryProvider = ({ children }) => {
   };
 
   const updateUser = (id, updatedUser) => {
-    // Could add API endpoint for update user
     setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updatedUser } : u));
   };
 
   const login = (username, password) => {
-    // In a real app, this would be a POST to /api/login
-    // For now, we compare against fetched users
     const user = users.find(u => u.username === username && u.password === password);
     if (user) {
       if (user.isActive === false) return { success: false, message: 'Cuenta desactivada por el administrador.' };
