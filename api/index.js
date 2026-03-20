@@ -20,8 +20,22 @@ app.use(async (req, res, next) => {
 });
 
 // Diagnostics
-router.get('/health', (req, res) => {
-    res.json({ status: 'ok', time: new Date().toISOString(), environment: process.env.NODE_ENV });
+router.get('/health', async (req, res) => {
+    let dbStatus = 'checking...';
+    try {
+        await pool.query('SELECT 1');
+        dbStatus = 'connected';
+    } catch (err) {
+        dbStatus = `error: ${err.message}`;
+    }
+    res.json({ 
+        status: 'ok', 
+        db: dbStatus,
+        time: new Date().toISOString(), 
+        env: process.env.NODE_ENV,
+        hasHost: !!process.env.DB_HOST,
+        hasUser: !!process.env.DB_USER
+    });
 });
 
 // Products
