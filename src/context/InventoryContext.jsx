@@ -295,9 +295,9 @@ export const InventoryProvider = ({ children }) => {
   };
 
   const login = (username, password) => {
-    const user = users.find(u => u.username === username && u.password === password);
+    const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
     if (user) {
-      if (user.isActive === false) return { success: false, message: 'Cuenta desactivada por el administrador.' };
+      if (user.isActive === 0 || user.isActive === false) return { success: false, message: 'Cuenta desactivada por el administrador.' };
       setCurrentUser(user);
       return { success: true };
     }
