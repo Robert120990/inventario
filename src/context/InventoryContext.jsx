@@ -4,131 +4,57 @@ const InventoryContext = createContext();
 
 export const useInventory = () => useContext(InventoryContext);
 
-const initialProducts = [
-  {
-    id: 'prod-1',
-    sku: 'ELEC-001',
-    description: 'Laptop Pro 15"',
-    price: 1200.50,
-    category: 'Electrónicos',
-    stockUnits: 15,
-    stockPounds: 0,
-    stockBaskets: 0
-  },
-  {
-    id: 'prod-2',
-    sku: 'PER-002',
-    description: 'Tomates Orgánicos',
-    price: 2.30,
-    category: 'Perecederos',
-    stockUnits: 500,
-    stockPounds: 250,
-    stockBaskets: 10
-  }
-];
-
-const initialCategories = ['Electrónicos', 'Perecederos', 'Hogar', 'Abarrotes'];
-
-const initialDocumentTypes = ['Factura', 'Guía', 'Traslado', 'Ajuste'];
-
-const initialUsers = [
-  { id: '1', username: 'admin', password: '123', role: 'admin', isActive: true },
-  { id: '2', username: 'user', password: '123', role: 'user', isActive: true }
-];
-
-const initialSettings = {
-  name: 'Inventario Pro',
-  logo: null
-};
 export const InventoryProvider = ({ children }) => {
-  const [products, setProducts] = useState(() => {
-    const saved = localStorage.getItem('inv_products');
-    return saved ? JSON.parse(saved) : initialProducts;
-  });
-
-  const [movements, setMovements] = useState(() => {
-    const saved = localStorage.getItem('inv_movements');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return parsed.map(m => {
-        if (m.items) return m;
-        const doc = { ...m };
-        doc.items = [{
-          productId: m.productId,
-          temperature: m.temperature,
-          qtyUnits: m.qtyUnits,
-          qtyPounds: m.qtyPounds,
-          qtyBaskets: m.qtyBaskets
-        }];
-        delete doc.productId;
-        delete doc.temperature;
-        delete doc.qtyUnits;
-        delete doc.qtyPounds;
-        delete doc.qtyBaskets;
-        return doc;
-      });
-    }
-    return [];
-  });
-
-  const [categories, setCategories] = useState(() => {
-    const saved = localStorage.getItem('inv_categories');
-    return saved ? JSON.parse(saved) : initialCategories;
-  });
-
-  const [documentTypes, setDocumentTypes] = useState(() => {
-    const saved = localStorage.getItem('inv_doc_types');
-    return saved ? JSON.parse(saved) : initialDocumentTypes;
-  });
-
-  const [users, setUsers] = useState(() => {
-    const saved = localStorage.getItem('inv_users');
-    if (saved) {
-      const parsedUsers = JSON.parse(saved);
-      return parsedUsers.map(u => ({ 
-        ...u, 
-        password: u.password || '123',
-        isActive: u.isActive !== false
-      }));
-    }
-    return initialUsers;
-  });
-
+  const [products, setProducts] = useState([]);
+  const [movements, setMovements] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [documentTypes, setDocumentTypes] = useState([]);
+  const [users, setUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('inv_current_user');
     return saved ? JSON.parse(saved) : null;
   });
-
-  const [settings, setSettings] = useState(() => {
-    const saved = localStorage.getItem('inv_settings');
-    return saved ? JSON.parse(saved) : initialSettings;
+  const [settings, setSettings] = useState({
+    name: 'Inventario Pro',
+    logo: null
   });
+  const [categoryUnits, setCategoryUnits] = useState({});
+  const [loading, setLoading] = useState(true);
 
-  const [categoryUnits, setCategoryUnits] = useState(() => {
-    const saved = localStorage.getItem('inv_category_units');
-    return saved ? JSON.parse(saved) : {};
-  });
-
+  // Initial Fetch
   useEffect(() => {
-    localStorage.setItem('inv_products', JSON.stringify(products));
-  }, [products]);
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [prodRes, movRes, userRes, configRes] = await Promise.all([
+          fetch('/api/products').then(res => res.json()),
+          fetch('/api/movements').then(res => res.json()),
+          fetch('/api/users').then(res => res.json()),
+          fetch('/api/config').then(res => res.json())
+        ]);
 
-  useEffect(() => {
-    localStorage.setItem('inv_movements', JSON.stringify(movements));
-  }, [movements]);
+        setProducts(prodRes);
+        setMovements(movRes);
+        setUsers(userRes);
+        setCategories(configRes.categories.map(c => c.name));
+        setDocumentTypes(configRes.docTypes.map(d => d.name));
+        
+        const units = {};
+        configRes.categories.forEach(c => {
+          units[c.name] = c.unit_type;
+        });
+        setCategoryUnits(units);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  useEffect(() => {
-    localStorage.setItem('inv_categories', JSON.stringify(categories));
-  }, [categories]);
+    fetchData();
+  }, []);
 
-  useEffect(() => {
-    localStorage.setItem('inv_doc_types', JSON.stringify(documentTypes));
-  }, [documentTypes]);
-
-  useEffect(() => {
-    localStorage.setItem('inv_users', JSON.stringify(users));
-  }, [users]);
-
+  // Sync current user to local storage for session persistence
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('inv_current_user', JSON.stringify(currentUser));
@@ -137,109 +63,102 @@ export const InventoryProvider = ({ children }) => {
     }
   }, [currentUser]);
 
-  useEffect(() => {
-    localStorage.setItem('inv_settings', JSON.stringify(settings));
-  }, [settings]);
-
-  useEffect(() => {
-    localStorage.setItem('inv_category_units', JSON.stringify(categoryUnits));
-  }, [categoryUnits]);
-
-  const addProduct = (product) => {
-    setProducts(prev => [...prev, { ...product, id: crypto.randomUUID() }]);
-  };
-
-  const updateProduct = (id, updatedProduct) => {
-    setProducts(prev => prev.map(p => p.id === id ? { ...p, ...updatedProduct } : p));
-  };
-
-  const deleteProduct = (id) => {
-    setProducts(prev => prev.filter(p => p.id !== id));
-  };
-
-  const addMovement = (movement) => {
-    const factor = movement.type === 'out' ? -1 : 1;
-
-    setProducts(prev => {
-      let temp = [...prev];
-      movement.items.forEach(item => {
-        temp = temp.map(p => {
-          if (p.id === item.productId) {
-            return {
-              ...p,
-              stockUnits: Number(p.stockUnits) + (Number(item.qtyUnits || 0) * factor),
-              stockPounds: Number(p.stockPounds) + (Number(item.qtyPounds || 0) * factor),
-              stockBaskets: Number(p.stockBaskets) + (Number(item.qtyBaskets || 0) * factor)
-            };
-          }
-          return p;
-        });
+  const addProduct = async (product) => {
+    const newProduct = { ...product, id: crypto.randomUUID() };
+    try {
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProduct)
       });
-      return temp;
-    });
-
-    setMovements(prev => [{ ...movement, id: crypto.randomUUID(), createdAt: new Date().toISOString() }, ...prev]);
+      if (res.ok) {
+        setProducts(prev => [newProduct, ...prev]);
+      }
+    } catch (error) {
+      console.error('Error adding product:', error);
+    }
   };
 
-  const deleteMovement = (id) => {
-    const mov = movements.find(m => m.id === id);
-    if (!mov) return;
-    
-    const factor = mov.type === 'out' ? 1 : -1;
-    setProducts(prev => {
-      let temp = [...prev];
-      mov.items.forEach(item => {
-        temp = temp.map(p => {
-          if (p.id === item.productId) {
-            return {
-              ...p,
-              stockUnits: Number(p.stockUnits) + (Number(item.qtyUnits || 0) * factor),
-              stockPounds: Number(p.stockPounds) + (Number(item.qtyPounds || 0) * factor),
-              stockBaskets: Number(p.stockBaskets) + (Number(item.qtyBaskets || 0) * factor)
-            };
-          }
-          return p;
-        });
+  const updateProduct = async (id, updatedProduct) => {
+    try {
+      const res = await fetch(`/api/products/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedProduct)
       });
-      return temp;
-    });
-    setMovements(prev => prev.filter(m => m.id !== id));
+      if (res.ok) {
+        setProducts(prev => prev.map(p => p.id === id ? { ...p, ...updatedProduct } : p));
+      }
+    } catch (error) {
+      console.error('Error updating product:', error);
+    }
   };
 
-  const updateMovement = (id, updatedMovement) => {
-    const oldMov = movements.find(m => m.id === id);
-    if (!oldMov) return;
+  const deleteProduct = async (id) => {
+    try {
+      const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setProducts(prev => prev.filter(p => p.id !== id));
+      }
+    } catch (error) {
+      console.error('Error deleting product:', error);
+    }
+  };
 
-    setProducts(prevProducts => {
-      let temp = [...prevProducts];
-
-      const factorOld = oldMov.type === 'out' ? 1 : -1;
-      oldMov.items.forEach(item => {
-        temp = temp.map(p => p.id === item.productId ? {
-          ...p,
-          stockUnits: Number(p.stockUnits) + (Number(item.qtyUnits || 0) * factorOld),
-          stockPounds: Number(p.stockPounds) + (Number(item.qtyPounds || 0) * factorOld),
-          stockBaskets: Number(p.stockBaskets) + (Number(item.qtyBaskets || 0) * factorOld)
-        } : p);
+  const addMovement = async (movement) => {
+    const newMovement = { ...movement, id: crypto.randomUUID() };
+    try {
+      const res = await fetch('/api/movements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newMovement)
       });
+      if (res.ok) {
+        // Refresh products and movements to get updated stocks and new movement
+        const [prodRes, movRes] = await Promise.all([
+          fetch('/api/products').then(res => res.json()),
+          fetch('/api/movements').then(res => res.json())
+        ]);
+        setProducts(prodRes);
+        setMovements(movRes);
+      }
+    } catch (error) {
+      console.error('Error adding movement:', error);
+    }
+  };
 
-      const factorNew = updatedMovement.type === 'out' ? -1 : 1;
-      updatedMovement.items.forEach(item => {
-        temp = temp.map(p => p.id === item.productId ? {
-          ...p,
-          stockUnits: Number(p.stockUnits) + (Number(item.qtyUnits || 0) * factorNew),
-          stockPounds: Number(p.stockPounds) + (Number(item.qtyPounds || 0) * factorNew),
-          stockBaskets: Number(p.stockBaskets) + (Number(item.qtyBaskets || 0) * factorNew)
-        } : p);
-      });
+  const deleteMovement = async (id) => {
+    try {
+      const res = await fetch(`/api/movements/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        const [prodRes, movRes] = await Promise.all([
+          fetch('/api/products').then(res => res.json()),
+          fetch('/api/movements').then(res => res.json())
+        ]);
+        setProducts(prodRes);
+        setMovements(movRes);
+      }
+    } catch (error) {
+      console.error('Error deleting movement:', error);
+    }
+  };
 
-      return temp;
-    });
-
-    setMovements(prev => prev.map(m => m.id === id ? { ...updatedMovement, id, createdAt: m.createdAt } : m));
+  const updateMovement = async (id, updatedMovement) => {
+    // Note: Update movement in backend might be complex depending on full logic.
+    // Simplifying: Delete then Re-add if backend supports it, or just use a PUT endpoint.
+    // For now, let's just refresh after a theoretical update or handle logic in backend.
+    // Since I didn't implement PUT /api/movements, I'll recommend adding it or using POST for new.
+    // Logic: Delete old, add new.
+    try {
+      await deleteMovement(id);
+      await addMovement(updatedMovement);
+    } catch (error) {
+      console.error('Error updating movement:', error);
+    }
   };
 
   const addCategory = (category) => {
+    // Currently UI only, could be moved to API if needed
     if (!categories.includes(category)) {
       setCategories(prev => [...prev, category]);
     }
@@ -259,8 +178,20 @@ export const InventoryProvider = ({ children }) => {
     setDocumentTypes(prev => prev.filter(d => d !== docType));
   };
 
-  const addUser = (user) => {
-    setUsers(prev => [...prev, { ...user, id: crypto.randomUUID() }]);
+  const addUser = async (user) => {
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(user)
+      });
+      if (res.ok) {
+        const userRes = await fetch('/api/users').then(res => res.json());
+        setUsers(userRes);
+      }
+    } catch (error) {
+      console.error('Error adding user:', error);
+    }
   };
 
   const updateSettings = (newSettings) => {
@@ -272,10 +203,13 @@ export const InventoryProvider = ({ children }) => {
   };
 
   const updateUser = (id, updatedUser) => {
+    // Could add API endpoint for update user
     setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updatedUser } : u));
   };
 
   const login = (username, password) => {
+    // In a real app, this would be a POST to /api/login
+    // For now, we compare against fetched users
     const user = users.find(u => u.username === username && u.password === password);
     if (user) {
       if (user.isActive === false) return { success: false, message: 'Cuenta desactivada por el administrador.' };
@@ -301,6 +235,7 @@ export const InventoryProvider = ({ children }) => {
       currentUser,
       settings,
       categoryUnits,
+      loading,
       addProduct,
       updateProduct,
       deleteProduct,

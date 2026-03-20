@@ -13,9 +13,23 @@ import UserList from './components/Users/UserList'; // Added this import
 import './App.css';
 
 function AppContent() {
-  const { currentUser } = useInventory();
-  const [currentView, setCurrentView] = useState('products');
+  const { currentUser, loading } = useInventory();
+  const [currentView, setCurrentView] = useState('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  if (loading) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--color-bg)' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: '40px', height: '40px', border: '4px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }}></div>
+          <p style={{ color: 'var(--color-text-light)' }}>Cargando datos del servidor...</p>
+        </div>
+        <style>{`
+          @keyframes spin { to { transform: rotate(360deg); } }
+        `}</style>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return <Login />;
