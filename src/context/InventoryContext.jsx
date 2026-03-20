@@ -27,6 +27,12 @@ export const InventoryProvider = ({ children }) => {
   // Initial Fetch
   useEffect(() => {
     const fetchData = async () => {
+      // Fail-safe: Force stop loading after 15 seconds
+      const timeoutId = setTimeout(() => {
+        setLoading(false);
+        console.warn('Initial fetch timed out after 15s');
+      }, 15000);
+
       try {
         setLoading(true);
         const [prodRes, movRes, userRes, configRes, settingsRes] = await Promise.all([
@@ -36,6 +42,8 @@ export const InventoryProvider = ({ children }) => {
           fetch(`${API_BASE_URL}/api/config`).then(res => res.json()),
           fetch(`${API_BASE_URL}/api/settings`).then(res => res.json())
         ]);
+        
+        clearTimeout(timeoutId);
 
         if (Array.isArray(prodRes)) setProducts(prodRes);
         if (Array.isArray(movRes)) setMovements(movRes);
@@ -61,6 +69,7 @@ export const InventoryProvider = ({ children }) => {
         console.error('Error fetching data:', error);
       } finally {
         setLoading(false);
+        clearTimeout(timeoutId);
       }
     };
 

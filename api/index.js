@@ -84,13 +84,32 @@ router.delete('/products/:id', async (req, res) => {
 router.get('/movements', async (req, res) => {
     try {
         const [rows] = await pool.query("SELECT id, type, equipment, carrier, seal, refType, refNumber, DATE_FORMAT(date, '%Y-%m-%d') as date, timeStart, timeEnd, auditUser, created_at FROM movements ORDER BY created_at DESC");
-        for (const mov of rows) {
-            const [items] = await pool.query('SELECT * FROM movement_items WHERE movementId=?', [mov.id]);
-            const [services] = await pool.query('SELECT * FROM services WHERE movementId=?', [mov.id]);
-            mov.items = items;
-            mov.services = services;
-        }
-        res.json(rows);
+        
+        if (rows.length === 0) return res.json([]);
+
+        const movIds = rows.map(m => m.id);
+        const [allItems] = await pool.query('SELECT * FROM movement_items WHERE movementId IN (?)', [movIds]);
+        const [allServices] = await pool.query('SELECT * FROM services WHERE movementId IN (?)', [movIds]);
+
+        const itemsMap = allItems.reduce((acc, item) => {
+            if (!acc[item.movementId]) acc[item.movementId] = [];
+            acc[item.movementId].push(item);
+            return acc;
+        }, {});
+
+        const servicesMap = allServices.reduce((acc, s) => {
+            if (!acc[s.movementId]) acc[s.movementId] = [];
+            acc[s.movementId].push(s);
+            return acc;
+        }, {});
+
+        const results = rows.map(mov => ({
+            ...mov,
+            items: itemsMap[mov.id] || [],
+            services: servicesMap[mov.id] || []
+        }));
+
+        res.json(results);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
