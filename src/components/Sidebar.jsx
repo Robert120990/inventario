@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Package, ArrowRightLeft, Settings, LogOut, FileText, Menu, ChevronLeft, Users, UserCircle, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Package, ArrowRightLeft, Settings, LogOut, FileText, Menu, ChevronLeft, Users, UserCircle, ShieldCheck, ClipboardCheck } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { formatDate } from '../utils/formatUtils';
 
@@ -42,6 +42,15 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) =
         >
           <Package size={20} />
           {!isCollapsed && <span>Productos</span>}
+        </button>
+        <button
+          className={`nav-link ${currentView === 'inventory-count' ? 'active' : ''}`}
+          onClick={() => setCurrentView('inventory-count')}
+          title={isCollapsed ? "Toma de Inventario" : ""}
+          style={{ background: 'transparent', border: 'none', width: '100%', textAlign: 'left', justifyContent: isCollapsed ? 'center' : 'flex-start' }}
+        >
+          <ClipboardCheck size={20} />
+          {!isCollapsed && <span>Toma de Inventario</span>}
         </button>
         <button
           className={`nav-link ${currentView === 'movements' ? 'active' : ''}`}
