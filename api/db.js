@@ -53,6 +53,21 @@ export const ensureSchema = async () => {
                 stockBaskets INT DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )`,
+            `CREATE TABLE IF NOT EXISTS inventory_adjustments (
+                id VARCHAR(50) PRIMARY KEY,
+                productId VARCHAR(50) NOT NULL,
+                previousUnits INT DEFAULT 0,
+                previousPounds DECIMAL(15, 3) DEFAULT 0.000,
+                previousBaskets INT DEFAULT 0,
+                countedUnits INT DEFAULT 0,
+                countedPounds DECIMAL(15, 3) DEFAULT 0.000,
+                countedBaskets INT DEFAULT 0,
+                reason VARCHAR(500) NOT NULL,
+                auditUser VARCHAR(50) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_inventory_adjustments_product (productId),
+                FOREIGN KEY (productId) REFERENCES products(id)
+            )`,
             `CREATE TABLE IF NOT EXISTS movements (
                 id VARCHAR(50) PRIMARY KEY,
                 type ENUM('in', 'out') NOT NULL,
