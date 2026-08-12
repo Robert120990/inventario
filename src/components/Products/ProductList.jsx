@@ -6,7 +6,26 @@ import { exportToCsv } from '../../utils/exportCsv';
 import ProductForm from './ProductForm';
 import { formatPrice } from '../../utils/formatUtils';
 
-const text = (value) => String(value ?? '').toLowerCase().trim();
+const normalizeSearchText = (value) => String(value ?? '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim();
+
+const matchesSearchTerms = (product, searchTerm) => {
+  const queryTerms = normalizeSearchText(searchTerm).split(/\s+/).filter(Boolean);
+  if (queryTerms.length === 0) return true;
+
+  const productTerms = normalizeSearchText(
+    [product.sku, product.description, product.category].filter(Boolean).join(' ')
+  ).split(/\s+/).filter(Boolean);
+
+  return queryTerms.every((queryTerm) =>
+    productTerms.some((productTerm) => productTerm.startsWith(queryTerm))
+  );
+};
+
 const number = (value) => Number(value) || 0;
 
 const ProductList = () => {
@@ -23,13 +42,11 @@ const ProductList = () => {
   const isAdmin = currentUser?.role === 'admin';
 
   const filteredProducts = useMemo(() => {
-    const query = text(searchTerm);
     const minimum = minPrice === '' ? null : Number(minPrice);
     const maximum = maxPrice === '' ? null : Number(maxPrice);
 
     return products.filter((product) => {
-      const matchesText = !query || [product.sku, product.description, product.category]
-        .some((field) => text(field).includes(query));
+      const matchesText = matchesSearchTerms(product, searchTerm);
       const unitType = categoryUnits?.[product.category] || 'units';
       const totalStock = number(product.stockUnits) + number(product.stockPounds) + number(product.stockBaskets);
       const price = number(product.price);
@@ -105,7 +122,7 @@ const ProductList = () => {
             <label className="form-label" htmlFor="product-search">Código o descripción</label>
             <div style={{ position: 'relative' }}>
               <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-light)' }} />
-              <input id="product-search" type="search" className="form-input" placeholder="Ej. 10125, pechuga..." value={searchTerm}
+              <input id="product-search" type="search" className="form-input" placeholder="Ej. Poll agridulc, 10125..." value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)} style={{ paddingLeft: '2.5rem', marginBottom: 0 }} />
             </div>
           </div>
