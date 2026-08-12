@@ -158,6 +158,74 @@ router.post('/movements', async (req, res) => {
     }
 });
 
+router.put('/movements/:id', async (req, res) => {
+    const { id } = req.params;
+    const { type, equipment, carrier, seal, refType, refNumber, date, timeStart, timeEnd, auditUser, items, services } = req.body;
+    const connection = await pool.getConnection();
+
+    try {
+        await connection.beginTransaction();
+
+        const [movementRows] = await connection.query(
+            'SELECT type FROM movements WHERE id = ? FOR UPDATE',
+            [id]
+        );
+
+        if (movementRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ error: 'Movimiento no encontrado' });
+        }
+
+        const [previousItems] = await connection.query(
+            'SELECT productId, qtyUnits, qtyPounds, qtyBaskets FROM movement_items WHERE movementId = ?',
+            [id]
+        );
+
+        const previousMultiplier = movementRows[0].type === 'in' ? -1 : 1;
+        for (const item of previousItems) {
+            await connection.query(
+                'UPDATE products SET stockUnits = stockUnits + ?, stockPounds = stockPounds + ?, stockBaskets = stockBaskets + ? WHERE id = ?',
+                [item.qtyUnits * previousMultiplier, item.qtyPounds * previousMultiplier, item.qtyBaskets * previousMultiplier, item.productId]
+            );
+        }
+
+        await connection.query(
+            'UPDATE movements SET type = ?, equipment = ?, carrier = ?, seal = ?, refType = ?, refNumber = ?, date = ?, timeStart = ?, timeEnd = ?, auditUser = ? WHERE id = ?',
+            [type, equipment || '', carrier || '', seal || '', refType || '', refNumber || '', date, timeStart, timeEnd, auditUser, id]
+        );
+
+        await connection.query('DELETE FROM movement_items WHERE movementId = ?', [id]);
+        await connection.query('DELETE FROM services WHERE movementId = ?', [id]);
+
+        const newMultiplier = type === 'in' ? 1 : -1;
+        for (const item of items) {
+            await connection.query(
+                'INSERT INTO movement_items (movementId, productId, temperature, qtyUnits, qtyPounds, qtyBaskets) VALUES (?, ?, ?, ?, ?, ?)',
+                [id, item.productId, item.temperature, item.qtyUnits, item.qtyPounds, item.qtyBaskets]
+            );
+            await connection.query(
+                'UPDATE products SET stockUnits = stockUnits + ?, stockPounds = stockPounds + ?, stockBaskets = stockBaskets + ? WHERE id = ?',
+                [item.qtyUnits * newMultiplier, item.qtyPounds * newMultiplier, item.qtyBaskets * newMultiplier, item.productId]
+            );
+        }
+
+        for (const service of services || []) {
+            await connection.query(
+                'INSERT INTO services (movementId, description, value) VALUES (?, ?, ?)',
+                [id, service.description, service.value]
+            );
+        }
+
+        await connection.commit();
+        res.json({ success: true });
+    } catch (error) {
+        await connection.rollback();
+        res.status(500).json({ error: error.message });
+    } finally {
+        connection.release();
+    }
+});
+
 router.delete('/movements/:id', async (req, res) => {
     const { id } = req.params;
     const connection = await pool.getConnection();

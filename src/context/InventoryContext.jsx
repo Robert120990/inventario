@@ -194,8 +194,20 @@ export const InventoryProvider = ({ children }) => {
 
   const updateMovement = async (id, updatedMovement) => {
     try {
-      await deleteMovement(id);
-      await addMovement(updatedMovement);
+      const res = await fetch(`${API_BASE_URL}/api/movements/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedMovement)
+      });
+
+      if (res.ok) {
+        const [prodRes, movRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/products`).then(response => response.json()),
+          fetch(`${API_BASE_URL}/api/movements`).then(response => response.json())
+        ]);
+        setProducts(prodRes);
+        setMovements(movRes);
+      }
     } catch (error) {
       console.error('Error updating movement:', error);
     }
