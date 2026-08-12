@@ -376,6 +376,43 @@ router.post('/settings', async (req, res) => {
     }
 });
 
+// Versions
+router.get('/versions', async (req, res) => {
+    try {
+        const [rows] = await pool.query("SELECT id, version, description, DATE_FORMAT(created_at, '%Y-%m-%d') as date, DATE_FORMAT(created_at, '%H:%i') as time FROM versions ORDER BY id DESC");
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/versions', async (req, res) => {
+    const { description } = req.body;
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const [maxRows] = await connection.query('SELECT COALESCE(MAX(id), 0) AS maxId FROM versions');
+        const nextVersion = `V${maxRows[0].maxId + 1}`;
+        await connection.query('INSERT INTO versions (version, description) VALUES (?, ?)', [nextVersion, description || '']);
+        await connection.commit();
+        res.json({ success: true, version: nextVersion });
+    } catch (error) {
+        await connection.rollback();
+        res.status(500).json({ error: error.message });
+    } finally {
+        connection.release();
+    }
+});
+
+router.delete('/versions/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM versions WHERE id=?', [req.params.id]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Mount router under /api
 app.use('/api', router);
 

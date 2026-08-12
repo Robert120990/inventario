@@ -1,9 +1,10 @@
 import React from 'react';
 import { LayoutDashboard, Package, ArrowRightLeft, Settings, LogOut, FileText, Menu, ChevronLeft, Users, UserCircle, ShieldCheck } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
+import { formatDate } from '../utils/formatUtils';
 
 const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) => {
-  const { currentUser, settings, logout } = useInventory();
+  const { currentUser, settings, logout, currentVersion } = useInventory();
 
   return (
     <div className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
@@ -169,6 +170,19 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) =
           {!isCollapsed && <span>Cerrar Sesión</span>}
         </button>
       </div>
+
+      {currentVersion && (
+        <div style={{
+          textAlign: 'center',
+          padding: '0.5rem',
+          fontSize: '0.7rem',
+          color: 'rgba(255,255,255,0.45)',
+          borderTop: '1px solid rgba(255,255,255,0.1)',
+          marginTop: '0.25rem'
+        }}>
+          {currentVersion.version}{!isCollapsed && ` ${currentVersion.date ? '· ' + formatDate(currentVersion.date) : ''}`}
+        </div>
+      )}
     </div>
   );
 };

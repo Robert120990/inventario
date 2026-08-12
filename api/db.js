@@ -89,6 +89,12 @@ export const ensureSchema = async () => {
                 id INT PRIMARY KEY DEFAULT 1,
                 name VARCHAR(255) DEFAULT 'Inventario Pro',
                 logo LONGTEXT
+            )`,
+            `CREATE TABLE IF NOT EXISTS versions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                version VARCHAR(20) UNIQUE NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )`
         ];
 

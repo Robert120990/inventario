@@ -3,7 +3,7 @@ import { useInventory } from '../../context/InventoryContext';
 import { LogIn, Package } from 'lucide-react';
 
 const Login = () => {
-  const { login, settings } = useInventory();
+  const { login, settings, currentVersion } = useInventory();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -55,6 +55,11 @@ const Login = () => {
             <LogIn size={18} /> Entrar
           </button>
         </form>
+        {currentVersion && (
+          <div style={{ marginTop: '1.5rem', fontSize: '0.75rem', color: 'var(--color-text-light)' }}>
+            Versión {currentVersion.version}
+          </div>
+        )}
       </div>
     </div>
   );

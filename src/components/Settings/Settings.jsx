@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { Plus, Trash2, Home, Save, Image as ImageIcon } from 'lucide-react';
+import { Plus, Trash2, Home, Save, Image as ImageIcon, GitBranch, Calendar } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { formatDate } from '../../utils/formatUtils';
 
 const Settings = () => {
-  const { categories, documentTypes, settings, categoryUnits, addCategory, deleteCategory, addDocumentType, deleteDocumentType, updateSettings, updateCategoryUnit } = useInventory();
+  const { categories, documentTypes, settings, categoryUnits, versions, addCategory, deleteCategory, addDocumentType, deleteDocumentType, updateSettings, updateCategoryUnit, addVersion, deleteVersion } = useInventory();
   const [newCat, setNewCat] = useState('');
   const [newDocType, setNewDocType] = useState('');
   const [systemName, setSystemName] = useState(settings.name);
   const [systemLogo, setSystemLogo] = useState(settings.logo);
+  const [versionDescription, setVersionDescription] = useState('');
 
   const handleAddCat = (e) => {
     e.preventDefault();
@@ -46,6 +48,25 @@ const Settings = () => {
       toast.success('Configuración del sistema guardada');
     } catch (error) {
       toast.error('Error al guardar la configuración');
+    }
+  };
+
+  const handleAddVersion = async (e) => {
+    e.preventDefault();
+    if (!versionDescription.trim()) return;
+    const result = await addVersion(versionDescription.trim());
+    if (result.success) {
+      setVersionDescription('');
+      toast.success('Versión registrada');
+    } else {
+      toast.error('Error al registrar la versión');
+    }
+  };
+
+  const handleDeleteVersion = (id) => {
+    if (window.confirm('¿Seguro que deseas eliminar esta versión del log?')) {
+      deleteVersion(id);
+      toast.success('Versión eliminada');
     }
   };
 
@@ -181,6 +202,70 @@ const Settings = () => {
           </ul>
         </div>
 
+      </div>
+
+      <div className="grid grid-cols-1" style={{ marginBottom: '2rem' }}>
+        <div className="card">
+          <h2 style={{ fontSize: '1.2rem', marginBottom: '0.5rem', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <GitBranch size={20} /> Log de Versiones
+          </h2>
+          <p style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', marginBottom: '1.5rem' }}>
+            Registra cada versión del sistema. La numeración (V1, V2...) se asigna automáticamente y de forma única, y la versión más reciente se muestra en el menú lateral y en la pantalla de inicio.
+          </p>
+
+          <form onSubmit={handleAddVersion} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', alignItems: 'flex-end' }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+              <label className="form-label">Descripción de la versión</label>
+              <input
+                type="text"
+                className="form-input"
+                value={versionDescription}
+                onChange={(e) => setVersionDescription(e.target.value)}
+                placeholder="Ej. Corrección de bugs en captura de movimientos..."
+                required
+              />
+            </div>
+            <button type="submit" className="btn btn-primary" style={{ whiteSpace: 'nowrap' }}>
+              <Plus size={18} /> Registrar Versión
+            </button>
+          </form>
+
+          {versions.length === 0 ? (
+            <p style={{ color: 'var(--color-text-light)', fontSize: '0.875rem', fontStyle: 'italic' }}>No se han registrado versiones todavía.</p>
+          ) : (
+            <div className="table-container" style={{ border: 'none', boxShadow: 'none' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: '120px' }}>Versión</th>
+                    <th style={{ width: '140px' }}>Fecha</th>
+                    <th>Descripción</th>
+                    <th style={{ width: '60px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {versions.map(v => (
+                    <tr key={v.id}>
+                      <td>
+                        <span className="badge badge-primary" style={{ fontWeight: 'bold' }}>{v.version}</span>
+                      </td>
+                      <td style={{ color: 'var(--color-text-light)', fontSize: '0.875rem' }}>
+                        <Calendar size={12} style={{ verticalAlign: 'middle', marginRight: '0.25rem' }} />
+                        {formatDate(v.date)} {v.time ? `· ${v.time}` : ''}
+                      </td>
+                      <td style={{ fontWeight: '400' }}>{v.description}</td>
+                      <td>
+                        <button type="button" onClick={() => handleDeleteVersion(v.id)} className="btn btn-danger" style={{ padding: '0.25rem' }} title="Eliminar versión">
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

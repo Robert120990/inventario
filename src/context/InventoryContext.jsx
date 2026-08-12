@@ -22,6 +22,7 @@ export const InventoryProvider = ({ children }) => {
     logo: null
   });
   const [categoryUnits, setCategoryUnits] = useState({});
+  const [versions, setVersions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Initial Fetch
@@ -35,12 +36,13 @@ export const InventoryProvider = ({ children }) => {
 
       try {
         setLoading(true);
-        const [prodRes, movRes, userRes, configRes, settingsRes] = await Promise.all([
+        const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes] = await Promise.all([
           fetch(`${API_BASE_URL}/api/products`).then(res => res.json()),
           fetch(`${API_BASE_URL}/api/movements`).then(res => res.json()),
           fetch(`${API_BASE_URL}/api/users`).then(res => res.json()),
           fetch(`${API_BASE_URL}/api/config`).then(res => res.json()),
-          fetch(`${API_BASE_URL}/api/settings`).then(res => res.json())
+          fetch(`${API_BASE_URL}/api/settings`).then(res => res.json()),
+          fetch(`${API_BASE_URL}/api/versions`).then(res => res.json())
         ]);
         
         clearTimeout(timeoutId);
@@ -48,6 +50,7 @@ export const InventoryProvider = ({ children }) => {
         if (Array.isArray(prodRes)) setProducts(prodRes);
         if (Array.isArray(movRes)) setMovements(movRes);
         if (Array.isArray(userRes)) setUsers(userRes);
+        if (Array.isArray(versionsRes)) setVersions(versionsRes);
         
         if (configRes && !configRes.error) {
           if (configRes.categories) setCategories(configRes.categories.map(c => c.name));
@@ -78,17 +81,19 @@ export const InventoryProvider = ({ children }) => {
 
   const refreshData = async () => {
     try {
-      const [prodRes, movRes, userRes, configRes, settingsRes] = await Promise.all([
+      const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes] = await Promise.all([
         fetch(`${API_BASE_URL}/api/products`).then(res => res.json()),
         fetch(`${API_BASE_URL}/api/movements`).then(res => res.json()),
         fetch(`${API_BASE_URL}/api/users`).then(res => res.json()),
         fetch(`${API_BASE_URL}/api/config`).then(res => res.json()),
-        fetch(`${API_BASE_URL}/api/settings`).then(res => res.json())
+        fetch(`${API_BASE_URL}/api/settings`).then(res => res.json()),
+        fetch(`${API_BASE_URL}/api/versions`).then(res => res.json())
       ]);
 
       if (Array.isArray(prodRes)) setProducts(prodRes);
       if (Array.isArray(movRes)) setMovements(movRes);
       if (Array.isArray(userRes)) setUsers(userRes);
+      if (Array.isArray(versionsRes)) setVersions(versionsRes);
       if (configRes && !configRes.error) {
         if (configRes.categories) setCategories(configRes.categories.map(c => c.name));
         if (configRes.docTypes) setDocumentTypes(configRes.docTypes.map(d => d.name));
@@ -271,6 +276,36 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
+  const addVersion = async (description) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/versions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description })
+      });
+      if (res.ok) {
+        const versionsRes = await fetch(`${API_BASE_URL}/api/versions`).then(r => r.json());
+        setVersions(versionsRes);
+        return { success: true };
+      }
+      return { success: false };
+    } catch (error) {
+      console.error('Error adding version:', error);
+      return { success: false };
+    }
+  };
+
+  const deleteVersion = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/versions/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setVersions(prev => prev.filter(v => v.id !== id));
+      }
+    } catch (error) {
+      console.error('Error deleting version:', error);
+    }
+  };
+
   const addUser = async (user) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/users`, {
@@ -350,6 +385,8 @@ export const InventoryProvider = ({ children }) => {
 
   const totalStock = products.reduce((acc, curr) => acc + Number(curr.stockUnits || 0), 0);
 
+  const currentVersion = versions.length > 0 ? versions[0] : null;
+
   return (
     <InventoryContext.Provider value={{
       products,
@@ -360,6 +397,8 @@ export const InventoryProvider = ({ children }) => {
       currentUser,
       settings,
       categoryUnits,
+      versions,
+      currentVersion,
       loading,
       addProduct,
       updateProduct,
@@ -373,6 +412,8 @@ export const InventoryProvider = ({ children }) => {
       deleteDocumentType,
       addUser,
       updateUser,
+      addVersion,
+      deleteVersion,
       updateSettings,
       updateCategoryUnit,
       refreshData,
