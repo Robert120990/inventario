@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Package, ArrowRightLeft, Settings, LogOut, FileText, Menu, ChevronLeft, Users, UserCircle } from 'lucide-react';
+import { LayoutDashboard, Package, ArrowRightLeft, Settings, LogOut, FileText, Menu, ChevronLeft, Users, UserCircle, ShieldCheck } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 
 const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) => {
@@ -68,6 +68,15 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) =
         >
           <FileText size={20} style={{ opacity: 0.7 }} />
           {!isCollapsed && <span>Resumen Diario</span>}
+        </button>
+        <button
+          className={`nav-link ${currentView === 'insurance' ? 'active' : ''}`}
+          onClick={() => setCurrentView('insurance')}
+          title={isCollapsed ? "Corte de Seguro" : ""}
+          style={{ background: 'transparent', border: 'none', width: '100%', textAlign: 'left', justifyContent: isCollapsed ? 'center' : 'flex-start' }}
+        >
+          <ShieldCheck size={20} />
+          {!isCollapsed && <span>Corte de Seguro</span>}
         </button>
         {currentUser?.role === 'admin' && (
           <>
