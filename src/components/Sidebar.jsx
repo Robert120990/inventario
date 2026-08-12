@@ -52,6 +52,15 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) =
           {!isCollapsed && <span>Movimientos</span>}
         </button>
         <button
+          className={`nav-link ${currentView === 'insurance' ? 'active' : ''}`}
+          onClick={() => setCurrentView('insurance')}
+          title={isCollapsed ? "Corte de Seguro" : ""}
+          style={{ background: 'transparent', border: 'none', width: '100%', textAlign: 'left', justifyContent: isCollapsed ? 'center' : 'flex-start' }}
+        >
+          <ShieldCheck size={20} />
+          {!isCollapsed && <span>Corte de Seguro</span>}
+        </button>
+        <button
           className={`nav-link ${currentView === 'summary' ? 'active' : ''}`}
           onClick={() => setCurrentView('summary')}
           title={isCollapsed ? "Resumen Detallado" : ""}
@@ -68,15 +77,6 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) =
         >
           <FileText size={20} style={{ opacity: 0.7 }} />
           {!isCollapsed && <span>Resumen Diario</span>}
-        </button>
-        <button
-          className={`nav-link ${currentView === 'insurance' ? 'active' : ''}`}
-          onClick={() => setCurrentView('insurance')}
-          title={isCollapsed ? "Corte de Seguro" : ""}
-          style={{ background: 'transparent', border: 'none', width: '100%', textAlign: 'left', justifyContent: isCollapsed ? 'center' : 'flex-start' }}
-        >
-          <ShieldCheck size={20} />
-          {!isCollapsed && <span>Corte de Seguro</span>}
         </button>
         {currentUser?.role === 'admin' && (
           <>
