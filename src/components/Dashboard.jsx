@@ -6,8 +6,14 @@ import { formatDate } from '../utils/formatUtils';
 const Dashboard = () => {
   const { totalStock, products, movements } = useInventory();
 
-  // Get movements from today
-  const today = new Date().toISOString().split('T')[0];
+  // Use the browser's local date instead of UTC so evening records
+  // remain visible in time zones behind UTC.
+  const now = new Date();
+  const today = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0')
+  ].join('-');
   const todaysMovements = movements.filter(m => m.date === today);
 
   // Flatten items for display
