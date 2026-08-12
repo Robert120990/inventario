@@ -68,7 +68,11 @@ const InsuranceReport = () => {
         premium
       };
     })
-      .filter(row => row.units !== 0 || row.pounds !== 0 || row.baskets !== 0)
+      .filter(row => {
+        const rate = row.poundRate ?? row.basketRate;
+        const valuationQty = row.valuationMetric === 'baskets' ? row.baskets : row.pounds;
+        return rate > 0 && valuationQty > 0;
+      })
       .sort((a, b) => String(a.code).localeCompare(String(b.code)));
   }, [products, movements, categoryUnits, cutoffDate, premiumRate]);
 
