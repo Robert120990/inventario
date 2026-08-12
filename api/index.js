@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import pool, { ensureSchema } from './db.js';
+import { randomUUID } from 'node:crypto';
 
 const app = express();
 const router = express.Router();
@@ -74,6 +75,108 @@ router.put('/products/:id', async (req, res) => {
         await pool.query('UPDATE products SET sku=?, description=?, category=?, price=?, stockUnits=?, stockPounds=?, stockBaskets=? WHERE id=?', 
         [sku, description, category, price, stockUnits, stockPounds, stockBaskets, id]);
         res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/inventory-adjustments', async (req, res) => {
+    const { productId, stockUnits, stockPounds, stockBaskets, reason, auditUser } = req.body;
+    const countedUnits = Number(stockUnits);
+    const countedPounds = Number(stockPounds);
+    const countedBaskets = Number(stockBaskets);
+
+    if (!productId || !reason?.trim() || !auditUser?.trim()) {
+        return res.status(400).json({ error: 'Producto, motivo y usuario son obligatorios.' });
+    }
+
+    if (![countedUnits, countedPounds, countedBaskets].every(Number.isFinite)
+        || countedUnits < 0 || countedPounds < 0 || countedBaskets < 0
+        || !Number.isInteger(countedUnits) || !Number.isInteger(countedBaskets)) {
+        return res.status(400).json({ error: 'Las existencias deben ser valores válidos y no negativos.' });
+    }
+
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const [products] = await connection.query(
+            'SELECT * FROM products WHERE id = ? FOR UPDATE',
+            [productId]
+        );
+
+        if (products.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ error: 'Producto no encontrado.' });
+        }
+
+        const product = products[0];
+        const adjustmentId = randomUUID();
+
+        await connection.query(
+            `INSERT INTO inventory_adjustments (
+                id, productId, previousUnits, previousPounds, previousBaskets,
+                countedUnits, countedPounds, countedBaskets, reason, auditUser
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                adjustmentId,
+                productId,
+                product.stockUnits || 0,
+                product.stockPounds || 0,
+                product.stockBaskets || 0,
+                countedUnits,
+                countedPounds,
+                countedBaskets,
+                reason.trim(),
+                auditUser.trim()
+            ]
+        );
+
+        await connection.query(
+            'UPDATE products SET stockUnits = ?, stockPounds = ?, stockBaskets = ? WHERE id = ?',
+            [countedUnits, countedPounds, countedBaskets, productId]
+        );
+
+        const [updatedProducts] = await connection.query('SELECT * FROM products WHERE id = ?', [productId]);
+        await connection.commit();
+
+        res.json({
+            success: true,
+            product: updatedProducts[0],
+            adjustment: {
+                id: adjustmentId,
+                productId,
+                previousUnits: Number(product.stockUnits || 0),
+                previousPounds: Number(product.stockPounds || 0),
+                previousBaskets: Number(product.stockBaskets || 0),
+                countedUnits,
+                countedPounds,
+                countedBaskets,
+                reason: reason.trim(),
+                auditUser: auditUser.trim()
+            }
+        });
+    } catch (error) {
+        await connection.rollback();
+        res.status(500).json({ error: error.message });
+    } finally {
+        connection.release();
+    }
+});
+
+router.get('/inventory-adjustments', async (req, res) => {
+    try {
+        const productId = req.query.productId;
+        const params = [];
+        let query = `SELECT ia.*, p.sku, p.description
+            FROM inventory_adjustments ia
+            JOIN products p ON p.id = ia.productId`;
+        if (productId) {
+            query += ' WHERE ia.productId = ?';
+            params.push(productId);
+        }
+        query += ' ORDER BY ia.created_at DESC LIMIT 100';
+        const [rows] = await pool.query(query, params);
+        res.json(rows);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
