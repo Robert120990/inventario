@@ -218,6 +218,29 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
+  const adjustProductStock = async (productId, adjustment) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/inventory-adjustments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId, ...adjustment })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        return { success: false, message: data.error || 'No fue posible actualizar el inventario.' };
+      }
+
+      setProducts(prev => prev.map(product =>
+        product.id === productId ? { ...product, ...data.product } : product
+      ));
+      return { success: true, product: data.product, adjustment: data.adjustment };
+    } catch (error) {
+      console.error('Error adjusting product stock:', error);
+      return { success: false, message: 'No se pudo conectar con el servidor.' };
+    }
+  };
+
   const addCategory = async (category, unit_type = 'units') => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/config/categories`, {
@@ -402,6 +425,7 @@ export const InventoryProvider = ({ children }) => {
       loading,
       addProduct,
       updateProduct,
+      adjustProductStock,
       deleteProduct,
       addMovement,
       updateMovement,

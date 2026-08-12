@@ -8,6 +8,7 @@ import MovementList from './components/Movements/MovementList';
 import Summary from './components/Summary/Summary';
 import Summary2 from './components/Summary/Summary2';
 import InsuranceReport from './components/Insurance/InsuranceReport';
+import InventoryCount from './components/Inventory/InventoryCount';
 import Settings from './components/Settings/Settings';
 import Login from './components/Login/Login';
 import UserList from './components/Users/UserList'; // Added this import
@@ -57,6 +58,8 @@ function AppContent() {
         return <ProductList />;
       case 'movements':
         return <MovementList />;
+      case 'inventory-count':
+        return <InventoryCount />;
       case 'summary':
         return <Summary />;
       case 'summary2':
