@@ -35,6 +35,19 @@ const MovementList = () => {
     return inMovement || inProducts;
   });
 
+  const totalPounds = filteredMovements.reduce(
+    (movementTotal, movement) => movementTotal + (movement.items || []).reduce(
+      (itemTotal, item) => itemTotal + Number(item.qtyPounds || 0),
+      0
+    ),
+    0
+  );
+
+  const formattedTotalPounds = totalPounds.toLocaleString('es-SV', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  });
+
   const getProductName = (id) => {
     const product = products.find(p => p.id === id);
     return product ? `${product.sku} - ${product.description}` : 'Desconocido';
@@ -126,8 +139,13 @@ const MovementList = () => {
             style={{ paddingLeft: '2.5rem', marginBottom: 0 }}
           />
         </div>
-        <div style={{ marginLeft: 'auto', fontSize: '0.875rem', color: 'var(--color-text-light)' }}>
-          Mostrando <strong>{filteredMovements.length}</strong> de {movements.length} movimientos
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '1.5rem', fontSize: '0.875rem', color: 'var(--color-text-light)' }}>
+          <div>
+            Total libras: <strong style={{ color: 'var(--color-primary)' }}>{formattedTotalPounds} lbs</strong>
+          </div>
+          <div>
+            Mostrando <strong>{filteredMovements.length}</strong> de {movements.length} movimientos
+          </div>
         </div>
       </div>
 
