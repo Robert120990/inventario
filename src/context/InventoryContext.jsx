@@ -392,14 +392,36 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
-  const login = (username, password) => {
-    const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
+  const login = async (username, password) => {
+    const cleanUser = (username || '').trim().toLowerCase();
+    const cleanPass = (password || '').trim();
+
+    let userList = users;
+    // If user not in local state or users array is empty, fetch fresh list from server
+    const localMatch = userList.find(u => (u.username || '').trim().toLowerCase() === cleanUser && (u.password || '').trim() === cleanPass);
+    if (!localMatch) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/users`);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setUsers(data);
+          userList = data;
+        }
+      } catch (err) {
+        console.error('Error refreshing users during login:', err);
+      }
+    }
+
+    const user = userList.find(u => (u.username || '').trim().toLowerCase() === cleanUser && (u.password || '').trim() === cleanPass);
     if (user) {
       if (user.isActive === 0 || user.isActive === false) return { success: false, message: 'Cuenta desactivada por el administrador.' };
       setCurrentUser(user);
       return { success: true };
     }
-    return { success: false, message: 'Credenciales incorrectas.' };
+    if (userList.length === 0) {
+      return { success: false, message: 'Error de conexión con el servidor. Intenta de nuevo en unos segundos.' };
+    }
+    return { success: false, message: 'Credenciales incorrectas. Verifica tu usuario y contraseña.' };
   };
 
   const logout = () => {

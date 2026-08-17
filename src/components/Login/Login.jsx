@@ -8,16 +8,26 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
+  const [submitting, setSubmitting] = useState(false);
+
   const appCommitVersion = import.meta.env.VITE_APP_VERSION;
   const versionDisplay = currentVersion?.version 
     ? (appCommitVersion ? `${currentVersion.version} (v${appCommitVersion})` : currentVersion.version)
     : (appCommitVersion ? `v${appCommitVersion}` : '');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const result = login(username, password);
-    if (!result.success) {
-      setError(result.message);
+    setSubmitting(true);
+    setError('');
+    try {
+      const result = await login(username, password);
+      if (!result.success) {
+        setError(result.message);
+      }
+    } catch (err) {
+      setError('Error al intentar iniciar sesión.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -61,8 +71,8 @@ const Login = () => {
             />
           </div>
           {error && <p className="form-error" style={{ marginBottom: '1rem' }}>{error}</p>}
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>
-            <LogIn size={18} /> Entrar
+          <button type="submit" disabled={submitting} className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>
+            <LogIn size={18} /> {submitting ? 'Verificando...' : 'Entrar'}
           </button>
         </form>
         {versionDisplay && (
