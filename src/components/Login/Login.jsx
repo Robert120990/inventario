@@ -8,6 +8,11 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
+  const appCommitVersion = import.meta.env.VITE_APP_VERSION;
+  const versionDisplay = currentVersion?.version 
+    ? (appCommitVersion ? `${currentVersion.version} (v${appCommitVersion})` : currentVersion.version)
+    : (appCommitVersion ? `v${appCommitVersion}` : '');
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const result = login(username, password);
@@ -17,7 +22,12 @@ const Login = () => {
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', backgroundColor: 'var(--color-bg)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', backgroundColor: 'var(--color-bg)', position: 'relative' }}>
+      {versionDisplay && (
+        <div className="app-version-badge" title="Versión de la aplicación">
+          {versionDisplay}
+        </div>
+      )}
       <div className="card" style={{ width: '100%', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '1.5rem', alignItems: 'center' }}>
         <div style={{ textAlign: 'center' }}>
           {settings.logo ? (
@@ -55,9 +65,9 @@ const Login = () => {
             <LogIn size={18} /> Entrar
           </button>
         </form>
-        {currentVersion && (
-          <div style={{ marginTop: '1.5rem', fontSize: '0.75rem', color: 'var(--color-text-light)' }}>
-            Versión {currentVersion.version}
+        {versionDisplay && (
+          <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--color-text-light)', fontWeight: '500' }}>
+            Versión {versionDisplay}
           </div>
         )}
       </div>
