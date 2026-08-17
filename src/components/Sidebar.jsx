@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   LayoutDashboard, Package, ArrowRightLeft, Settings, LogOut, FileText,
   Menu, ChevronLeft, ChevronDown, ChevronUp, Users, UserCircle, ShieldCheck,
-  ClipboardCheck, Shield, GitBranch, History, Bell, BookOpen, UserCheck
+  ClipboardCheck, Shield, GitBranch, History, Bell, BookOpen, UserCheck, Mail
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { formatDate } from '../utils/formatUtils';
@@ -116,6 +116,17 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
           >
             <FileText size={19} style={{ opacity: 0.7 }} />
             {!isCollapsed && <span>Resumen Diario</span>}
+          </button>
+        )}
+
+        {canView('email') && (
+          <button
+            className={`nav-link ${currentView === 'email' ? 'active' : ''}`}
+            onClick={() => setCurrentView('email')}
+            title={isCollapsed ? "Correo Corporativo" : ""}
+          >
+            <Mail size={19} />
+            {!isCollapsed && <span>Correo Corporativo</span>}
           </button>
         )}
 

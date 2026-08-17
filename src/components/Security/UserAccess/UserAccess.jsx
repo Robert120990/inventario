@@ -11,6 +11,7 @@ const MODULES_CONFIG = [
   { id: 'insurance', name: 'Corte de Seguro', desc: 'Reporte valorizado de póliza asegurada', actions: ['view'] },
   { id: 'summary', name: 'Resumen Detallado', desc: 'Kardex consolidado de existencias y flujo', actions: ['view'] },
   { id: 'summary2', name: 'Resumen Diario', desc: 'Volumen diario y operaciones de almacén', actions: ['view'] },
+  { id: 'email', name: 'Correo Corporativo', desc: 'Bandeja de entrada empresarial, Roundcube y webmail', actions: ['view', 'create', 'delete'] },
   { id: 'security', name: 'Módulo de Seguridad', desc: 'Usuarios, roles, sesiones y bitácora', actions: ['view', 'create', 'edit', 'delete'] },
   { id: 'settings', name: 'Configuración del Sistema', desc: 'Categorías, documentos y personalización', actions: ['view', 'edit'] },
 ];

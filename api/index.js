@@ -3,6 +3,17 @@ import express from 'express';
 import cors from 'cors';
 import pool, { ensureSchema } from './db.js';
 import { randomUUID } from 'node:crypto';
+import {
+    encryptPassword,
+    decryptPassword,
+    testConnection,
+    fetchMailboxes,
+    fetchFolderMessages,
+    getMessageDetails,
+    toggleMessageFlag,
+    deleteMessage,
+    sendEmail
+} from './emailService.js';
 
 const app = express();
 const router = express.Router();
@@ -1040,6 +1051,223 @@ router.delete('/versions/:id', async (req, res) => {
     try {
         await pool.query('DELETE FROM versions WHERE id=?', [req.params.id]);
         res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ==========================================
+// Corporate Email Integration (Roundcube / cPanel IMAP & SMTP)
+// ==========================================
+
+async function getUserEmailConfig(userId) {
+    if (!userId) return null;
+    const [rows] = await pool.query('SELECT * FROM user_email_accounts WHERE userId = ? LIMIT 1', [userId]);
+    if (rows.length === 0) return null;
+    const account = rows[0];
+    account.decryptedPassword = decryptPassword(account.password);
+    return account;
+}
+
+// Get user email account status & settings
+router.get('/email/config', async (req, res) => {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: 'userId requerido.' });
+
+    try {
+        const [rows] = await pool.query(
+            'SELECT id, userId, email, imap_host, imap_port, imap_secure, smtp_host, smtp_port, smtp_secure, updated_at FROM user_email_accounts WHERE userId = ? LIMIT 1',
+            [userId]
+        );
+
+        if (rows.length === 0) {
+            return res.json({
+                isConfigured: false,
+                email: '',
+                imap_host: 'box5644.bluehost.com',
+                imap_port: 993,
+                smtp_host: 'box5644.bluehost.com',
+                smtp_port: 465
+            });
+        }
+
+        res.json({
+            isConfigured: true,
+            ...rows[0]
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Save or update user email credentials
+router.post('/email/config', async (req, res) => {
+    const { userId, email, password, imap_host, imap_port, smtp_host, smtp_port, auditUser } = req.body;
+    if (!userId || !email?.trim()) {
+        return res.status(400).json({ error: 'userId y correo electrónico son requeridos.' });
+    }
+
+    try {
+        const [existing] = await pool.query('SELECT id, password FROM user_email_accounts WHERE userId = ? LIMIT 1', [userId]);
+        
+        let encPassword = existing[0]?.password || '';
+        if (password && password.trim() !== '') {
+            encPassword = encryptPassword(password.trim());
+        }
+
+        if (!encPassword) {
+            return res.status(400).json({ error: 'La contraseña de correo es requerida.' });
+        }
+
+        const hostImap = imap_host?.trim() || 'box5644.bluehost.com';
+        const portImap = Number(imap_port) || 993;
+        const hostSmtp = smtp_host?.trim() || 'box5644.bluehost.com';
+        const portSmtp = Number(smtp_port) || 465;
+
+        if (existing.length > 0) {
+            await pool.query(
+                'UPDATE user_email_accounts SET email=?, password=?, imap_host=?, imap_port=?, smtp_host=?, smtp_port=? WHERE id=?',
+                [email.trim(), encPassword, hostImap, portImap, hostSmtp, portSmtp, existing[0].id]
+            );
+        } else {
+            const newId = randomUUID();
+            await pool.query(
+                'INSERT INTO user_email_accounts (id, userId, email, password, imap_host, imap_port, smtp_host, smtp_port) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [newId, userId, email.trim(), encPassword, hostImap, portImap, hostSmtp, portSmtp]
+            );
+        }
+
+        await logSystemEvent({
+            username: auditUser || 'Usuario',
+            action: 'UPDATE_EMAIL_CONFIG',
+            module: 'email',
+            details: `Configuración de correo corporativo para '${email.trim()}'`
+        });
+
+        res.json({ success: true, message: 'Configuración guardada correctamente.' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Test email connection
+router.post('/email/test', async (req, res) => {
+    const { userId, email, password, imap_host, imap_port } = req.body;
+    let config = null;
+
+    if (email && password) {
+        config = {
+            email: email.trim(),
+            decryptedPassword: password.trim(),
+            imap_host: imap_host?.trim() || 'box5644.bluehost.com',
+            imap_port: Number(imap_port) || 993,
+            imap_secure: true
+        };
+    } else if (userId) {
+        config = await getUserEmailConfig(userId);
+    }
+
+    if (!config) {
+        return res.status(400).json({ success: false, error: 'Credenciales de correo incompletas.' });
+    }
+
+    const testRes = await testConnection(config);
+    res.json(testRes);
+});
+
+// Get mailbox folders
+router.get('/email/folders', async (req, res) => {
+    const { userId } = req.query;
+    try {
+        const config = await getUserEmailConfig(userId);
+        if (!config) return res.status(400).json({ error: 'Correo no configurado para este usuario.' });
+
+        const folders = await fetchMailboxes(config);
+        res.json(folders);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get messages from folder
+router.get('/email/messages', async (req, res) => {
+    const { userId, folder = 'INBOX', limit = 25 } = req.query;
+    try {
+        const config = await getUserEmailConfig(userId);
+        if (!config) return res.status(400).json({ error: 'Correo no configurado.' });
+
+        const messages = await fetchFolderMessages(config, folder, Number(limit) || 25);
+        res.json(messages);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get message details & body
+router.get('/email/messages/:uid', async (req, res) => {
+    const { uid } = req.params;
+    const { userId, folder = 'INBOX' } = req.query;
+    try {
+        const config = await getUserEmailConfig(userId);
+        if (!config) return res.status(400).json({ error: 'Correo no configurado.' });
+
+        const message = await getMessageDetails(config, folder, uid);
+        if (!message) return res.status(404).json({ error: 'Mensaje no encontrado.' });
+        res.json(message);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Toggle flag (read / unread / star)
+router.post('/email/messages/:uid/flags', async (req, res) => {
+    const { uid } = req.params;
+    const { userId, folder = 'INBOX', flag = '\\Seen', add = true } = req.body;
+    try {
+        const config = await getUserEmailConfig(userId);
+        if (!config) return res.status(400).json({ error: 'Correo no configurado.' });
+
+        await toggleMessageFlag(config, folder, uid, flag, add);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Delete message
+router.delete('/email/messages/:uid', async (req, res) => {
+    const { uid } = req.params;
+    const { userId, folder = 'INBOX' } = req.query;
+    try {
+        const config = await getUserEmailConfig(userId);
+        if (!config) return res.status(400).json({ error: 'Correo no configurado.' });
+
+        await deleteMessage(config, folder, uid);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Send email
+router.post('/email/send', async (req, res) => {
+    const { userId, to, cc, bcc, subject, text, html, attachments, auditUser } = req.body;
+    if (!to || !subject) return res.status(400).json({ error: 'Destinatario y asunto son obligatorios.' });
+
+    try {
+        const config = await getUserEmailConfig(userId);
+        if (!config) return res.status(400).json({ error: 'Correo no configurado para este usuario.' });
+
+        const sendResult = await sendEmail(config, { to, cc, bcc, subject, text, html, attachments });
+        
+        await logSystemEvent({
+            username: auditUser || config.email,
+            action: 'SEND_EMAIL',
+            module: 'email',
+            details: `Envío de correo a '${to}' con asunto '${subject}'`
+        });
+
+        res.json(sendResult);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

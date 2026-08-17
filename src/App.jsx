@@ -20,6 +20,7 @@ import ConnectedUsers from './components/Security/Sessions/ConnectedUsers';
 import ChangeHistory from './components/Security/Changelog/ChangeHistory';
 import NotificationCenter from './components/Security/Notifications/NotificationCenter';
 import UserManual from './components/Security/Manual/UserManual';
+import EmailClient from './components/Email/EmailClient';
 import { ThemeToggle } from './components/Theme/ThemeToggle';
 import './App.css';
 
@@ -76,6 +77,8 @@ function AppContent() {
         return canView('summary2') ? <Summary2 /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'insurance':
         return canView('insurance') ? <InsuranceReport /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+      case 'email':
+        return canView('email') ? <EmailClient /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       
       // Security Module Routes
       case 'security-users':
