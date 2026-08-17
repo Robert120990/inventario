@@ -80,6 +80,9 @@ function AppContent() {
   return (
     <div className="app-container">
       <Toaster position="bottom-right" toastOptions={{ duration: 3000, style: { background: 'var(--color-card)', color: 'var(--color-text)', border: '1px solid var(--color-border)' } }} />
+      <div className="app-version-badge" title="Versión basada en el commit de GitHub">
+        v{import.meta.env.VITE_APP_VERSION}
+      </div>
       <Sidebar 
         currentView={currentView} 
         setCurrentView={(view) => {
