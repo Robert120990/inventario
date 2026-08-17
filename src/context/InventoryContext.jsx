@@ -272,6 +272,29 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
+  const bulkSyncProducts = async (items, createIfNotExists = true) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/products/bulk-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items,
+          createIfNotExists,
+          auditUser: currentUser?.username || 'admin'
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        await refreshData();
+        return { success: true, ...data };
+      }
+      return { success: false, message: data.error || 'Error al procesar archivo' };
+    } catch (error) {
+      console.error('Error in bulkSyncProducts:', error);
+      return { success: false, message: 'Error de conexión con el servidor' };
+    }
+  };
+
   const addMovement = async (movement) => {
     const newMovement = { ...movement, id: crypto.randomUUID(), auditUser: currentUser?.username || 'Sistema' };
     try {
@@ -790,6 +813,7 @@ export const InventoryProvider = ({ children }) => {
       updateProduct,
       adjustProductStock,
       deleteProduct,
+      bulkSyncProducts,
       addMovement,
       updateMovement,
       deleteMovement,

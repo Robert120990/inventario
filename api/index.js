@@ -198,6 +198,74 @@ router.delete('/products/:id', async (req, res) => {
     }
 });
 
+// Bulk Import / Price Update from Excel
+router.post('/products/bulk-sync', async (req, res) => {
+    const { items, createIfNotExists = true, auditUser = 'admin' } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: 'No se enviaron productos para procesar.' });
+    }
+
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        const [existingProducts] = await connection.query('SELECT id, sku, description, price, category FROM products');
+        const dbMap = new Map(existingProducts.map(p => [String(p.sku).trim(), p]));
+
+        let createdCount = 0;
+        let updatedCount = 0;
+
+        for (const item of items) {
+            const sku = String(item.sku || '').trim();
+            if (!sku) continue;
+
+            const price = Number(item.price) || 0;
+            const desc = item.description ? String(item.description).trim() : '';
+            const cat = item.category ? String(item.category).trim() : 'Preparados';
+
+            if (dbMap.has(sku)) {
+                const existing = dbMap.get(sku);
+                // Update price and optionally description if provided
+                if (price > 0 || desc) {
+                    await connection.query(
+                        'UPDATE products SET price = COALESCE(NULLIF(?, 0), price), description = COALESCE(NULLIF(?, ""), description) WHERE id = ?',
+                        [price, desc, existing.id]
+                    );
+                    updatedCount++;
+                }
+            } else if (createIfNotExists) {
+                const newId = crypto.randomUUID();
+                await connection.query(
+                    'INSERT INTO products (id, sku, description, category, price, stockUnits, stockPounds, stockBaskets) VALUES (?, ?, ?, ?, ?, 0, 0, 0)',
+                    [newId, sku, desc || `Producto ${sku}`, cat, price]
+                );
+                createdCount++;
+            }
+        }
+
+        await connection.commit();
+
+        await logSystemEvent({
+            username: auditUser,
+            action: 'UPDATE_PRODUCT',
+            module: 'products',
+            details: `Actualización masiva vía Excel: ${updatedCount} precios actualizados, ${createdCount} productos creados.`
+        });
+
+        res.json({
+            success: true,
+            createdCount,
+            updatedCount,
+            totalProcessed: items.length
+        });
+    } catch (error) {
+        await connection.rollback();
+        res.status(500).json({ error: error.message });
+    } finally {
+        connection.release();
+    }
+});
+
 // Movements
 router.get('/movements', async (req, res) => {
     try {

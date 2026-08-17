@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { Plus, Download, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Plus, Download, Search, SlidersHorizontal, X, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { exportToCsv } from '../../utils/exportCsv';
 import ProductForm from './ProductForm';
+import ProductExcelImportModal from './ProductExcelImportModal';
 import { formatPrice } from '../../utils/formatUtils';
 
 const normalizeSearchText = (value) => String(value ?? '')
@@ -31,6 +32,7 @@ const number = (value) => Number(value) || 0;
 const ProductList = () => {
   const { products, deleteProduct, currentUser, categories, categoryUnits, canCreate, canEdit, canDelete } = useInventory();
   const [isAdding, setIsAdding] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -63,21 +65,17 @@ const ProductList = () => {
         && (minimum === null || price >= minimum)
         && (maximum === null || price <= maximum);
     }).sort((a, b) => {
-      switch (sortBy) {
-        case 'sku-desc':
-          return String(b.sku ?? '').localeCompare(String(a.sku ?? ''), 'es', { numeric: true });
-        case 'description-asc':
-          return String(a.description ?? '').localeCompare(String(b.description ?? ''), 'es');
-        case 'price-asc':
-          return number(a.price) - number(b.price);
-        case 'price-desc':
-          return number(b.price) - number(a.price);
-        case 'stock-desc':
-          return (number(b.stockUnits) + number(b.stockPounds) + number(b.stockBaskets))
-            - (number(a.stockUnits) + number(a.stockPounds) + number(a.stockBaskets));
-        default:
-          return String(a.sku ?? '').localeCompare(String(b.sku ?? ''), 'es', { numeric: true });
+      if (sortBy === 'sku-asc') return a.sku.localeCompare(b.sku, undefined, { numeric: true });
+      if (sortBy === 'sku-desc') return b.sku.localeCompare(a.sku, undefined, { numeric: true });
+      if (sortBy === 'description-asc') return (a.description || '').localeCompare(b.description || '');
+      if (sortBy === 'price-asc') return number(a.price) - number(b.price);
+      if (sortBy === 'price-desc') return number(b.price) - number(a.price);
+      if (sortBy === 'stock-desc') {
+        const stockA = number(a.stockUnits) + number(a.stockPounds) + number(a.stockBaskets);
+        const stockB = number(b.stockUnits) + number(b.stockPounds) + number(b.stockBaskets);
+        return stockB - stockA;
       }
+      return 0;
     });
   }, [products, searchTerm, categoryFilter, unitFilter, stockFilter, minPrice, maxPrice, sortBy, categoryUnits]);
 
@@ -103,10 +101,15 @@ const ProductList = () => {
     <div>
       <div className="topbar">
         <h1 className="page-title">Productos</h1>
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
           <button className="btn btn-outline" onClick={handleExport} disabled={filteredProducts.length === 0}>
-            <Download size={18} /> Exportar resultados
+            <Download size={18} /> Exportar CSV
           </button>
+          {(allowCreate || allowEdit) && (
+            <button className="btn btn-outline" onClick={() => setIsImportModalOpen(true)} title="Actualizar precios o crear productos desde Excel">
+              <FileSpreadsheet size={18} style={{ color: 'var(--color-success)' }} /> Importar Excel
+            </button>
+          )}
           {allowCreate && (
             <button className="btn btn-primary" onClick={() => { setEditingProduct(null); setIsAdding(true); }}>
               <Plus size={18} /> Nuevo Producto
@@ -245,6 +248,10 @@ const ProductList = () => {
             <ProductForm onCancel={() => { setIsAdding(false); setEditingProduct(null); }} initialData={editingProduct} />
           </div>
         </div>
+      )}
+
+      {isImportModalOpen && (
+        <ProductExcelImportModal onClose={() => setIsImportModalOpen(false)} />
       )}
     </div>
   );
