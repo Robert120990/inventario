@@ -6,11 +6,14 @@ import MovementForm from './MovementForm';
 import { formatDate } from '../../utils/formatUtils';
 
 const MovementList = () => {
-  const { movements, products, deleteMovement, currentUser } = useInventory();
+  const { movements, products, deleteMovement, currentUser, canCreate, canEdit, canDelete } = useInventory();
   const [isAdding, setIsAdding] = useState(false);
   const [editingMovement, setEditingMovement] = useState(null);
   
-  const isAdmin = currentUser?.role === 'admin';
+  const allowCreate = canCreate('movements');
+  const allowEdit = canEdit('movements');
+  const allowDelete = canDelete('movements');
+  const showActions = allowEdit || allowDelete;
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredMovements = movements.filter(mov => {
@@ -121,9 +124,11 @@ const MovementList = () => {
           <button className="btn btn-outline" onClick={handleExport}>
             <Download size={18} /> Exportar CSV
           </button>
-          <button className="btn btn-primary" onClick={() => { setEditingMovement(null); setIsAdding(true); }}>
-            <Plus size={18} /> Registrar Movimiento
-          </button>
+          {allowCreate && (
+            <button className="btn btn-primary" onClick={() => { setEditingMovement(null); setIsAdding(true); }}>
+              <Plus size={18} /> Registrar Movimiento
+            </button>
+          )}
         </div>
       </div>
 
@@ -154,28 +159,28 @@ const MovementList = () => {
           <table>
             <thead>
               <tr>
-                <th>Fecha</th>
+                <th>Fecha y Hora</th>
                 <th>Tipo</th>
                 <th>Documento</th>
-                <th>Producto</th>
+                <th>Producto(s)</th>
                 <th>Cantidades</th>
-                <th>Logística / Transp.</th>
-                <th>Usuario</th>
-                {isAdmin && <th>Acciones</th>}
+                <th>Transporte</th>
+                <th>Auditor</th>
+                {showActions && <th>Acciones</th>}
               </tr>
             </thead>
             <tbody>
               {filteredMovements.length === 0 ? (
                 <tr>
-                  <td colSpan={isAdmin ? "8" : "7"} style={{ textAlign: 'center', padding: '2rem' }}>
-                    {searchTerm ? `No se encontraron movimientos que coincidan con "${searchTerm}"` : 'No hay movimientos registrados'}
+                  <td colSpan={showActions ? 8 : 7} style={{ textAlign: 'center', padding: '2rem' }}>
+                    {searchTerm ? 'No se encontraron movimientos con ese criterio.' : 'No hay movimientos registrados.'}
                   </td>
                 </tr>
               ) : (
                 filteredMovements.map(mov => (
                   <tr key={mov.id}>
                     <td>
-                      <div>{formatDate(mov.date)}</div>
+                      <div style={{ fontWeight: '500' }}>{formatDate(mov.date)}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>
                         {mov.timeStart} - {mov.timeEnd}
                       </div>
@@ -198,11 +203,15 @@ const MovementList = () => {
                       <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>Eq: {mov.equipment}</div>
                     </td>
                     <td>{mov.auditUser}</td>
-                    {isAdmin && (
+                    {showActions && (
                       <td>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button onClick={() => { setEditingMovement(mov); setIsAdding(true); }} className="btn btn-outline" style={{ padding: '0.25rem 0.5rem' }}>Editar</button>
-                          <button onClick={() => { if(window.confirm('¿Seguro que deseas eliminar este movimiento? Afectará el stock disponible.')) deleteMovement(mov.id); }} className="btn btn-danger" style={{ padding: '0.25rem 0.5rem' }}>Eliminar</button>
+                          {allowEdit && (
+                            <button onClick={() => { setEditingMovement(mov); setIsAdding(true); }} className="btn btn-outline" style={{ padding: '0.25rem 0.5rem' }}>Editar</button>
+                          )}
+                          {allowDelete && (
+                            <button onClick={() => { if(window.confirm('¿Seguro que deseas eliminar este movimiento? Afectará el stock disponible.')) deleteMovement(mov.id); }} className="btn btn-danger" style={{ padding: '0.25rem 0.5rem' }}>Eliminar</button>
+                          )}
                         </div>
                       </td>
                     )}

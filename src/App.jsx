@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu } from 'lucide-react';
+import { Menu, ShieldAlert } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import { Toaster } from 'react-hot-toast';
 import Dashboard from './components/Dashboard';
@@ -12,11 +12,18 @@ import InsuranceReport from './components/Insurance/InsuranceReport';
 import InventoryCount from './components/Inventory/InventoryCount';
 import Settings from './components/Settings/Settings';
 import Login from './components/Login/Login';
-import UserList from './components/Users/UserList'; // Added this import
+import UserList from './components/Users/UserList';
+import UserAccess from './components/Security/UserAccess/UserAccess';
+import RoleList from './components/Security/Roles/RoleList';
+import SystemLog from './components/Security/Audit/SystemLog';
+import ConnectedUsers from './components/Security/Sessions/ConnectedUsers';
+import ChangeHistory from './components/Security/Changelog/ChangeHistory';
+import NotificationCenter from './components/Security/Notifications/NotificationCenter';
+import UserManual from './components/Security/Manual/UserManual';
 import './App.css';
 
 function AppContent() {
-  const { currentUser, loading, refreshData } = useInventory();
+  const { currentUser, loading, refreshData, canView } = useInventory();
   const [currentView, setCurrentView] = useState('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -55,23 +62,53 @@ function AppContent() {
   const renderView = () => {
     switch (currentView) {
       case 'dashboard':
-        return <Dashboard />;
+        return canView('dashboard') ? <Dashboard /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'products':
-        return <ProductList />;
+        return canView('products') ? <ProductList /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'movements':
-        return <MovementList />;
+        return canView('movements') ? <MovementList /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'inventory-count':
-        return <InventoryCount />;
+        return canView('inventory-count') ? <InventoryCount /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'summary':
-        return <Summary />;
+        return canView('summary') ? <Summary /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'summary2':
-        return <Summary2 />;
+        return canView('summary2') ? <Summary2 /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'insurance':
-        return <InsuranceReport />;
+        return canView('insurance') ? <InsuranceReport /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+      
+      // Security Module Routes
+      case 'security-users':
       case 'users':
-        return <UserList />;
+        return (currentUser.role === 'admin' || canView('security')) 
+          ? <UserList onConfigureAccess={(u) => setCurrentView('security-access')} /> 
+          : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+      case 'security-access':
+        return (currentUser.role === 'admin' || canView('security')) 
+          ? <UserAccess /> 
+          : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+      case 'security-roles':
+        return (currentUser.role === 'admin' || canView('security')) 
+          ? <RoleList /> 
+          : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+      case 'security-logs':
+        return (currentUser.role === 'admin' || canView('security')) 
+          ? <SystemLog /> 
+          : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+      case 'security-sessions':
+        return (currentUser.role === 'admin' || canView('security')) 
+          ? <ConnectedUsers /> 
+          : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+      case 'security-changelog':
+        return <ChangeHistory />;
+      case 'security-notifications':
+        return <NotificationCenter />;
+      case 'security-manual':
+        return <UserManual />;
+
       case 'settings':
-        return <Settings />;
+        return (currentUser.role === 'admin' || canView('settings')) 
+          ? <Settings /> 
+          : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       default:
         return <Dashboard />;
     }
@@ -106,6 +143,21 @@ function AppContent() {
         </div>
         {renderView()}
       </div>
+    </div>
+  );
+}
+
+function UnauthorizedView({ onGoHome }) {
+  return (
+    <div className="card" style={{ textAlign: 'center', padding: '3rem', margin: '2rem auto', maxWidth: '500px' }}>
+      <ShieldAlert size={48} style={{ color: 'var(--color-danger)', margin: '0 auto 1rem' }} />
+      <h2 style={{ color: 'var(--color-text)', marginBottom: '0.5rem' }}>Acceso No Autorizado</h2>
+      <p style={{ color: 'var(--color-text-light)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+        No tienes permisos asignados para acceder a esta sección. Contacta al Administrador si requieres acceso.
+      </p>
+      <button className="btn btn-primary" onClick={onGoHome}>
+        Volver al Dashboard
+      </button>
     </div>
   );
 }

@@ -13,9 +13,16 @@ export const InventoryProvider = ({ children }) => {
   const [categories, setCategories] = useState([]);
   const [documentTypes, setDocumentTypes] = useState([]);
   const [users, setUsers] = useState([]);
+  const [roles, setRoles] = useState([]);
+  const [systemLogs, setSystemLogs] = useState([]);
+  const [activeSessions, setActiveSessions] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('inv_current_user');
     return saved ? JSON.parse(saved) : null;
+  });
+  const [sessionId, setSessionId] = useState(() => {
+    return localStorage.getItem('inv_session_id') || null;
   });
   const [settings, setSettings] = useState({
     name: 'Inventario Pro',
@@ -36,13 +43,15 @@ export const InventoryProvider = ({ children }) => {
 
       try {
         setLoading(true);
-        const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/products`).then(res => res.json()),
-          fetch(`${API_BASE_URL}/api/movements`).then(res => res.json()),
-          fetch(`${API_BASE_URL}/api/users`).then(res => res.json()),
-          fetch(`${API_BASE_URL}/api/config`).then(res => res.json()),
-          fetch(`${API_BASE_URL}/api/settings`).then(res => res.json()),
-          fetch(`${API_BASE_URL}/api/versions`).then(res => res.json())
+        const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes, rolesRes, notifRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/products`).then(res => res.json()).catch(() => []),
+          fetch(`${API_BASE_URL}/api/movements`).then(res => res.json()).catch(() => []),
+          fetch(`${API_BASE_URL}/api/users`).then(res => res.json()).catch(() => []),
+          fetch(`${API_BASE_URL}/api/config`).then(res => res.json()).catch(() => ({})),
+          fetch(`${API_BASE_URL}/api/settings`).then(res => res.json()).catch(() => ({})),
+          fetch(`${API_BASE_URL}/api/versions`).then(res => res.json()).catch(() => []),
+          fetch(`${API_BASE_URL}/api/roles`).then(res => res.json()).catch(() => []),
+          fetch(`${API_BASE_URL}/api/notifications`).then(res => res.json()).catch(() => [])
         ]);
         
         clearTimeout(timeoutId);
@@ -51,6 +60,8 @@ export const InventoryProvider = ({ children }) => {
         if (Array.isArray(movRes)) setMovements(movRes);
         if (Array.isArray(userRes)) setUsers(userRes);
         if (Array.isArray(versionsRes)) setVersions(versionsRes);
+        if (Array.isArray(rolesRes)) setRoles(rolesRes);
+        if (Array.isArray(notifRes)) setNotifications(notifRes);
         
         if (configRes && !configRes.error) {
           if (configRes.categories) setCategories(configRes.categories.map(c => c.name));
@@ -79,21 +90,39 @@ export const InventoryProvider = ({ children }) => {
     fetchData();
   }, []);
 
+  // Heartbeat for active session tracking
+  useEffect(() => {
+    if (!currentUser || !sessionId) return;
+    const interval = setInterval(() => {
+      fetch(`${API_BASE_URL}/api/active-sessions/heartbeat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId })
+      }).catch(() => {});
+    }, 60000); // Every 1 minute
+
+    return () => clearInterval(interval);
+  }, [currentUser, sessionId]);
+
   const refreshData = async () => {
     try {
-      const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/products`).then(res => res.json()),
-        fetch(`${API_BASE_URL}/api/movements`).then(res => res.json()),
-        fetch(`${API_BASE_URL}/api/users`).then(res => res.json()),
-        fetch(`${API_BASE_URL}/api/config`).then(res => res.json()),
-        fetch(`${API_BASE_URL}/api/settings`).then(res => res.json()),
-        fetch(`${API_BASE_URL}/api/versions`).then(res => res.json())
+      const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes, rolesRes, notifRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/products`).then(res => res.json()).catch(() => []),
+        fetch(`${API_BASE_URL}/api/movements`).then(res => res.json()).catch(() => []),
+        fetch(`${API_BASE_URL}/api/users`).then(res => res.json()).catch(() => []),
+        fetch(`${API_BASE_URL}/api/config`).then(res => res.json()).catch(() => ({})),
+        fetch(`${API_BASE_URL}/api/settings`).then(res => res.json()).catch(() => ({})),
+        fetch(`${API_BASE_URL}/api/versions`).then(res => res.json()).catch(() => []),
+        fetch(`${API_BASE_URL}/api/roles`).then(res => res.json()).catch(() => []),
+        fetch(`${API_BASE_URL}/api/notifications`).then(res => res.json()).catch(() => [])
       ]);
 
       if (Array.isArray(prodRes)) setProducts(prodRes);
       if (Array.isArray(movRes)) setMovements(movRes);
       if (Array.isArray(userRes)) setUsers(userRes);
       if (Array.isArray(versionsRes)) setVersions(versionsRes);
+      if (Array.isArray(rolesRes)) setRoles(rolesRes);
+      if (Array.isArray(notifRes)) setNotifications(notifRes);
       if (configRes && !configRes.error) {
         if (configRes.categories) setCategories(configRes.categories.map(c => c.name));
         if (configRes.docTypes) setDocumentTypes(configRes.docTypes.map(d => d.name));
@@ -109,7 +138,7 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
-  // Sync current user to local storage for session persistence
+  // Sync current user and session ID to local storage
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('inv_current_user', JSON.stringify(currentUser));
@@ -117,6 +146,47 @@ export const InventoryProvider = ({ children }) => {
       localStorage.removeItem('inv_current_user');
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (sessionId) {
+      localStorage.setItem('inv_session_id', sessionId);
+    } else {
+      localStorage.removeItem('inv_session_id');
+    }
+  }, [sessionId]);
+
+  // Permissions helper
+  const hasPermission = (module, action = 'view') => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'admin') return true;
+    if (!currentUser.permissions) return false;
+    const modPerms = currentUser.permissions[module];
+    if (!modPerms) return false;
+    return Boolean(modPerms[action]);
+  };
+
+  const canView = (module) => hasPermission(module, 'view');
+  const canCreate = (module) => hasPermission(module, 'create');
+  const canEdit = (module) => hasPermission(module, 'edit');
+  const canDelete = (module) => hasPermission(module, 'delete');
+
+  const logAuditEvent = async (action, module, details) => {
+    try {
+      await fetch(`${API_BASE_URL}/api/system-logs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser?.id,
+          username: currentUser?.username || 'Sistema',
+          action,
+          module,
+          details
+        })
+      });
+    } catch (e) {
+      console.error('Error logging audit event:', e);
+    }
+  };
 
   const addProduct = async (product) => {
     const newProduct = { ...product, id: crypto.randomUUID() };
@@ -128,6 +198,7 @@ export const InventoryProvider = ({ children }) => {
       });
       if (res.ok) {
         setProducts(prev => [newProduct, ...prev]);
+        logAuditEvent('CREATE_PRODUCT', 'products', `Creación de producto '${newProduct.sku}' (${newProduct.description || ''})`);
       }
     } catch (error) {
       console.error('Error adding product:', error);
@@ -143,6 +214,7 @@ export const InventoryProvider = ({ children }) => {
       });
       if (res.ok) {
         setProducts(prev => prev.map(p => p.id === id ? { ...p, ...updatedProduct } : p));
+        logAuditEvent('UPDATE_PRODUCT', 'products', `Edición de producto '${updatedProduct.sku || id}'`);
       }
     } catch (error) {
       console.error('Error updating product:', error);
@@ -151,9 +223,11 @@ export const InventoryProvider = ({ children }) => {
 
   const deleteProduct = async (id) => {
     try {
+      const prod = products.find(p => p.id === id);
       const res = await fetch(`${API_BASE_URL}/api/products/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setProducts(prev => prev.filter(p => p.id !== id));
+        logAuditEvent('DELETE_PRODUCT', 'products', `Eliminación de producto '${prod?.sku || id}'`);
       }
     } catch (error) {
       console.error('Error deleting product:', error);
@@ -161,7 +235,7 @@ export const InventoryProvider = ({ children }) => {
   };
 
   const addMovement = async (movement) => {
-    const newMovement = { ...movement, id: crypto.randomUUID() };
+    const newMovement = { ...movement, id: crypto.randomUUID(), auditUser: currentUser?.username || 'Sistema' };
     try {
       const res = await fetch(`${API_BASE_URL}/api/movements`, {
         method: 'POST',
@@ -191,6 +265,7 @@ export const InventoryProvider = ({ children }) => {
         ]);
         setProducts(prodRes);
         setMovements(movRes);
+        logAuditEvent('DELETE_MOVEMENT', 'movements', `Eliminación de movimiento ID ${id}`);
       }
     } catch (error) {
       console.error('Error deleting movement:', error);
@@ -202,7 +277,7 @@ export const InventoryProvider = ({ children }) => {
       const res = await fetch(`${API_BASE_URL}/api/movements/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedMovement)
+        body: JSON.stringify({ ...updatedMovement, auditUser: currentUser?.username || 'Sistema' })
       });
 
       if (res.ok) {
@@ -212,6 +287,7 @@ export const InventoryProvider = ({ children }) => {
         ]);
         setProducts(prodRes);
         setMovements(movRes);
+        logAuditEvent('UPDATE_MOVEMENT', 'movements', `Modificación de movimiento ID ${id}`);
       }
     } catch (error) {
       console.error('Error updating movement:', error);
@@ -223,7 +299,7 @@ export const InventoryProvider = ({ children }) => {
       const res = await fetch(`${API_BASE_URL}/api/inventory-adjustments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId, ...adjustment })
+        body: JSON.stringify({ productId, ...adjustment, auditUser: currentUser?.username || 'Sistema' })
       });
       const data = await res.json();
 
@@ -299,16 +375,79 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
-  const addVersion = async (description) => {
+  // Roles Management
+  const fetchRoles = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/roles`);
+      const data = await res.json();
+      if (Array.isArray(data)) setRoles(data);
+      return data;
+    } catch (e) {
+      console.error('Error fetching roles:', e);
+      return [];
+    }
+  };
+
+  const addRole = async (roleData) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/roles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...roleData, auditUser: currentUser?.username })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        await fetchRoles();
+        return { success: true, id: data.id };
+      }
+      return { success: false, message: data.error };
+    } catch (e) {
+      return { success: false, message: 'Error al conectar con el servidor.' };
+    }
+  };
+
+  const updateRole = async (id, roleData) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/roles/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...roleData, auditUser: currentUser?.username })
+      });
+      if (res.ok) {
+        await fetchRoles();
+        return { success: true };
+      }
+      return { success: false };
+    } catch (e) {
+      return { success: false };
+    }
+  };
+
+  const deleteRole = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/roles/${id}?auditUser=${encodeURIComponent(currentUser?.username || '')}`, { method: 'DELETE' });
+      if (res.ok) {
+        setRoles(prev => prev.filter(r => r.id !== id));
+        return { success: true };
+      }
+      return { success: false };
+    } catch (e) {
+      return { success: false };
+    }
+  };
+
+  // Versions Management
+  const addVersion = async (description, changes = [], author = 'Admin') => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/versions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description })
+        body: JSON.stringify({ description, changes, author: currentUser?.username || author })
       });
       if (res.ok) {
         const versionsRes = await fetch(`${API_BASE_URL}/api/versions`).then(r => r.json());
         setVersions(versionsRes);
+        logAuditEvent('REGISTER_VERSION', 'security', `Registro de versión con descripción: ${description}`);
         return { success: true };
       }
       return { success: false };
@@ -329,20 +468,170 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
+  // User Management
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/users`);
+      const data = await res.json();
+      if (Array.isArray(data)) setUsers(data);
+      return data;
+    } catch (e) {
+      return [];
+    }
+  };
+
   const addUser = async (user) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(user)
+        body: JSON.stringify({ ...user, auditUser: currentUser?.username })
       });
       if (res.ok) {
-        const userRes = await fetch(`${API_BASE_URL}/api/users`).then(res => res.json());
-        setUsers(userRes);
+        await fetchUsers();
+        return { success: true };
       }
+      const data = await res.json();
+      return { success: false, message: data.error };
     } catch (error) {
-      console.error('Error adding user:', error);
+      return { success: false, message: 'Error de conexión' };
     }
+  };
+
+  const updateUser = async (id, updatedUser) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/users/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...updatedUser, auditUser: currentUser?.username })
+      });
+      if (res.ok) {
+        await fetchUsers();
+        return { success: true };
+      }
+      return { success: false };
+    } catch (error) {
+      console.error('Error updating user:', error);
+      return { success: false };
+    }
+  };
+
+  const updateUserPermissions = async (id, permissions) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/users/${id}/permissions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permissions, auditUser: currentUser?.username })
+      });
+      if (res.ok) {
+        await fetchUsers();
+        // If updating self, refresh currentUser permissions
+        if (currentUser?.id === id) {
+          setCurrentUser(prev => ({ ...prev, permissions }));
+        }
+        return { success: true };
+      }
+      return { success: false };
+    } catch (error) {
+      return { success: false };
+    }
+  };
+
+  const deleteUser = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/users/${id}?auditUser=${encodeURIComponent(currentUser?.username || '')}`, { method: 'DELETE' });
+      if (res.ok) {
+        setUsers(prev => prev.filter(u => u.id !== id));
+        return { success: true };
+      }
+      return { success: false };
+    } catch (error) {
+      return { success: false };
+    }
+  };
+
+  // System Logs & Sessions
+  const fetchSystemLogs = async (filters = {}) => {
+    try {
+      const params = new URLSearchParams(filters);
+      const res = await fetch(`${API_BASE_URL}/api/system-logs?${params.toString()}`);
+      const data = await res.json();
+      if (Array.isArray(data)) setSystemLogs(data);
+      return data;
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const fetchActiveSessions = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/active-sessions`);
+      const data = await res.json();
+      if (Array.isArray(data)) setActiveSessions(data);
+      return data;
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const disconnectSession = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/active-sessions/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setActiveSessions(prev => prev.filter(s => s.id !== id));
+        return { success: true };
+      }
+      return { success: false };
+    } catch (e) {
+      return { success: false };
+    }
+  };
+
+  // Notifications
+  const fetchNotifications = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/notifications?userId=${currentUser?.id || ''}`);
+      const data = await res.json();
+      if (Array.isArray(data)) setNotifications(data);
+      return data;
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const addNotification = async (notif) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/notifications`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(notif)
+      });
+      if (res.ok) {
+        await fetchNotifications();
+        return { success: true };
+      }
+      return { success: false };
+    } catch (e) {
+      return { success: false };
+    }
+  };
+
+  const markNotificationAsRead = async (id) => {
+    try {
+      await fetch(`${API_BASE_URL}/api/notifications/${id}/read`, { method: 'PUT' });
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: 1 } : n));
+    } catch (e) {}
+  };
+
+  const markAllNotificationsAsRead = async () => {
+    try {
+      await fetch(`${API_BASE_URL}/api/notifications/read-all`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser?.id })
+      });
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: 1 })));
+    } catch (e) {}
   };
 
   const updateSettings = async (newSettings) => {
@@ -355,6 +644,7 @@ export const InventoryProvider = ({ children }) => {
       });
       if (res.ok) {
         setSettings(updated);
+        logAuditEvent('UPDATE_SETTINGS', 'settings', 'Actualización de configuración general del sistema');
       }
     } catch (error) {
       console.error('Error updating settings:', error);
@@ -374,63 +664,63 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
-  const updateUser = async (id, updatedUser) => {
-    try {
-      const current = users.find(u => u.id === id);
-      const merged = { ...current, ...updatedUser };
-      const res = await fetch(`${API_BASE_URL}/api/users/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(merged)
-      });
-      if (res.ok) {
-        const userRes = await fetch(`${API_BASE_URL}/api/users`).then(r => r.json());
-        setUsers(userRes);
-      }
-    } catch (error) {
-      console.error('Error updating user:', error);
-    }
-  };
-
+  // Secure Server-Side Login
   const login = async (username, password) => {
-    const cleanUser = (username || '').trim().toLowerCase();
+    const cleanUser = (username || '').trim();
     const cleanPass = (password || '').trim();
 
-    let userList = users;
-    // If user not in local state or users array is empty, fetch fresh list from server
-    const localMatch = userList.find(u => (u.username || '').trim().toLowerCase() === cleanUser && (u.password || '').trim() === cleanPass);
-    if (!localMatch) {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/users`);
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setUsers(data);
-          userList = data;
-        }
-      } catch (err) {
-        console.error('Error refreshing users during login:', err);
-      }
+    if (!cleanUser || !cleanPass) {
+      return { success: false, message: 'Ingresa usuario y contraseña.' };
     }
 
-    const user = userList.find(u => (u.username || '').trim().toLowerCase() === cleanUser && (u.password || '').trim() === cleanPass);
-    if (user) {
-      if (user.isActive === 0 || user.isActive === false) return { success: false, message: 'Cuenta desactivada por el administrador.' };
-      setCurrentUser(user);
-      return { success: true };
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: cleanUser, password: cleanPass })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setCurrentUser(data.user);
+        setSessionId(data.sessionId);
+        return { success: true };
+      }
+
+      return { success: false, message: data.error || 'Credenciales incorrectas.' };
+    } catch (error) {
+      console.error('Login request failed:', error);
+      return { success: false, message: 'Error de conexión con el servidor. Verifica que el backend esté en ejecución.' };
     }
-    if (userList.length === 0) {
-      return { success: false, message: 'Error de conexión con el servidor. Intenta de nuevo en unos segundos.' };
-    }
-    return { success: false, message: 'Credenciales incorrectas. Verifica tu usuario y contraseña.' };
   };
 
-  const logout = () => {
-    setCurrentUser(null);
+  const logout = async () => {
+    try {
+      if (currentUser) {
+        await fetch(`${API_BASE_URL}/api/auth/logout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: currentUser.id,
+            username: currentUser.username,
+            sessionId
+          })
+        });
+      }
+    } catch (e) {
+      console.error('Logout error:', e);
+    } finally {
+      setCurrentUser(null);
+      setSessionId(null);
+      localStorage.removeItem('inv_current_user');
+      localStorage.removeItem('inv_session_id');
+    }
   };
 
   const totalStock = products.reduce((acc, curr) => acc + Number(curr.stockUnits || 0), 0);
-
   const currentVersion = versions.length > 0 ? versions[0] : null;
+  const unreadNotificationsCount = notifications.filter(n => !n.isRead).length;
 
   return (
     <InventoryContext.Provider value={{
@@ -439,12 +729,23 @@ export const InventoryProvider = ({ children }) => {
       categories,
       documentTypes,
       users,
+      roles,
       currentUser,
       settings,
       categoryUnits,
       versions,
       currentVersion,
+      systemLogs,
+      activeSessions,
+      notifications,
+      unreadNotificationsCount,
       loading,
+      hasPermission,
+      canView,
+      canCreate,
+      canEdit,
+      canDelete,
+      logAuditEvent,
       addProduct,
       updateProduct,
       adjustProductStock,
@@ -458,6 +759,20 @@ export const InventoryProvider = ({ children }) => {
       deleteDocumentType,
       addUser,
       updateUser,
+      deleteUser,
+      updateUserPermissions,
+      fetchUsers,
+      fetchRoles,
+      addRole,
+      updateRole,
+      deleteRole,
+      fetchSystemLogs,
+      fetchActiveSessions,
+      disconnectSession,
+      fetchNotifications,
+      addNotification,
+      markNotificationAsRead,
+      markAllNotificationsAsRead,
       addVersion,
       deleteVersion,
       updateSettings,

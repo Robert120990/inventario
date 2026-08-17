@@ -25,13 +25,14 @@ const toStock = (product) => ({
 });
 
 const InventoryCount = () => {
-  const { products, currentUser, adjustProductStock } = useInventory();
+  const { products, currentUser, adjustProductStock, canEdit } = useInventory();
   const [query, setQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [counted, setCounted] = useState(toStock());
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [lastAdjustment, setLastAdjustment] = useState(null);
+  const allowEdit = canEdit('inventory-count');
 
   const results = useMemo(() => {
     if (!query.trim()) return [];
@@ -252,9 +253,15 @@ const InventoryCount = () => {
               <button type="button" className="btn btn-outline" onClick={resetCount}>
                 <RotateCcw size={18} /> Restablecer
               </button>
-              <button type="submit" className="btn btn-primary" disabled={!hasChanges || !reason.trim() || saving}>
-                <Save size={18} /> {saving ? 'Guardando...' : 'Actualizar inventario'}
-              </button>
+              {allowEdit ? (
+                <button type="submit" className="btn btn-primary" disabled={!hasChanges || !reason.trim() || saving}>
+                  <Save size={18} /> {saving ? 'Guardando...' : 'Actualizar inventario'}
+                </button>
+              ) : (
+                <span className="badge badge-gray" style={{ padding: '0.5rem 1rem', alignSelf: 'center' }}>
+                  Solo lectura (Sin permisos para ajustar)
+                </span>
+              )}
             </div>
           </div>
         </form>

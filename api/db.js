@@ -105,10 +105,51 @@ export const ensureSchema = async () => {
                 name VARCHAR(255) DEFAULT 'Inventario Pro',
                 logo LONGTEXT
             )`,
+            `CREATE TABLE IF NOT EXISTS roles (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(50) UNIQUE NOT NULL,
+                description VARCHAR(255),
+                permissions LONGTEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )`,
+            `CREATE TABLE IF NOT EXISTS system_logs (
+                id VARCHAR(50) PRIMARY KEY,
+                userId INT NULL,
+                username VARCHAR(50) NOT NULL,
+                action VARCHAR(50) NOT NULL,
+                module VARCHAR(50) NOT NULL,
+                details TEXT NOT NULL,
+                ip_address VARCHAR(50),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_system_logs_module (module),
+                INDEX idx_system_logs_created (created_at)
+            )`,
+            `CREATE TABLE IF NOT EXISTS active_sessions (
+                id VARCHAR(50) PRIMARY KEY,
+                userId INT NOT NULL,
+                username VARCHAR(50) NOT NULL,
+                ip_address VARCHAR(50),
+                user_agent VARCHAR(255),
+                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_active_sessions_user (userId)
+            )`,
+            `CREATE TABLE IF NOT EXISTS notifications (
+                id VARCHAR(50) PRIMARY KEY,
+                userId INT NULL,
+                title VARCHAR(150) NOT NULL,
+                message TEXT NOT NULL,
+                type ENUM('info', 'warning', 'success', 'danger') DEFAULT 'info',
+                isRead TINYINT(1) DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_notifications_user (userId)
+            )`,
             `CREATE TABLE IF NOT EXISTS versions (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 version VARCHAR(20) UNIQUE NOT NULL,
                 description TEXT,
+                changes LONGTEXT,
+                author VARCHAR(50) DEFAULT 'Sistema',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )`
         ];
@@ -120,11 +161,86 @@ export const ensureSchema = async () => {
         // Asegurar que exista la configuración básica
         await pool.query(`INSERT IGNORE INTO settings (id, name) VALUES (1, 'Inventario Pro')`);
 
-        // Migración manual para agregar isActive si no existe
+        // Migración manual para columnas adicionales en users
         try {
             await pool.query("ALTER TABLE users ADD COLUMN isActive TINYINT(1) DEFAULT 1 AFTER role");
-        } catch (e) {
-            // Ignorar error si la columna ya existe
+        } catch (e) {}
+        try {
+            await pool.query("ALTER TABLE users ADD COLUMN permissions LONGTEXT NULL AFTER isActive");
+        } catch (e) {}
+        try {
+            await pool.query("ALTER TABLE users ADD COLUMN role_id INT NULL AFTER role");
+        } catch (e) {}
+        try {
+            await pool.query("ALTER TABLE users ADD COLUMN last_login TIMESTAMP NULL AFTER isActive");
+        } catch (e) {}
+
+        // Migración manual para columnas adicionales en versions
+        try {
+            await pool.query("ALTER TABLE versions ADD COLUMN changes LONGTEXT NULL AFTER description");
+        } catch (e) {}
+        try {
+            await pool.query("ALTER TABLE versions ADD COLUMN author VARCHAR(50) DEFAULT 'Sistema' AFTER changes");
+        } catch (e) {}
+
+        // Roles por defecto
+        const [roleRows] = await pool.query('SELECT COUNT(*) as count FROM roles');
+        if (roleRows[0].count === 0) {
+            const adminPermissions = JSON.stringify({
+                dashboard: { view: true },
+                products: { view: true, create: true, edit: true, delete: true },
+                'inventory-count': { view: true, create: true, edit: true, delete: true },
+                movements: { view: true, create: true, edit: true, delete: true },
+                insurance: { view: true },
+                summary: { view: true },
+                summary2: { view: true },
+                security: { view: true, create: true, edit: true, delete: true },
+                settings: { view: true, edit: true }
+            });
+
+            const supervisorPermissions = JSON.stringify({
+                dashboard: { view: true },
+                products: { view: true, create: true, edit: true, delete: false },
+                'inventory-count': { view: true, create: true, edit: true, delete: false },
+                movements: { view: true, create: true, edit: true, delete: false },
+                insurance: { view: true },
+                summary: { view: true },
+                summary2: { view: true },
+                security: { view: false, create: false, edit: false, delete: false },
+                settings: { view: false, edit: false }
+            });
+
+            const warehousePermissions = JSON.stringify({
+                dashboard: { view: true },
+                products: { view: true, create: false, edit: false, delete: false },
+                'inventory-count': { view: true, create: true, edit: true, delete: false },
+                movements: { view: true, create: true, edit: false, delete: false },
+                insurance: { view: false },
+                summary: { view: false },
+                summary2: { view: false },
+                security: { view: false, create: false, edit: false, delete: false },
+                settings: { view: false, edit: false }
+            });
+
+            const auditorPermissions = JSON.stringify({
+                dashboard: { view: true },
+                products: { view: true, create: false, edit: false, delete: false },
+                'inventory-count': { view: true, create: false, edit: false, delete: false },
+                movements: { view: true, create: false, edit: false, delete: false },
+                insurance: { view: true },
+                summary: { view: true },
+                summary2: { view: true },
+                security: { view: true, create: false, edit: false, delete: false },
+                settings: { view: false, edit: false }
+            });
+
+            const queryRoles = `INSERT INTO roles (name, description, permissions) VALUES 
+                ('Administrador', 'Control total y configuración de todo el sistema', ?),
+                ('Supervisor', 'Gestión operativa completa de almacén y reportes', ?),
+                ('Almacenista', 'Captura de movimientos y conteo de inventario', ?),
+                ('Auditor', 'Consulta y verificación de bitácora y movimientos sin edición', ?)`;
+            
+            await pool.query(queryRoles, [adminPermissions, supervisorPermissions, warehousePermissions, auditorPermissions]);
         }
 
         // Inserciones por defecto solo si las tablas están vacías
@@ -140,7 +256,7 @@ export const ensureSchema = async () => {
 
         const [userRows] = await pool.query('SELECT COUNT(*) as count FROM users');
         if (userRows[0].count === 0) {
-            await pool.query(`INSERT IGNORE INTO users (username, password, role) VALUES ('admin', 'admin123', 'admin')`);
+            await pool.query(`INSERT IGNORE INTO users (username, password, role) VALUES ('admin', '123', 'admin')`);
         }
 
         return true;

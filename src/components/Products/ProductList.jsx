@@ -29,7 +29,7 @@ const matchesSearchTerms = (product, searchTerm) => {
 const number = (value) => Number(value) || 0;
 
 const ProductList = () => {
-  const { products, deleteProduct, currentUser, categories, categoryUnits } = useInventory();
+  const { products, deleteProduct, currentUser, categories, categoryUnits, canCreate, canEdit, canDelete } = useInventory();
   const [isAdding, setIsAdding] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -39,7 +39,10 @@ const ProductList = () => {
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
   const [sortBy, setSortBy] = useState('sku-asc');
-  const isAdmin = currentUser?.role === 'admin';
+  const allowCreate = canCreate('products');
+  const allowEdit = canEdit('products');
+  const allowDelete = canDelete('products');
+  const showActions = allowEdit || allowDelete;
 
   const filteredProducts = useMemo(() => {
     const minimum = minPrice === '' ? null : Number(minPrice);
@@ -104,7 +107,7 @@ const ProductList = () => {
           <button className="btn btn-outline" onClick={handleExport} disabled={filteredProducts.length === 0}>
             <Download size={18} /> Exportar resultados
           </button>
-          {isAdmin && (
+          {allowCreate && (
             <button className="btn btn-primary" onClick={() => { setEditingProduct(null); setIsAdding(true); }}>
               <Plus size={18} /> Nuevo Producto
             </button>
@@ -195,13 +198,13 @@ const ProductList = () => {
               <tr>
                 <th>Código (SKU)</th><th>Descripción</th><th>Categoría</th><th>Precio</th>
                 <th>Stock (Unidades)</th><th>Stock (Libras)</th><th>Stock (Cestas)</th>
-                {isAdmin && <th>Acciones</th>}
+                {showActions && <th>Acciones</th>}
               </tr>
             </thead>
             <tbody>
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={isAdmin ? 8 : 7} style={{ textAlign: 'center', padding: '2rem' }}>
+                  <td colSpan={showActions ? 8 : 7} style={{ textAlign: 'center', padding: '2rem' }}>
                     {hasActiveFilters ? 'No se encontraron productos con los filtros seleccionados.' : 'No hay productos registrados.'}
                   </td>
                 </tr>
@@ -212,16 +215,20 @@ const ProductList = () => {
                   <td>${formatPrice(product.price)}</td>
                   <td style={{ textAlign: 'center' }}>{product.stockUnits}</td>
                   <td>{product.stockPounds}</td><td>{product.stockBaskets}</td>
-                  {isAdmin && (
+                  {showActions && (
                     <td>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={() => { setEditingProduct(product); setIsAdding(true); }} className="btn btn-outline" style={{ padding: '0.25rem 0.5rem' }}>Editar</button>
-                        <button onClick={() => {
-                          if (window.confirm('¿Seguro que deseas eliminar este producto?')) {
-                            deleteProduct(product.id);
-                            toast.success('Producto eliminado');
-                          }
-                        }} className="btn btn-danger" style={{ padding: '0.25rem 0.5rem' }}>Eliminar</button>
+                        {allowEdit && (
+                          <button onClick={() => { setEditingProduct(product); setIsAdding(true); }} className="btn btn-outline" style={{ padding: '0.25rem 0.5rem' }}>Editar</button>
+                        )}
+                        {allowDelete && (
+                          <button onClick={() => {
+                            if (window.confirm('¿Seguro que deseas eliminar este producto?')) {
+                              deleteProduct(product.id);
+                              toast.success('Producto eliminado');
+                            }
+                          }} className="btn btn-danger" style={{ padding: '0.25rem 0.5rem' }}>Eliminar</button>
+                        )}
                       </div>
                     </td>
                   )}

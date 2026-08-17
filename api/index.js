@@ -139,6 +139,13 @@ router.post('/inventory-adjustments', async (req, res) => {
         const [updatedProducts] = await connection.query('SELECT * FROM products WHERE id = ?', [productId]);
         await connection.commit();
 
+        await logSystemEvent({
+            username: auditUser.trim(),
+            action: 'INVENTORY_ADJUSTMENT',
+            module: 'inventory-count',
+            details: `Ajuste de existencias producto '${product.sku}' (${product.description || ''}). Motivo: ${reason.trim()}`
+        });
+
         res.json({
             success: true,
             product: updatedProducts[0],
@@ -358,21 +365,183 @@ router.delete('/movements/:id', async (req, res) => {
     }
 });
 
-// Users
+// Helper for audit logging
+const logSystemEvent = async ({ userId = null, username = 'Sistema', action, module, details, ip = '' }) => {
+    try {
+        const logId = randomUUID();
+        await pool.query(
+            'INSERT INTO system_logs (id, userId, username, action, module, details, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [logId, userId, username, action, module, details, ip || '']
+        );
+    } catch (err) {
+        console.error('Error writing to system_logs:', err.message);
+    }
+};
+
+// Authentication
+router.post('/auth/login', async (req, res) => {
+    const { username, password } = req.body;
+    const cleanUser = (username || '').trim();
+    const cleanPass = (password || '').trim();
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+    const userAgent = req.headers['user-agent'] || '';
+
+    if (!cleanUser || !cleanPass) {
+        return res.status(400).json({ error: 'Usuario y contraseña requeridos.' });
+    }
+
+    try {
+        const [rows] = await pool.query(
+            `SELECT u.id, u.username, u.password, u.role, u.role_id, u.isActive, u.permissions, u.last_login,
+                    r.name as roleName, r.permissions as rolePermissions
+             FROM users u
+             LEFT JOIN roles r ON u.role_id = r.id
+             WHERE LOWER(u.username) = LOWER(?)`,
+            [cleanUser]
+        );
+
+        if (rows.length === 0 || rows[0].password !== cleanPass) {
+            await logSystemEvent({
+                username: cleanUser,
+                action: 'LOGIN_FAILED',
+                module: 'auth',
+                details: `Intento fallido de inicio de sesión para el usuario '${cleanUser}'`,
+                ip
+            });
+            return res.status(401).json({ error: 'Credenciales incorrectas.' });
+        }
+
+        const user = rows[0];
+        if (user.isActive === 0 || user.isActive === false) {
+            return res.status(403).json({ error: 'Cuenta desactivada por el administrador.' });
+        }
+
+        // Update last_login
+        await pool.query('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id]);
+
+        // Register active session
+        const sessionId = randomUUID();
+        await pool.query(
+            'INSERT INTO active_sessions (id, userId, username, ip_address, user_agent) VALUES (?, ?, ?, ?, ?)',
+            [sessionId, user.id, user.username, ip, userAgent.substring(0, 250)]
+        );
+
+        // Clean older than 24h sessions
+        await pool.query('DELETE FROM active_sessions WHERE last_activity < DATE_SUB(NOW(), INTERVAL 1 DAY)');
+
+        // Log in bitacora
+        await logSystemEvent({
+            userId: user.id,
+            username: user.username,
+            action: 'LOGIN',
+            module: 'auth',
+            details: `Inicio de sesión exitoso desde ${ip || 'red local'}`,
+            ip
+        });
+
+        // Parse permissions (user custom or role fallback)
+        let parsedPermissions = null;
+        if (user.permissions) {
+            try { parsedPermissions = JSON.parse(user.permissions); } catch (e) {}
+        } else if (user.rolePermissions) {
+            try { parsedPermissions = JSON.parse(user.rolePermissions); } catch (e) {}
+        }
+
+        const safeUser = {
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            role_id: user.role_id,
+            roleName: user.roleName || (user.role === 'admin' ? 'Administrador' : 'Usuario'),
+            isActive: user.isActive,
+            permissions: parsedPermissions,
+            last_login: new Date().toISOString()
+        };
+
+        res.json({ success: true, user: safeUser, sessionId });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/auth/logout', async (req, res) => {
+    const { userId, username, sessionId } = req.body;
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+    try {
+        if (sessionId) {
+            await pool.query('DELETE FROM active_sessions WHERE id = ?', [sessionId]);
+        } else if (userId) {
+            await pool.query('DELETE FROM active_sessions WHERE userId = ?', [userId]);
+        }
+        if (username) {
+            await logSystemEvent({
+                userId: userId || null,
+                username,
+                action: 'LOGOUT',
+                module: 'auth',
+                details: `Cierre de sesión de usuario '${username}'`,
+                ip
+            });
+        }
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Users (Protected: NO PASSWORDS returned)
 router.get('/users', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT id, username, password, role, isActive FROM users');
-        res.json(rows);
+        const [rows] = await pool.query(`
+            SELECT u.id, u.username, u.role, u.role_id, u.isActive, u.permissions, u.last_login, u.created_at,
+                   r.name as roleName, r.permissions as rolePermissions
+            FROM users u
+            LEFT JOIN roles r ON u.role_id = r.id
+            ORDER BY u.id ASC
+        `);
+        const parsed = rows.map(u => {
+            let perms = null;
+            if (u.permissions) {
+                try { perms = JSON.parse(u.permissions); } catch (e) {}
+            } else if (u.rolePermissions) {
+                try { perms = JSON.parse(u.rolePermissions); } catch (e) {}
+            }
+            return {
+                id: u.id,
+                username: u.username,
+                role: u.role,
+                role_id: u.role_id,
+                roleName: u.roleName || (u.role === 'admin' ? 'Administrador' : 'Usuario'),
+                isActive: u.isActive,
+                permissions: perms,
+                last_login: u.last_login,
+                created_at: u.created_at
+            };
+        });
+        res.json(parsed);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
 router.post('/users', async (req, res) => {
-    const { username, password, role } = req.body;
+    const { username, password, role, role_id, permissions, auditUser } = req.body;
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Usuario y contraseña requeridos.' });
+    }
     try {
-        await pool.query('INSERT INTO users (username, password, role, isActive) VALUES (?, ?, ?, 1)', [username, password, role || 'user']);
-        res.json({ success: true });
+        const permJson = permissions ? JSON.stringify(permissions) : null;
+        const [result] = await pool.query(
+            'INSERT INTO users (username, password, role, role_id, isActive, permissions) VALUES (?, ?, ?, ?, 1, ?)',
+            [username.trim(), password.trim(), role || 'user', role_id || null, permJson]
+        );
+        await logSystemEvent({
+            username: auditUser || 'admin',
+            action: 'CREATE_USER',
+            module: 'users',
+            details: `Creación de usuario '${username.trim()}' con rol '${role || 'user'}'`
+        });
+        res.json({ success: true, id: result.insertId });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -380,12 +549,44 @@ router.post('/users', async (req, res) => {
 
 router.put('/users/:id', async (req, res) => {
     const { id } = req.params;
-    const { username, password, role, isActive } = req.body;
+    const { username, password, role, role_id, isActive, permissions, auditUser } = req.body;
     try {
-        await pool.query(
-            'UPDATE users SET username=?, password=?, role=?, isActive=? WHERE id=?',
-            [username, password, role || 'user', isActive !== false ? 1 : 0, id]
-        );
+        const permJson = permissions ? JSON.stringify(permissions) : null;
+        if (password && password.trim() !== '') {
+            await pool.query(
+                'UPDATE users SET username=?, password=?, role=?, role_id=?, isActive=?, permissions=? WHERE id=?',
+                [username.trim(), password.trim(), role || 'user', role_id || null, isActive !== false ? 1 : 0, permJson, id]
+            );
+        } else {
+            await pool.query(
+                'UPDATE users SET username=?, role=?, role_id=?, isActive=?, permissions=? WHERE id=?',
+                [username.trim(), role || 'user', role_id || null, isActive !== false ? 1 : 0, permJson, id]
+            );
+        }
+        await logSystemEvent({
+            username: auditUser || 'admin',
+            action: 'UPDATE_USER',
+            module: 'users',
+            details: `Modificación de usuario ID ${id} (${username})`
+        });
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.put('/users/:id/permissions', async (req, res) => {
+    const { id } = req.params;
+    const { permissions, auditUser } = req.body;
+    try {
+        const permJson = permissions ? JSON.stringify(permissions) : null;
+        await pool.query('UPDATE users SET permissions=? WHERE id=?', [permJson, id]);
+        await logSystemEvent({
+            username: auditUser || 'admin',
+            action: 'UPDATE_PERMISSIONS',
+            module: 'security',
+            details: `Actualización de matriz de permisos personalizados para usuario ID ${id}`
+        });
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -394,7 +595,227 @@ router.put('/users/:id', async (req, res) => {
 
 router.delete('/users/:id', async (req, res) => {
     try {
+        const [rows] = await pool.query('SELECT username FROM users WHERE id=?', [req.params.id]);
+        const userName = rows[0]?.username || req.params.id;
         await pool.query('DELETE FROM users WHERE id=?', [req.params.id]);
+        await logSystemEvent({
+            username: req.query.auditUser || 'admin',
+            action: 'DELETE_USER',
+            module: 'users',
+            details: `Eliminación de usuario '${userName}' (ID ${req.params.id})`
+        });
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Roles
+router.get('/roles', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM roles ORDER BY id ASC');
+        const parsed = rows.map(r => ({
+            ...r,
+            permissions: r.permissions ? JSON.parse(r.permissions) : {}
+        }));
+        res.json(parsed);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/roles', async (req, res) => {
+    const { name, description, permissions, auditUser } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Nombre de rol obligatorio.' });
+    try {
+        const permJson = permissions ? JSON.stringify(permissions) : '{}';
+        const [result] = await pool.query(
+            'INSERT INTO roles (name, description, permissions) VALUES (?, ?, ?)',
+            [name.trim(), description || '', permJson]
+        );
+        await logSystemEvent({
+            username: auditUser || 'admin',
+            action: 'CREATE_ROLE',
+            module: 'security',
+            details: `Creación de nuevo rol '${name.trim()}'`
+        });
+        res.json({ success: true, id: result.insertId });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.put('/roles/:id', async (req, res) => {
+    const { id } = req.params;
+    const { name, description, permissions, auditUser } = req.body;
+    try {
+        const permJson = permissions ? JSON.stringify(permissions) : '{}';
+        await pool.query(
+            'UPDATE roles SET name=?, description=?, permissions=? WHERE id=?',
+            [name.trim(), description || '', permJson, id]
+        );
+        await logSystemEvent({
+            username: auditUser || 'admin',
+            action: 'UPDATE_ROLE',
+            module: 'security',
+            details: `Actualización de rol ID ${id} (${name})`
+        });
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.delete('/roles/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM roles WHERE id=?', [req.params.id]);
+        await logSystemEvent({
+            username: req.query.auditUser || 'admin',
+            action: 'DELETE_ROLE',
+            module: 'security',
+            details: `Eliminación de rol ID ${req.params.id}`
+        });
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// System Logs (Bitácora)
+router.get('/system-logs', async (req, res) => {
+    try {
+        const { module, action, search, limit = 100 } = req.query;
+        let query = "SELECT id, userId, username, action, module, details, ip_address, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as timestamp FROM system_logs WHERE 1=1";
+        const params = [];
+
+        if (module && module !== 'all') {
+            query += " AND module = ?";
+            params.push(module);
+        }
+        if (action && action !== 'all') {
+            query += " AND action = ?";
+            params.push(action);
+        }
+        if (search) {
+            query += " AND (username LIKE ? OR details LIKE ?)";
+            params.push(`%${search}%`, `%${search}%`);
+        }
+
+        query += " ORDER BY created_at DESC LIMIT ?";
+        params.push(Number(limit));
+
+        const [rows] = await pool.query(query, params);
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/system-logs', async (req, res) => {
+    const { userId, username, action, module, details } = req.body;
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+    try {
+        await logSystemEvent({
+            userId,
+            username: username || 'Sistema',
+            action: action || 'ACTION',
+            module: module || 'system',
+            details: details || '',
+            ip
+        });
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Active Sessions
+router.get('/active-sessions', async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT id, userId, username, ip_address, user_agent,
+                   DATE_FORMAT(last_activity, '%Y-%m-%d %H:%i:%s') as last_activity,
+                   DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as login_time
+            FROM active_sessions
+            WHERE last_activity >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+            ORDER BY last_activity DESC
+        `);
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/active-sessions/heartbeat', async (req, res) => {
+    const { sessionId } = req.body;
+    if (!sessionId) return res.json({ success: false });
+    try {
+        await pool.query('UPDATE active_sessions SET last_activity = NOW() WHERE id = ?', [sessionId]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.delete('/active-sessions/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM active_sessions WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Notifications
+router.get('/notifications', async (req, res) => {
+    try {
+        const { userId } = req.query;
+        let query = "SELECT id, userId, title, message, type, isRead, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i') as date FROM notifications WHERE (userId IS NULL";
+        const params = [];
+        if (userId) {
+            query += " OR userId = ?";
+            params.push(userId);
+        }
+        query += ") ORDER BY created_at DESC LIMIT 50";
+        const [rows] = await pool.query(query, params);
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/notifications', async (req, res) => {
+    const { userId, title, message, type } = req.body;
+    if (!title || !message) return res.status(400).json({ error: 'Título y mensaje requeridos.' });
+    try {
+        const id = randomUUID();
+        await pool.query(
+            'INSERT INTO notifications (id, userId, title, message, type) VALUES (?, ?, ?, ?, ?)',
+            [id, userId || null, title, message, type || 'info']
+        );
+        res.json({ success: true, id });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.put('/notifications/:id/read', async (req, res) => {
+    try {
+        await pool.query('UPDATE notifications SET isRead = 1 WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.put('/notifications/read-all', async (req, res) => {
+    const { userId } = req.body;
+    try {
+        if (userId) {
+            await pool.query('UPDATE notifications SET isRead = 1 WHERE userId IS NULL OR userId = ?', [userId]);
+        } else {
+            await pool.query('UPDATE notifications SET isRead = 1');
+        }
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -479,24 +900,35 @@ router.post('/settings', async (req, res) => {
     }
 });
 
-// Versions
+// Versions & Changelog
 router.get('/versions', async (req, res) => {
     try {
-        const [rows] = await pool.query("SELECT id, version, description, DATE_FORMAT(created_at, '%Y-%m-%d') as date, DATE_FORMAT(created_at, '%H:%i') as time FROM versions ORDER BY id DESC");
-        res.json(rows);
+        const [rows] = await pool.query("SELECT id, version, description, changes, author, DATE_FORMAT(created_at, '%Y-%m-%d') as date, DATE_FORMAT(created_at, '%H:%i') as time FROM versions ORDER BY id DESC");
+        const parsed = rows.map(v => {
+            let chList = [];
+            if (v.changes) {
+                try { chList = JSON.parse(v.changes); } catch (e) { chList = [v.changes]; }
+            }
+            return { ...v, changes: chList };
+        });
+        res.json(parsed);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
 router.post('/versions', async (req, res) => {
-    const { description } = req.body;
+    const { description, changes, author } = req.body;
     const connection = await pool.getConnection();
     try {
         await connection.beginTransaction();
         const [maxRows] = await connection.query('SELECT COALESCE(MAX(id), 0) AS maxId FROM versions');
         const nextVersion = `V${maxRows[0].maxId + 1}`;
-        await connection.query('INSERT INTO versions (version, description) VALUES (?, ?)', [nextVersion, description || '']);
+        const changesJson = changes ? JSON.stringify(Array.isArray(changes) ? changes : [changes]) : '[]';
+        await connection.query(
+            'INSERT INTO versions (version, description, changes, author) VALUES (?, ?, ?, ?)',
+            [nextVersion, description || '', changesJson, author || 'Admin']
+        );
         await connection.commit();
         res.json({ success: true, version: nextVersion });
     } catch (error) {
