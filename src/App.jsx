@@ -20,6 +20,7 @@ import ConnectedUsers from './components/Security/Sessions/ConnectedUsers';
 import ChangeHistory from './components/Security/Changelog/ChangeHistory';
 import NotificationCenter from './components/Security/Notifications/NotificationCenter';
 import UserManual from './components/Security/Manual/UserManual';
+import { ThemeToggle } from './components/Theme/ThemeToggle';
 import './App.css';
 
 function AppContent() {
@@ -135,11 +136,14 @@ function AppContent() {
         <button className="sidebar-backdrop" aria-label="Cerrar menú" onClick={() => setIsMobileMenuOpen(false)} />
       )}
       <div className="main-content">
-        <div className="mobile-header">
-          <button className="mobile-menu-button" onClick={() => setIsMobileMenuOpen(true)} aria-label="Abrir menú">
-            <Menu size={22} />
-          </button>
-          <span>Inventario</span>
+        <div className="mobile-header" style={{ justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <button className="mobile-menu-button" onClick={() => setIsMobileMenuOpen(true)} aria-label="Abrir menú">
+              <Menu size={22} />
+            </button>
+            <span>Inventario</span>
+          </div>
+          <ThemeToggle />
         </div>
         {renderView()}
       </div>

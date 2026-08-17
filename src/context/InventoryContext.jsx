@@ -31,6 +31,17 @@ export const InventoryProvider = ({ children }) => {
   const [categoryUnits, setCategoryUnits] = useState({});
   const [versions, setVersions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [theme, setThemeState] = useState(() => localStorage.getItem('inv_theme') || 'light');
+
+  const setTheme = (newTheme) => {
+    setThemeState(newTheme);
+    localStorage.setItem('inv_theme', newTheme);
+    document.documentElement.setAttribute('data-theme', newTheme);
+  };
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
 
   // Initial Fetch
   useEffect(() => {
@@ -119,7 +130,21 @@ export const InventoryProvider = ({ children }) => {
 
       if (Array.isArray(prodRes)) setProducts(prodRes);
       if (Array.isArray(movRes)) setMovements(movRes);
-      if (Array.isArray(userRes)) setUsers(userRes);
+      if (Array.isArray(userRes)) {
+        setUsers(userRes);
+        if (currentUser) {
+          const freshSelf = userRes.find(u => Number(u.id) === Number(currentUser.id));
+          if (freshSelf && freshSelf.permissions !== undefined) {
+            setCurrentUser(prev => ({
+              ...prev,
+              permissions: freshSelf.permissions,
+              role: freshSelf.role,
+              role_id: freshSelf.role_id,
+              roleName: freshSelf.roleName
+            }));
+          }
+        }
+      }
       if (Array.isArray(versionsRes)) setVersions(versionsRes);
       if (Array.isArray(rolesRes)) setRoles(rolesRes);
       if (Array.isArray(notifRes)) setNotifications(notifRes);
@@ -155,14 +180,27 @@ export const InventoryProvider = ({ children }) => {
     }
   }, [sessionId]);
 
-  // Permissions helper
+  // Permissions helper: Custom user permissions ALWAYS take absolute priority!
   const hasPermission = (module, action = 'view') => {
     if (!currentUser) return false;
+
+    // 1. If currentUser has explicit custom permissions for this module, ALWAYS respect them strictly!
+    if (currentUser.permissions && typeof currentUser.permissions === 'object' && currentUser.permissions[module] !== undefined) {
+      return Boolean(currentUser.permissions[module]?.[action]);
+    }
+
+    // 2. If user is admin and has NO explicit custom override on this module, allow by default
     if (currentUser.role === 'admin') return true;
-    if (!currentUser.permissions) return false;
-    const modPerms = currentUser.permissions[module];
-    if (!modPerms) return false;
-    return Boolean(modPerms[action]);
+
+    // 3. Fallback to assigned role permissions
+    if (currentUser.role_id && roles && roles.length > 0) {
+      const userRole = roles.find(r => r.id === currentUser.role_id);
+      if (userRole?.permissions && userRole.permissions[module] !== undefined) {
+        return Boolean(userRole.permissions[module]?.[action]);
+      }
+    }
+
+    return false;
   };
 
   const canView = (module) => hasPermission(module, 'view');
@@ -525,9 +563,11 @@ export const InventoryProvider = ({ children }) => {
       });
       if (res.ok) {
         await fetchUsers();
-        // If updating self, refresh currentUser permissions
-        if (currentUser?.id === id) {
-          setCurrentUser(prev => ({ ...prev, permissions }));
+        // If updating self, refresh currentUser permissions immediately
+        if (currentUser && Number(currentUser.id) === Number(id)) {
+          const updated = { ...currentUser, permissions };
+          setCurrentUser(updated);
+          localStorage.setItem('inv_current_user', JSON.stringify(updated));
         }
         return { success: true };
       }
@@ -780,7 +820,9 @@ export const InventoryProvider = ({ children }) => {
       refreshData,
       login,
       logout,
-      totalStock
+      totalStock,
+      theme,
+      setTheme
     }}>
       {children}
     </InventoryContext.Provider>

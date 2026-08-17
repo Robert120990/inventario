@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { Plus, Trash2, Home, Save, Image as ImageIcon, GitBranch, Calendar } from 'lucide-react';
+import { Plus, Trash2, Home, Save, Image as ImageIcon, GitBranch, Calendar, Palette } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { formatDate } from '../../utils/formatUtils';
 
 const Settings = () => {
-  const { categories, documentTypes, settings, categoryUnits, versions, addCategory, deleteCategory, addDocumentType, deleteDocumentType, updateSettings, updateCategoryUnit, addVersion, deleteVersion } = useInventory();
+  const { categories, documentTypes, settings, categoryUnits, versions, addCategory, deleteCategory, addDocumentType, deleteDocumentType, updateSettings, updateCategoryUnit, addVersion, deleteVersion, theme, setTheme } = useInventory();
   const [newCat, setNewCat] = useState('');
   const [newDocType, setNewDocType] = useState('');
   const [systemName, setSystemName] = useState(settings.name);
@@ -151,6 +151,57 @@ const Settings = () => {
               </button>
             </div>
           </form>
+        </div>
+
+        {/* Theme Customizer Card */}
+        <div className="card">
+          <h2 style={{ fontSize: '1.2rem', marginBottom: '0.5rem', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Palette size={20} /> Tema Visual y Apariencia
+          </h2>
+          <p style={{ color: 'var(--color-text-light)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
+            Personaliza el tema cromático de la plataforma para mejorar el contraste, la legibilidad y la experiencia visual.
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+            {[
+              { id: 'light', name: 'Modo Claro', desc: 'Fondo limpio y texto de alto contraste', bg: '#f8fafc', surface: '#ffffff', primary: '#1e3a8a' },
+              { id: 'dark', name: 'Modo Oscuro', desc: 'Elegante y descansado para la vista', bg: '#0b0f19', surface: '#111827', primary: '#3b82f6' },
+              { id: 'navy', name: 'Azul Noche', desc: 'Tonalidad nocturna azul profundo', bg: '#08122d', surface: '#0e1e4a', primary: '#38bdf8' },
+              { id: 'emerald', name: 'Esmeralda Pro', desc: 'Verde profesional para almacén', bg: '#051c19', surface: '#0a2e2b', primary: '#10b981' }
+            ].map(t => {
+              const isSelected = theme === t.id;
+              return (
+                <div
+                  key={t.id}
+                  onClick={() => setTheme(t.id)}
+                  style={{
+                    border: isSelected ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
+                    borderRadius: 'var(--radius)',
+                    padding: '1rem',
+                    cursor: 'pointer',
+                    backgroundColor: t.surface,
+                    boxShadow: isSelected ? '0 0 0 3px rgba(59, 130, 246, 0.2)' : 'none',
+                    transition: 'var(--transition)'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: t.primary, display: 'inline-block' }}></span>
+                      <strong style={{ fontSize: '0.9rem', color: t.id === 'light' ? '#1e293b' : '#f8fafc' }}>{t.name}</strong>
+                    </div>
+                    {isSelected && (
+                      <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '8px', backgroundColor: t.primary, color: 'white', fontWeight: 'bold' }}>
+                        Activo
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: '0.75rem', color: t.id === 'light' ? '#64748b' : '#94a3b8', margin: 0 }}>
+                    {t.desc}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
