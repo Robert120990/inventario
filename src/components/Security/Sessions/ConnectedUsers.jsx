@@ -86,7 +86,8 @@ const ConnectedUsers = () => {
             </thead>
             <tbody>
               {activeSessions.map(session => {
-                const isCurrent = currentUser?.id === session.userId;
+                const isCurrent = (currentUser?.id && session.userId && Number(currentUser.id) === Number(session.userId))
+                  || (currentUser?.username && session.username && currentUser.username.toLowerCase() === session.username.toLowerCase());
                 return (
                   <tr key={session.id}>
                     <td style={{ textAlign: 'center' }}>

@@ -815,11 +815,40 @@ router.get('/active-sessions', async (req, res) => {
 });
 
 router.post('/active-sessions/heartbeat', async (req, res) => {
-    const { sessionId } = req.body;
-    if (!sessionId) return res.json({ success: false });
+    const { sessionId, userId, username, userAgent } = req.body;
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
+    const ua = userAgent || req.headers['user-agent'] || 'Navegador Web';
+
+    if (!sessionId && !username && !userId) {
+        return res.json({ success: false });
+    }
+
     try {
-        await pool.query('UPDATE active_sessions SET last_activity = NOW() WHERE id = ?', [sessionId]);
-        res.json({ success: true });
+        let activeSessionId = sessionId;
+
+        if (activeSessionId) {
+            const [updateResult] = await pool.query(
+                'UPDATE active_sessions SET last_activity = NOW(), user_agent = ?, ip_address = ? WHERE id = ?',
+                [ua, ip, activeSessionId]
+            );
+
+            if (updateResult.affectedRows === 0 && username) {
+                // Session ID was not found in DB, re-create it
+                await pool.query(
+                    'INSERT INTO active_sessions (id, userId, username, ip_address, user_agent, last_activity, created_at) VALUES (?, ?, ?, ?, ?, NOW(), NOW())',
+                    [activeSessionId, userId || null, username, ip, ua]
+                );
+            }
+        } else if (username) {
+            // No sessionId provided, create a new active session
+            activeSessionId = crypto.randomUUID();
+            await pool.query(
+                'INSERT INTO active_sessions (id, userId, username, ip_address, user_agent, last_activity, created_at) VALUES (?, ?, ?, ?, ?, NOW(), NOW())',
+                [activeSessionId, userId || null, username, ip, ua]
+            );
+        }
+
+        res.json({ success: true, sessionId: activeSessionId });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

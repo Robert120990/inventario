@@ -103,15 +103,31 @@ export const InventoryProvider = ({ children }) => {
 
   // Heartbeat for active session tracking
   useEffect(() => {
-    if (!currentUser || !sessionId) return;
-    const interval = setInterval(() => {
-      fetch(`${API_BASE_URL}/api/active-sessions/heartbeat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId })
-      }).catch(() => {});
-    }, 60000); // Every 1 minute
+    if (!currentUser) return;
 
+    const sendHeartbeat = async () => {
+      try {
+        const storedSessionId = sessionId || localStorage.getItem('inv_session_id');
+        const res = await fetch(`${API_BASE_URL}/api/active-sessions/heartbeat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: storedSessionId,
+            userId: currentUser.id,
+            username: currentUser.username,
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : ''
+          })
+        });
+        const data = await res.json();
+        if (data.sessionId && data.sessionId !== sessionId) {
+          setSessionId(data.sessionId);
+          localStorage.setItem('inv_session_id', data.sessionId);
+        }
+      } catch (e) {}
+    };
+
+    sendHeartbeat();
+    const interval = setInterval(sendHeartbeat, 20000); // Every 20 seconds
     return () => clearInterval(interval);
   }, [currentUser, sessionId]);
 
@@ -628,6 +644,27 @@ export const InventoryProvider = ({ children }) => {
 
   const fetchActiveSessions = async () => {
     try {
+      if (currentUser) {
+        const storedSessionId = sessionId || localStorage.getItem('inv_session_id');
+        try {
+          const hbRes = await fetch(`${API_BASE_URL}/api/active-sessions/heartbeat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: storedSessionId,
+              userId: currentUser.id,
+              username: currentUser.username,
+              userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : ''
+            })
+          });
+          const hbData = await hbRes.json();
+          if (hbData.sessionId && hbData.sessionId !== sessionId) {
+            setSessionId(hbData.sessionId);
+            localStorage.setItem('inv_session_id', hbData.sessionId);
+          }
+        } catch (err) {}
+      }
+
       const res = await fetch(`${API_BASE_URL}/api/active-sessions`);
       const data = await res.json();
       if (Array.isArray(data)) setActiveSessions(data);
