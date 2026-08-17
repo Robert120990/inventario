@@ -3,11 +3,11 @@ import { LayoutDashboard, Package, ArrowRightLeft, Settings, LogOut, FileText, M
 import { useInventory } from '../context/InventoryContext';
 import { formatDate } from '../utils/formatUtils';
 
-const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) => {
+const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isMobileOpen, closeMobileMenu }) => {
   const { currentUser, settings, logout, currentVersion } = useInventory();
 
   return (
-    <div className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+    <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''} ${isMobileOpen ? 'mobile-open' : ''}`} aria-label="Navegación principal">
       <div className="sidebar-logo" style={{ justifyContent: isCollapsed ? 'center' : 'space-between', marginBottom: '2rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden' }}>
           {settings.logo ? (
@@ -23,6 +23,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) =
         >
           {isCollapsed ? <Menu size={20} /> : <ChevronLeft size={20} />}
         </button>
+        <button className="mobile-close-button" onClick={closeMobileMenu} aria-label="Cerrar menú">×</button>
       </div>
       <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         <button
@@ -192,7 +193,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed }) =
           {currentVersion.version}{!isCollapsed && ` ${currentVersion.date ? '· ' + formatDate(currentVersion.date) : ''}`}
         </div>
       )}
-    </div>
+    </aside>
   );
 };
 

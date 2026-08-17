@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Menu } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import { Toaster } from 'react-hot-toast';
 import Dashboard from './components/Dashboard';
@@ -18,6 +19,7 @@ function AppContent() {
   const { currentUser, loading, refreshData } = useInventory();
   const [currentView, setCurrentView] = useState('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Refresh data whenever the view changes to ensure sync between devices
   React.useEffect(() => {
@@ -80,11 +82,25 @@ function AppContent() {
       <Toaster position="bottom-right" toastOptions={{ duration: 3000, style: { background: 'var(--color-card)', color: 'var(--color-text)', border: '1px solid var(--color-border)' } }} />
       <Sidebar 
         currentView={currentView} 
-        setCurrentView={setCurrentView} 
-        isCollapsed={isSidebarCollapsed}
+        setCurrentView={(view) => {
+          setCurrentView(view);
+          setIsMobileMenuOpen(false);
+        }}
+        isCollapsed={isSidebarCollapsed && !isMobileMenuOpen}
         setIsCollapsed={setIsSidebarCollapsed}
+        isMobileOpen={isMobileMenuOpen}
+        closeMobileMenu={() => setIsMobileMenuOpen(false)}
       />
+      {isMobileMenuOpen && (
+        <button className="sidebar-backdrop" aria-label="Cerrar menú" onClick={() => setIsMobileMenuOpen(false)} />
+      )}
       <div className="main-content">
+        <div className="mobile-header">
+          <button className="mobile-menu-button" onClick={() => setIsMobileMenuOpen(true)} aria-label="Abrir menú">
+            <Menu size={22} />
+          </button>
+          <span>Inventario</span>
+        </div>
         {renderView()}
       </div>
     </div>

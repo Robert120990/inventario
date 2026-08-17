@@ -1,0 +1,14 @@
+{
+  "name": "Sistema de Inventario",
+  "short_name": "Inventario",
+  "description": "Control de inventario, productos y movimientos",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#1e3a8a",
+  "lang": "es",
+  "icons": [
+    { "src": "/pwa-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
