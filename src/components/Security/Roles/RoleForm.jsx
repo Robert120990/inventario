@@ -1,19 +1,8 @@
 import React, { useState } from 'react';
 import { useInventory } from '../../../context/InventoryContext';
-import { Save, X, CheckSquare, Square } from 'lucide-react';
+import { Save, X, Check, Eye, Plus, Edit2, Trash2, Shield, Layers, Sparkles } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-
-const MODULES_CONFIG = [
-  { id: 'dashboard', name: 'Dashboard', actions: ['view'] },
-  { id: 'products', name: 'Productos', actions: ['view', 'create', 'edit', 'delete'] },
-  { id: 'inventory-count', name: 'Toma de Inventario', actions: ['view', 'create', 'edit', 'delete'] },
-  { id: 'movements', name: 'Movimientos', actions: ['view', 'create', 'edit', 'delete'] },
-  { id: 'insurance', name: 'Corte de Seguro', actions: ['view'] },
-  { id: 'summary', name: 'Resumen Detallado', actions: ['view'] },
-  { id: 'summary2', name: 'Resumen Diario', actions: ['view'] },
-  { id: 'security', name: 'Módulo de Seguridad', actions: ['view', 'create', 'edit', 'delete'] },
-  { id: 'settings', name: 'Configuración', actions: ['view', 'edit'] },
-];
+import { SYSTEM_MODULES, GROUPS_ORDER } from '../../../config/modules';
 
 const RoleForm = ({ onCancel, initialData }) => {
   const { addRole, updateRole } = useInventory();
@@ -24,7 +13,7 @@ const RoleForm = ({ onCancel, initialData }) => {
   const [permissions, setPermissions] = useState(() => {
     const base = initialData?.permissions || {};
     const formatted = {};
-    MODULES_CONFIG.forEach(m => {
+    SYSTEM_MODULES.forEach(m => {
       formatted[m.id] = {
         view: Boolean(base[m.id]?.view),
         create: Boolean(base[m.id]?.create),
@@ -52,7 +41,7 @@ const RoleForm = ({ onCancel, initialData }) => {
 
   const handleSetAll = (enable) => {
     const next = {};
-    MODULES_CONFIG.forEach(m => {
+    SYSTEM_MODULES.forEach(m => {
       next[m.id] = {
         view: enable,
         create: enable && m.actions.includes('create'),
@@ -61,6 +50,34 @@ const RoleForm = ({ onCancel, initialData }) => {
       };
     });
     setPermissions(next);
+  };
+
+  const handleSetReadOnly = () => {
+    const next = {};
+    SYSTEM_MODULES.forEach(m => {
+      next[m.id] = {
+        view: true,
+        create: false,
+        edit: false,
+        delete: false
+      };
+    });
+    setPermissions(next);
+  };
+
+  const handleToggleGroup = (groupName, enable) => {
+    setPermissions(prev => {
+      const updated = { ...prev };
+      SYSTEM_MODULES.filter(m => m.group === groupName).forEach(m => {
+        updated[m.id] = {
+          view: enable,
+          create: enable && m.actions.includes('create'),
+          edit: enable && m.actions.includes('edit'),
+          delete: enable && m.actions.includes('delete')
+        };
+      });
+      return updated;
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -95,11 +112,16 @@ const RoleForm = ({ onCancel, initialData }) => {
     }
   };
 
+  const groupedModules = GROUPS_ORDER.map(groupName => ({
+    group: groupName,
+    items: SYSTEM_MODULES.filter(m => m.group === groupName)
+  }));
+
   return (
     <div>
-      <div className="topbar" style={{ marginBottom: '1.5rem', borderBottom: 'none' }}>
-        <h2 style={{ fontSize: '1.25rem', color: 'var(--color-primary)' }}>
-          {initialData ? 'Editar Rol del Sistema' : 'Nuevo Rol del Sistema'}
+      <div className="topbar" style={{ marginBottom: '1.25rem', borderBottom: 'none' }}>
+        <h2 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Shield size={22} /> {initialData ? 'Editar Rol y Perfil' : 'Nuevo Rol de Usuario'}
         </h2>
         <button type="button" className="btn btn-outline" onClick={onCancel} style={{ padding: '0.25rem' }}>
           <X size={18} />
@@ -107,115 +129,138 @@ const RoleForm = ({ onCancel, initialData }) => {
       </div>
 
       <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-2" style={{ gap: '1rem', marginBottom: '1.5rem' }}>
-          <div className="form-group">
-            <label className="form-label">Nombre del Rol</label>
-            <input
-              type="text"
-              className="form-input"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ej: Supervisor de Almacén"
-              required
-            />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Nombre del Rol</label>
+              <input
+                type="text"
+                className="form-input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ej. Auditor de Inventario, Supervisor..."
+                required
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Descripción</label>
+              <input
+                type="text"
+                className="form-input"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Breve detalle de las funciones del rol"
+              />
+            </div>
           </div>
-          <div className="form-group">
-            <label className="form-label">Descripción</label>
-            <input
-              type="text"
-              className="form-input"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Ej: Permisos para captura y consulta de inventario"
-            />
-          </div>
-        </div>
 
-        <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ fontSize: '1rem', color: 'var(--color-text)', margin: 0 }}>Permisos por Módulo</h3>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button type="button" className="btn btn-outline" onClick={() => handleSetAll(true)} style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}>
-              Marcar Todos
+          {/* Quick presets */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--color-bg)', padding: '0.75rem 1rem', borderRadius: 'var(--radius)', border: '1px solid var(--color-border)', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text)' }}>Permisos por Pantalla:</span>
+            <div style={{ display: 'flex', gap: '0.4rem' }}>
+              <button type="button" className="btn btn-outline" onClick={() => handleSetAll(true)} style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}>
+                <Sparkles size={12} style={{ color: 'var(--color-success)' }} /> Activar Todo
+              </button>
+              <button type="button" className="btn btn-outline" onClick={handleSetReadOnly} style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}>
+                <Eye size={12} style={{ color: 'var(--color-primary)' }} /> Solo Lectura
+              </button>
+              <button type="button" className="btn btn-outline" onClick={() => handleSetAll(false)} style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', color: 'var(--color-danger)' }}>
+                <X size={12} /> Bloquear Todo
+              </button>
+            </div>
+          </div>
+
+          {/* Permissions Table */}
+          <div className="table-container" style={{ maxHeight: '380px', overflowY: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: '40%' }}>Pantalla / Módulo</th>
+                  <th style={{ textAlign: 'center', width: '15%' }}>Ver</th>
+                  <th style={{ textAlign: 'center', width: '15%' }}>Crear</th>
+                  <th style={{ textAlign: 'center', width: '15%' }}>Editar</th>
+                  <th style={{ textAlign: 'center', width: '15%' }}>Eliminar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupedModules.map(groupObj => (
+                  <React.Fragment key={groupObj.group}>
+                    <tr style={{ backgroundColor: 'rgba(255,255,255,0.03)', borderTop: '1px solid var(--color-border)' }}>
+                      <td colSpan="5" style={{ padding: '0.45rem 0.75rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <strong style={{ fontSize: '0.75rem', color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            {groupObj.group}
+                          </strong>
+                          <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleGroup(groupObj.group, true)}
+                              style={{ background: 'none', border: 'none', color: 'var(--color-success)', fontSize: '0.65rem', cursor: 'pointer' }}
+                            >
+                              + Activar Grupo
+                            </button>
+                            <span style={{ color: 'var(--color-border)', fontSize: '0.65rem' }}>|</span>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleGroup(groupObj.group, false)}
+                              style={{ background: 'none', border: 'none', color: 'var(--color-danger)', fontSize: '0.65rem', cursor: 'pointer' }}
+                            >
+                              - Desactivar Grupo
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                    {groupObj.items.map(mod => {
+                      const modPerms = permissions[mod.id] || {};
+                      return (
+                        <tr key={mod.id}>
+                          <td style={{ paddingLeft: '1.25rem' }}>
+                            <div style={{ fontWeight: '600', fontSize: '0.85rem' }}>{mod.name}</div>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <button type="button" className={`perm-toggle-btn ${modPerms.view ? 'active view-act' : ''}`} onClick={() => handleToggle(mod.id, 'view')}>
+                              {modPerms.view ? <Check size={16} /> : <X size={16} />}
+                            </button>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            {mod.actions.includes('create') ? (
+                              <button type="button" className={`perm-toggle-btn ${modPerms.create ? 'active' : ''}`} onClick={() => handleToggle(mod.id, 'create')}>
+                                {modPerms.create ? <Check size={16} /> : <X size={16} />}
+                              </button>
+                            ) : <span style={{ color: 'var(--color-text-light)', opacity: 0.3 }}>—</span>}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            {mod.actions.includes('edit') ? (
+                              <button type="button" className={`perm-toggle-btn ${modPerms.edit ? 'active' : ''}`} onClick={() => handleToggle(mod.id, 'edit')}>
+                                {modPerms.edit ? <Check size={16} /> : <X size={16} />}
+                              </button>
+                            ) : <span style={{ color: 'var(--color-text-light)', opacity: 0.3 }}>—</span>}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            {mod.actions.includes('delete') ? (
+                              <button type="button" className={`perm-toggle-btn ${modPerms.delete ? 'active del-act' : ''}`} onClick={() => handleToggle(mod.id, 'delete')}>
+                                {modPerms.delete ? <Check size={16} /> : <X size={16} />}
+                              </button>
+                            ) : <span style={{ color: 'var(--color-text-light)', opacity: 0.3 }}>—</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
+            <button type="button" className="btn btn-outline" onClick={onCancel} disabled={saving}>
+              Cancelar
             </button>
-            <button type="button" className="btn btn-outline" onClick={() => handleSetAll(false)} style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}>
-              Desmarcar Todos
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              <Save size={16} /> {saving ? 'Guardando...' : 'Guardar Rol'}
             </button>
           </div>
-        </div>
-
-        <div className="table-container" style={{ maxHeight: '350px', overflowY: 'auto', marginBottom: '1.5rem' }}>
-          <table>
-            <thead>
-              <tr>
-                <th>Módulo</th>
-                <th style={{ textAlign: 'center' }}>Ver</th>
-                <th style={{ textAlign: 'center' }}>Crear</th>
-                <th style={{ textAlign: 'center' }}>Editar</th>
-                <th style={{ textAlign: 'center' }}>Eliminar</th>
-              </tr>
-            </thead>
-            <tbody>
-              {MODULES_CONFIG.map(mod => {
-                const modPerms = permissions[mod.id] || {};
-                return (
-                  <tr key={mod.id}>
-                    <td style={{ fontWeight: '500' }}>{mod.name}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button
-                        type="button"
-                        onClick={() => handleToggle(mod.id, 'view')}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: modPerms.view ? 'var(--color-success)' : 'var(--color-text-light)' }}
-                      >
-                        {modPerms.view ? <CheckSquare size={18} /> : <Square size={18} />}
-                      </button>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      {mod.actions.includes('create') ? (
-                        <button
-                          type="button"
-                          onClick={() => handleToggle(mod.id, 'create')}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: modPerms.create ? 'var(--color-primary)' : 'var(--color-text-light)' }}
-                        >
-                          {modPerms.create ? <CheckSquare size={18} /> : <Square size={18} />}
-                        </button>
-                      ) : '—'}
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      {mod.actions.includes('edit') ? (
-                        <button
-                          type="button"
-                          onClick={() => handleToggle(mod.id, 'edit')}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: modPerms.edit ? '#d97706' : 'var(--color-text-light)' }}
-                        >
-                          {modPerms.edit ? <CheckSquare size={18} /> : <Square size={18} />}
-                        </button>
-                      ) : '—'}
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      {mod.actions.includes('delete') ? (
-                        <button
-                          type="button"
-                          onClick={() => handleToggle(mod.id, 'delete')}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: modPerms.delete ? 'var(--color-danger)' : 'var(--color-text-light)' }}
-                        >
-                          {modPerms.delete ? <CheckSquare size={18} /> : <Square size={18} />}
-                        </button>
-                      ) : '—'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-          <button type="button" className="btn btn-outline" onClick={onCancel} disabled={saving}>
-            Cancelar
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={saving}>
-            <Save size={18} /> {saving ? 'Guardando...' : (initialData ? 'Guardar Cambios' : 'Crear Rol')}
-          </button>
         </div>
       </form>
     </div>

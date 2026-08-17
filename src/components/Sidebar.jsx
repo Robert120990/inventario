@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   LayoutDashboard, Package, ArrowRightLeft, Settings, LogOut, FileText,
   Menu, ChevronLeft, ChevronDown, ChevronUp, Users, UserCircle, ShieldCheck,
-  ClipboardCheck, Shield, GitBranch, History, Bell, BookOpen, UserCheck, Mail
+  ClipboardCheck, Shield, GitBranch, History, Bell, BookOpen, UserCheck
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { formatDate } from '../utils/formatUtils';
@@ -13,6 +13,16 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
   const [isSecurityOpen, setIsSecurityOpen] = useState(true);
 
   const isSecurityView = currentView.startsWith('security-') || currentView === 'users';
+
+  const hasAnySecurityAccess = currentUser?.role === 'admin' ||
+    canView('security-users') ||
+    canView('security-access') ||
+    canView('security-roles') ||
+    canView('security-logs') ||
+    canView('security-sessions') ||
+    canView('security-changelog') ||
+    canView('security-notifications') ||
+    canView('security-manual');
 
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''} ${isMobileOpen ? 'mobile-open' : ''}`} aria-label="Navegación principal">
@@ -119,19 +129,8 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
           </button>
         )}
 
-        {canView('email') && (
-          <button
-            className={`nav-link ${currentView === 'email' ? 'active' : ''}`}
-            onClick={() => setCurrentView('email')}
-            title={isCollapsed ? "Correo Corporativo" : ""}
-          >
-            <Mail size={19} />
-            {!isCollapsed && <span>Correo Corporativo</span>}
-          </button>
-        )}
-
         {/* Security Module Accordion */}
-        {(currentUser?.role === 'admin' || canView('security')) && (
+        {hasAnySecurityAccess && (
           <div style={{ marginTop: '0.4rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.4rem' }}>
             <button
               onClick={() => {
@@ -168,84 +167,100 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
 
             {(!isCollapsed && isSecurityOpen) && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', paddingLeft: '0.5rem', marginTop: '0.2rem' }}>
-                <button
-                  className={`nav-link ${currentView === 'security-users' || currentView === 'users' ? 'active' : ''}`}
-                  onClick={() => setCurrentView('security-users')}
-                  style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
-                >
-                  <UserCheck size={16} />
-                  <span>Usuarios</span>
-                </button>
+                {canView('security-users') && (
+                  <button
+                    className={`nav-link ${currentView === 'security-users' || currentView === 'users' ? 'active' : ''}`}
+                    onClick={() => setCurrentView('security-users')}
+                    style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
+                  >
+                    <UserCheck size={16} />
+                    <span>Usuarios</span>
+                  </button>
+                )}
 
-                <button
-                  className={`nav-link ${currentView === 'security-access' ? 'active' : ''}`}
-                  onClick={() => setCurrentView('security-access')}
-                  style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
-                >
-                  <GitBranch size={16} />
-                  <span>Accesos de Usuario</span>
-                </button>
+                {canView('security-access') && (
+                  <button
+                    className={`nav-link ${currentView === 'security-access' ? 'active' : ''}`}
+                    onClick={() => setCurrentView('security-access')}
+                    style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
+                  >
+                    <GitBranch size={16} />
+                    <span>Accesos y Permisos</span>
+                  </button>
+                )}
 
-                <button
-                  className={`nav-link ${currentView === 'security-roles' ? 'active' : ''}`}
-                  onClick={() => setCurrentView('security-roles')}
-                  style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
-                >
-                  <Shield size={16} />
-                  <span>Roles</span>
-                </button>
+                {canView('security-roles') && (
+                  <button
+                    className={`nav-link ${currentView === 'security-roles' ? 'active' : ''}`}
+                    onClick={() => setCurrentView('security-roles')}
+                    style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
+                  >
+                    <Shield size={16} />
+                    <span>Roles</span>
+                  </button>
+                )}
 
-                <button
-                  className={`nav-link ${currentView === 'security-logs' ? 'active' : ''}`}
-                  onClick={() => setCurrentView('security-logs')}
-                  style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
-                >
-                  <FileText size={16} />
-                  <span>Bitácora del Sistema</span>
-                </button>
+                {canView('security-logs') && (
+                  <button
+                    className={`nav-link ${currentView === 'security-logs' ? 'active' : ''}`}
+                    onClick={() => setCurrentView('security-logs')}
+                    style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
+                  >
+                    <FileText size={16} />
+                    <span>Bitácora del Sistema</span>
+                  </button>
+                )}
 
-                <button
-                  className={`nav-link ${currentView === 'security-sessions' ? 'active' : ''}`}
-                  onClick={() => setCurrentView('security-sessions')}
-                  style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
-                >
-                  <Users size={16} />
-                  <span>Usuarios Conectados</span>
-                </button>
+                {canView('security-sessions') && (
+                  <button
+                    className={`nav-link ${currentView === 'security-sessions' ? 'active' : ''}`}
+                    onClick={() => setCurrentView('security-sessions')}
+                    style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
+                  >
+                    <Users size={16} />
+                    <span>Usuarios Conectados</span>
+                  </button>
+                )}
 
-                <button
-                  className={`nav-link ${currentView === 'security-changelog' ? 'active' : ''}`}
-                  onClick={() => setCurrentView('security-changelog')}
-                  style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
-                >
-                  <History size={16} />
-                  <span>Historial de Cambios</span>
-                </button>
+                {canView('security-changelog') && (
+                  <button
+                    className={`nav-link ${currentView === 'security-changelog' ? 'active' : ''}`}
+                    onClick={() => setCurrentView('security-changelog')}
+                    style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
+                  >
+                    <History size={16} />
+                    <span>Historial de Cambios</span>
+                  </button>
+                )}
 
-                <button
-                  className={`nav-link ${currentView === 'security-notifications' ? 'active' : ''}`}
-                  onClick={() => setCurrentView('security-notifications')}
-                  style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem', justifyContent: 'space-between' }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                    <Bell size={16} />
-                    <span>Notificaciones</span>
-                  </div>
-                  {unreadNotificationsCount > 0 && (
-                    <span style={{ backgroundColor: '#ef4444', color: 'white', fontSize: '0.65rem', padding: '1px 6px', borderRadius: '10px', fontWeight: 'bold' }}>
-                      {unreadNotificationsCount}
-                    </span>
-                  )}
-                </button>
+                {canView('security-notifications') && (
+                  <button
+                    className={`nav-link ${currentView === 'security-notifications' ? 'active' : ''}`}
+                    onClick={() => setCurrentView('security-notifications')}
+                    style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem', justifyContent: 'space-between' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                      <Bell size={16} />
+                      <span>Notificaciones</span>
+                    </div>
+                    {unreadNotificationsCount > 0 && (
+                      <span style={{ backgroundColor: '#ef4444', color: 'white', fontSize: '0.65rem', padding: '1px 6px', borderRadius: '10px', fontWeight: 'bold' }}>
+                        {unreadNotificationsCount}
+                      </span>
+                    )}
+                  </button>
+                )}
 
-                <button
-                  className={`nav-link ${currentView === 'security-manual' ? 'active' : ''}`}
-                  onClick={() => setCurrentView('security-manual')}
-                  style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
-                >
-                  <BookOpen size={16} />
-                  <span>Manual de Usuario</span>
-                </button>
+                {canView('security-manual') && (
+                  <button
+                    className={`nav-link ${currentView === 'security-manual' ? 'active' : ''}`}
+                    onClick={() => setCurrentView('security-manual')}
+                    style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
+                  >
+                    <BookOpen size={16} />
+                    <span>Manual de Usuario</span>
+                  </button>
+                )}
               </div>
             )}
           </div>

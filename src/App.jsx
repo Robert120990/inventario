@@ -20,13 +20,13 @@ import ConnectedUsers from './components/Security/Sessions/ConnectedUsers';
 import ChangeHistory from './components/Security/Changelog/ChangeHistory';
 import NotificationCenter from './components/Security/Notifications/NotificationCenter';
 import UserManual from './components/Security/Manual/UserManual';
-import EmailClient from './components/Email/EmailClient';
 import { ThemeToggle } from './components/Theme/ThemeToggle';
 import './App.css';
 
 function AppContent() {
   const { currentUser, loading, refreshData, canView } = useInventory();
   const [currentView, setCurrentView] = useState('dashboard');
+  const [targetAccessUserId, setTargetAccessUserId] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -77,37 +77,41 @@ function AppContent() {
         return canView('summary2') ? <Summary2 /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'insurance':
         return canView('insurance') ? <InsuranceReport /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
-      case 'email':
-        return canView('email') ? <EmailClient /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       
-      // Security Module Routes
+      // Granular Security Module Routes
       case 'security-users':
       case 'users':
-        return (currentUser.role === 'admin' || canView('security')) 
-          ? <UserList onConfigureAccess={(u) => setCurrentView('security-access')} /> 
+        return (currentUser.role === 'admin' || canView('security-users')) 
+          ? <UserList onConfigureAccess={(u) => { setTargetAccessUserId(u.id); setCurrentView('security-access'); }} /> 
           : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'security-access':
-        return (currentUser.role === 'admin' || canView('security')) 
-          ? <UserAccess /> 
+        return (currentUser.role === 'admin' || canView('security-access')) 
+          ? <UserAccess initialSelectedUserId={targetAccessUserId} /> 
           : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'security-roles':
-        return (currentUser.role === 'admin' || canView('security')) 
+        return (currentUser.role === 'admin' || canView('security-roles')) 
           ? <RoleList /> 
           : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'security-logs':
-        return (currentUser.role === 'admin' || canView('security')) 
+        return (currentUser.role === 'admin' || canView('security-logs')) 
           ? <SystemLog /> 
           : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'security-sessions':
-        return (currentUser.role === 'admin' || canView('security')) 
+        return (currentUser.role === 'admin' || canView('security-sessions')) 
           ? <ConnectedUsers /> 
           : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'security-changelog':
-        return <ChangeHistory />;
+        return (currentUser.role === 'admin' || canView('security-changelog'))
+          ? <ChangeHistory />
+          : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'security-notifications':
-        return <NotificationCenter />;
+        return (currentUser.role === 'admin' || canView('security-notifications'))
+          ? <NotificationCenter />
+          : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'security-manual':
-        return <UserManual />;
+        return (currentUser.role === 'admin' || canView('security-manual'))
+          ? <UserManual />
+          : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
 
       case 'settings':
         return (currentUser.role === 'admin' || canView('settings')) 
@@ -158,9 +162,9 @@ function UnauthorizedView({ onGoHome }) {
   return (
     <div className="card" style={{ textAlign: 'center', padding: '3rem', margin: '2rem auto', maxWidth: '500px' }}>
       <ShieldAlert size={48} style={{ color: 'var(--color-danger)', margin: '0 auto 1rem' }} />
-      <h2 style={{ color: 'var(--color-text)', marginBottom: '0.5rem' }}>Acceso No Autorizado</h2>
+      <h2 style={{ color: 'var(--color-text)', marginBottom: '0.5rem' }}>Acceso Restringido</h2>
       <p style={{ color: 'var(--color-text-light)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
-        No tienes permisos asignados para acceder a esta sección. Contacta al Administrador si requieres acceso.
+        No cuentas con permisos para acceder a esta pantalla. Contacta al Administrador si requieres autorización.
       </p>
       <button className="btn btn-primary" onClick={onGoHome}>
         Volver al Dashboard
