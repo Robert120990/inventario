@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Printer, Download, Copy, RefreshCw, Settings2, FileText, Check } from 'lucide-react';
+import { X, Printer, Download, Settings2 } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import jsPDF from 'jspdf';
 import { toast } from 'react-hot-toast';
-import { formatPrice } from '../../utils/formatUtils';
 
 /**
  * Obtiene la fecha actual en formato DD/MM/YY
@@ -19,7 +18,7 @@ const getDefaultDateFormatted = () => {
 const ProductLabelModal = ({ product, onClose }) => {
   const [copies, setCopies] = useState(1);
   const [customDescription, setCustomDescription] = useState(product?.description || '');
-  const [customPrice, setCustomPrice] = useState(product?.price !== undefined ? formatPrice(product.price) : '0.00');
+  const [customCategory, setCustomCategory] = useState(product?.category || '');
   const [customSku, setCustomSku] = useState(product?.sku || '');
   const [customDate, setCustomDate] = useState(getDefaultDateFormatted());
   const [labelSize, setLabelSize] = useState('58x40'); // '58x40' | '50x30' | 'sheet'
@@ -33,25 +32,24 @@ const ProductLabelModal = ({ product, onClose }) => {
       try {
         JsBarcode(barcodeSvgRef.current, String(customSku).trim(), {
           format: barcodeType,
-          width: 1.8,
-          height: 38,
+          width: 2.0,
+          height: 42,
           displayValue: true,
           font: 'Arial',
-          fontSize: 12,
-          textMargin: 2,
+          fontSize: 13,
+          textMargin: 3,
           margin: 0,
           background: '#ffffff',
           lineColor: '#000000'
         });
       } catch (err) {
-        // Fallback a CODE128 si falla formato específico
         try {
           JsBarcode(barcodeSvgRef.current, String(customSku).trim(), {
             format: 'CODE128',
-            width: 1.8,
-            height: 38,
+            width: 2.0,
+            height: 42,
             displayValue: true,
-            fontSize: 12,
+            fontSize: 13,
             margin: 0
           });
         } catch (e) {
@@ -59,9 +57,9 @@ const ProductLabelModal = ({ product, onClose }) => {
         }
       }
     }
-  }, [customSku, barcodeType, customPrice, customDescription]);
+  }, [customSku, barcodeType, customDescription, customCategory]);
 
-  // Imprimir directamente vía navegador
+  // Imprimir directamente vía diálogo del navegador con contorno y márgenes precisos
   const handlePrint = () => {
     const printWindow = window.open('', '_blank', 'width=750,height=600');
     if (!printWindow) {
@@ -79,16 +77,19 @@ const ProductLabelModal = ({ product, onClose }) => {
     let labelsHtml = '';
     for (let i = 0; i < numCopies; i++) {
       labelsHtml += `
-        <div class="label-box">
-          <div class="label-top-row">
-            <div class="product-title">${escapeHtml(customDescription)}</div>
-            <div class="product-price">$${escapeHtml(customPrice)}</div>
-          </div>
-          <div class="barcode-container">
-            ${svgContent}
-          </div>
-          <div class="label-bottom-row">
-            <span class="label-date">${escapeHtml(customDate)}</span>
+        <div class="label-wrapper">
+          <div class="label-box">
+            <div class="product-header">
+              <div class="product-title">${escapeHtml(customDescription)}</div>
+              ${customCategory ? `<div class="product-category">${escapeHtml(customCategory)}</div>` : ''}
+            </div>
+            <div class="barcode-container">
+              ${svgContent}
+            </div>
+            <div class="label-footer">
+              <span class="label-sku">SKU: ${escapeHtml(customSku)}</span>
+              <span class="label-date">${escapeHtml(customDate)}</span>
+            </div>
           </div>
         </div>
       `;
@@ -103,7 +104,7 @@ const ProductLabelModal = ({ product, onClose }) => {
           <style>
             @page {
               size: ${isContinuousRoll ? `${labelWidthMm} ${labelHeightMm}` : 'letter portrait'};
-              margin: ${isContinuousRoll ? '0mm' : '10mm'};
+              margin: ${isContinuousRoll ? '0mm' : '8mm'};
             }
             * {
               box-sizing: border-box;
@@ -123,45 +124,48 @@ const ProductLabelModal = ({ product, onClose }) => {
               gap: 4mm;
               justify-content: flex-start;
             }
-            .label-box {
+            .label-wrapper {
               width: ${labelWidthMm};
               height: ${labelHeightMm};
-              padding: 2.5mm 3mm 1.5mm 3mm;
-              border: 1px solid #000;
+              padding: 1.5mm;
+              page-break-inside: avoid;
+              ${isContinuousRoll ? 'page-break-after: always;' : ''}
+            }
+            .label-box {
+              width: 100%;
+              height: 100%;
+              padding: 2mm 3mm 1.5mm 3mm;
+              border: 2px solid #000000;
+              border-radius: 2px;
               display: flex;
               flex-direction: column;
               justify-content: space-between;
               background: #fff;
-              page-break-inside: avoid;
-              ${isContinuousRoll ? 'page-break-after: always;' : ''}
               overflow: hidden;
             }
-            .label-top-row {
-              display: flex;
-              justify-content: space-between;
-              align-items: flex-start;
-              gap: 4px;
+            .product-header {
+              text-align: left;
             }
             .product-title {
-              font-size: 11px;
-              font-weight: bold;
-              line-height: 1.15;
-              max-height: 26px;
+              font-size: 11.5px;
+              font-weight: 900;
+              line-height: 1.2;
+              max-height: 28px;
               overflow: hidden;
               text-overflow: ellipsis;
               display: -webkit-box;
               -webkit-line-clamp: 2;
               -webkit-box-orient: vertical;
-              flex: 1;
               text-transform: uppercase;
+              color: #000000;
+              letter-spacing: -0.2px;
             }
-            .product-price {
-              font-size: 20px;
-              font-weight: 900;
-              letter-spacing: -0.5px;
-              white-space: nowrap;
-              margin-left: 4px;
-              line-height: 1;
+            .product-category {
+              font-size: 8.5px;
+              font-weight: 600;
+              color: #333333;
+              text-transform: uppercase;
+              margin-top: 1px;
             }
             .barcode-container {
               text-align: center;
@@ -173,17 +177,24 @@ const ProductLabelModal = ({ product, onClose }) => {
             .barcode-container svg {
               max-width: 100%;
               height: auto;
-              max-height: 20mm;
+              max-height: 22mm;
             }
-            .label-bottom-row {
+            .label-footer {
               display: flex;
-              justify-content: flex-end;
+              justify-content: space-between;
               align-items: center;
-              margin-top: 0.5mm;
+              margin-top: 1px;
+              font-size: 8px;
+              font-weight: bold;
+              border-top: 0.5px solid #eaeaea;
+              padding-top: 1px;
+            }
+            .label-sku {
+              color: #444;
             }
             .label-date {
-              font-size: 8.5px;
-              font-weight: bold;
+              color: #000;
+              font-weight: 800;
             }
           </style>
         </head>
@@ -206,13 +217,12 @@ const ProductLabelModal = ({ product, onClose }) => {
     printWindow.document.close();
   };
 
-  // Descargar archivo PDF de las etiquetas
+  // Descargar archivo PDF de las etiquetas con contorno/marco
   const handleDownloadPdf = () => {
     try {
       const numCopies = Math.max(1, parseInt(copies, 10) || 1);
       const isContinuous = labelSize !== 'sheet';
 
-      // 58mm x 40mm en puntos (1mm = 2.83465 pt)
       const widthMm = labelSize === '50x30' ? 50 : 58;
       const heightMm = labelSize === '50x30' ? 30 : 40;
 
@@ -241,27 +251,30 @@ const ProductLabelModal = ({ product, onClose }) => {
           for (let i = 0; i < numCopies; i++) {
             if (i > 0) doc.addPage([heightMm, widthMm], 'landscape');
 
-            // Borde exterior
+            // Contorno / Marco exterior sólido
             doc.setDrawColor(0, 0, 0);
-            doc.setLineWidth(0.3);
+            doc.setLineWidth(0.6);
             doc.rect(1.5, 1.5, widthMm - 3, heightMm - 3);
 
-            // Título
+            // Información del Producto (Nombre y Categoría)
             doc.setFont('Helvetica', 'bold');
-            doc.setFontSize(8.5);
-            doc.text(customDescription.toUpperCase().substring(0, 28), 3, 5.5);
+            doc.setFontSize(9);
+            doc.text(customDescription.toUpperCase().substring(0, 32), 3, 5.5);
 
-            // Precio
-            doc.setFontSize(16);
-            doc.text(`$${customPrice}`, widthMm - 4, 8.5, { align: 'right' });
+            if (customCategory) {
+              doc.setFontSize(6.5);
+              doc.setFont('Helvetica', 'normal');
+              doc.text(`CAT: ${customCategory.toUpperCase()}`, 3, 8.5);
+            }
 
-            // Código de barras
-            doc.addImage(barcodeImgData, 'PNG', (widthMm - 44) / 2, 10, 44, 21);
+            // Código de barras centrado
+            doc.addImage(barcodeImgData, 'PNG', (widthMm - 48) / 2, 10, 48, 23);
 
-            // Fecha
-            doc.setFontSize(7);
+            // Fecha y SKU en el pie
+            doc.setFontSize(6.5);
             doc.setFont('Helvetica', 'bold');
-            doc.text(customDate, widthMm - 4, heightMm - 3, { align: 'right' });
+            doc.text(`SKU: ${customSku}`, 3, heightMm - 2.5);
+            doc.text(customDate, widthMm - 3, heightMm - 2.5, { align: 'right' });
           }
         } else {
           // Hoja Carta con cuadrícula
@@ -284,21 +297,29 @@ const ProductLabelModal = ({ product, onClose }) => {
             const currentX = x + col * colWidth;
             const currentY = y + row * rowHeight;
 
+            // Contorno
             doc.setDrawColor(0, 0, 0);
-            doc.setLineWidth(0.3);
+            doc.setLineWidth(0.6);
             doc.rect(currentX, currentY, 58, 38);
 
+            // Información del Producto
             doc.setFont('Helvetica', 'bold');
-            doc.setFontSize(8);
-            doc.text(customDescription.toUpperCase().substring(0, 24), currentX + 2.5, currentY + 5);
+            doc.setFontSize(8.5);
+            doc.text(customDescription.toUpperCase().substring(0, 28), currentX + 2.5, currentY + 5);
 
-            doc.setFontSize(14);
-            doc.text(`$${customPrice}`, currentX + 55, currentY + 8, { align: 'right' });
+            if (customCategory) {
+              doc.setFontSize(6.5);
+              doc.setFont('Helvetica', 'normal');
+              doc.text(`CAT: ${customCategory.toUpperCase()}`, currentX + 2.5, currentY + 8);
+            }
 
-            doc.addImage(barcodeImgData, 'PNG', currentX + 6, currentY + 9, 46, 22);
+            // Código de barras
+            doc.addImage(barcodeImgData, 'PNG', currentX + 5, currentY + 9, 48, 23);
 
-            doc.setFontSize(7);
+            // Fecha y SKU
+            doc.setFontSize(6.5);
             doc.setFont('Helvetica', 'bold');
+            doc.text(`SKU: ${customSku}`, currentX + 2.5, currentY + 36);
             doc.text(customDate, currentX + 55, currentY + 36, { align: 'right' });
           }
         }
@@ -333,7 +354,7 @@ const ProductLabelModal = ({ product, onClose }) => {
               <Printer size={22} /> Imprimir Etiqueta de Producto
             </h2>
             <p style={{ color: 'var(--color-text-light)', fontSize: '0.8rem', margin: '0.2rem 0 0 0' }}>
-              Formato estándar con descripción, precio prominente, código de barras y fecha de etiquetado.
+              Formato con contorno exterior, descripción del producto, código de barras y fecha (sin precio).
             </p>
           </div>
           <button type="button" className="btn btn-outline" onClick={onClose} style={{ padding: '0.25rem' }}>
@@ -342,10 +363,10 @@ const ProductLabelModal = ({ product, onClose }) => {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.15fr', gap: '1.5rem', alignItems: 'start' }}>
-          {/* Panel de Configuración */}
+          {/* Panel de Configuración de la Etiqueta */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label" style={{ fontSize: '0.8rem' }}>Descripción en Etiqueta</label>
+              <label className="form-label" style={{ fontSize: '0.8rem' }}>Descripción del Producto</label>
               <input
                 type="text"
                 className="form-input"
@@ -358,14 +379,14 @@ const ProductLabelModal = ({ product, onClose }) => {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.8rem' }}>Precio ($)</label>
+                <label className="form-label" style={{ fontSize: '0.8rem' }}>Categoría / Detalle</label>
                 <input
                   type="text"
                   className="form-input"
-                  value={customPrice}
-                  onChange={(e) => setCustomPrice(e.target.value)}
-                  placeholder="25.00"
-                  style={{ fontSize: '0.9rem', fontWeight: 'bold' }}
+                  value={customCategory}
+                  onChange={(e) => setCustomCategory(e.target.value)}
+                  placeholder="Categoría del producto"
+                  style={{ fontSize: '0.85rem' }}
                 />
               </div>
 
@@ -440,82 +461,113 @@ const ProductLabelModal = ({ product, onClose }) => {
             </div>
           </div>
 
-          {/* Vista Previa Visual Idéntica a Etiqueta Física */}
+          {/* Vista Previa Visual con Contorno / Marco */}
           <div>
             <label className="form-label" style={{ fontSize: '0.8rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-              <Settings2 size={14} /> Vista Previa de Etiqueta:
+              <Settings2 size={14} /> Vista Previa con Contorno (Margen):
             </label>
 
+            {/* Contenedor simulando el papel con margen */}
             <div
               style={{
-                backgroundColor: '#ffffff',
-                color: '#000000',
-                borderRadius: '4px',
-                border: '2px solid #1e293b',
-                padding: '12px 14px 8px 14px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                backgroundColor: '#f1f5f9',
+                padding: '10px',
+                borderRadius: '6px',
                 display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                minHeight: '190px',
-                userSelect: 'none'
+                justifyContent: 'center',
+                alignItems: 'center'
               }}
             >
-              {/* Fila Superior: Nombre del Producto y Precio Grande */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                <div
-                  style={{
-                    fontFamily: 'Arial, sans-serif',
-                    fontSize: '0.85rem',
-                    fontWeight: '800',
-                    lineHeight: '1.2',
-                    textTransform: 'uppercase',
-                    color: '#000000',
-                    flex: 1,
-                    maxHeight: '36px',
-                    overflow: 'hidden'
-                  }}
-                >
-                  {customDescription || 'NOMBRE DEL PRODUCTO'}
+              {/* Etiqueta con Contorno Sólido */}
+              <div
+                style={{
+                  backgroundColor: '#ffffff',
+                  color: '#000000',
+                  border: '2.5px solid #000000',
+                  borderRadius: '2px',
+                  padding: '10px 12px 8px 12px',
+                  boxShadow: '0 4px 10px rgba(0,0,0,0.12)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  width: '100%',
+                  minHeight: '185px',
+                  userSelect: 'none'
+                }}
+              >
+                {/* Fila Superior: Nombre del Producto y Categoría */}
+                <div>
+                  <div
+                    style={{
+                      fontFamily: 'Arial, sans-serif',
+                      fontSize: '0.9rem',
+                      fontWeight: '900',
+                      lineHeight: '1.2',
+                      textTransform: 'uppercase',
+                      color: '#000000',
+                      letterSpacing: '-0.2px'
+                    }}
+                  >
+                    {customDescription || 'NOMBRE DEL PRODUCTO'}
+                  </div>
+                  {customCategory && (
+                    <div
+                      style={{
+                        fontFamily: 'Arial, sans-serif',
+                        fontSize: '0.72rem',
+                        fontWeight: '600',
+                        color: '#334155',
+                        textTransform: 'uppercase',
+                        marginTop: '2px'
+                      }}
+                    >
+                      {customCategory}
+                    </div>
+                  )}
                 </div>
 
+                {/* Código de Barras Centrado */}
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '6px 0 2px 0' }}>
+                  <svg ref={barcodeSvgRef} style={{ maxWidth: '100%', height: 'auto', display: 'block' }}></svg>
+                </div>
+
+                {/* Fila Inferior: SKU a la izquierda y Fecha a la derecha */}
                 <div
                   style={{
-                    fontFamily: 'Arial, sans-serif',
-                    fontSize: '1.65rem',
-                    fontWeight: '900',
-                    color: '#000000',
-                    letterSpacing: '-0.5px',
-                    lineHeight: '1',
-                    whiteSpace: 'nowrap'
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginTop: '2px',
+                    borderTop: '1px solid #e2e8f0',
+                    paddingTop: '3px'
                   }}
                 >
-                  ${customPrice}
+                  <span
+                    style={{
+                      fontFamily: 'Arial, sans-serif',
+                      fontSize: '0.72rem',
+                      fontWeight: '700',
+                      color: '#475569'
+                    }}
+                  >
+                    SKU: {customSku}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: 'Arial, sans-serif',
+                      fontSize: '0.75rem',
+                      fontWeight: '800',
+                      color: '#000000'
+                    }}
+                  >
+                    {customDate}
+                  </span>
                 </div>
-              </div>
-
-              {/* Código de Barras Centrado */}
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '4px 0 0 0' }}>
-                <svg ref={barcodeSvgRef} style={{ maxWidth: '100%', height: 'auto', display: 'block' }}></svg>
-              </div>
-
-              {/* Fila Inferior: Fecha a la derecha */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: '2px' }}>
-                <span
-                  style={{
-                    fontFamily: 'Arial, sans-serif',
-                    fontSize: '0.75rem',
-                    fontWeight: '700',
-                    color: '#000000'
-                  }}
-                >
-                  {customDate}
-                </span>
               </div>
             </div>
 
-            <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: 'var(--color-text-light)', textAlign: 'center' }}>
-              Compatible con impresoras térmicas (Zebra, Xprinter, Dymo, POS) y hojas de etiquetas estándar.
+            <div style={{ marginTop: '0.65rem', fontSize: '0.75rem', color: 'var(--color-text-light)', textAlign: 'center' }}>
+              Etiqueta con contorno exterior nítido, ideal para identificación de productos en cuarto frío y almacén.
             </div>
           </div>
         </div>
