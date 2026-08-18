@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { SYSTEM_CHANGELOG } from '../config/changelog';
 
 const InventoryContext = createContext();
 
@@ -6,6 +7,23 @@ export const useInventory = () => useContext(InventoryContext);
 
 // Base API URL from environment variable or empty for local proxy
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
+// Fusionador seguro de versiones oficiales y creadas dinámicamente en BD
+const mergeChangelog = (dbVersions = []) => {
+  const map = new Map();
+  // 1. Agregar versiones del changelog oficial
+  SYSTEM_CHANGELOG.forEach(v => map.set(v.version.toLowerCase(), v));
+  // 2. Agregar o sobreescribir versiones provenientes de la base de datos
+  if (Array.isArray(dbVersions)) {
+    dbVersions.forEach(v => {
+      const key = (v.version || '').toLowerCase();
+      if (key) {
+        map.set(key, { ...map.get(key), ...v });
+      }
+    });
+  }
+  return Array.from(map.values());
+};
 
 export const InventoryProvider = ({ children }) => {
   const [products, setProducts] = useState([]);
@@ -29,7 +47,7 @@ export const InventoryProvider = ({ children }) => {
     logo: null
   });
   const [categoryUnits, setCategoryUnits] = useState({});
-  const [versions, setVersions] = useState([]);
+  const [versions, setVersions] = useState(SYSTEM_CHANGELOG);
   const [loading, setLoading] = useState(true);
   const [theme, setThemeState] = useState(() => localStorage.getItem('inv_theme') || 'light');
 
@@ -70,7 +88,7 @@ export const InventoryProvider = ({ children }) => {
         if (Array.isArray(prodRes)) setProducts(prodRes);
         if (Array.isArray(movRes)) setMovements(movRes);
         if (Array.isArray(userRes)) setUsers(userRes);
-        if (Array.isArray(versionsRes)) setVersions(versionsRes);
+        setVersions(mergeChangelog(versionsRes));
         if (Array.isArray(rolesRes)) setRoles(rolesRes);
         if (Array.isArray(notifRes)) setNotifications(notifRes);
         
@@ -169,7 +187,7 @@ export const InventoryProvider = ({ children }) => {
           }
         }
       }
-      if (Array.isArray(versionsRes)) setVersions(versionsRes);
+      setVersions(mergeChangelog(versionsRes));
       if (Array.isArray(rolesRes)) setRoles(rolesRes);
       if (Array.isArray(notifRes)) setNotifications(notifRes);
       if (configRes && !configRes.error) {
@@ -532,7 +550,7 @@ export const InventoryProvider = ({ children }) => {
       });
       if (res.ok) {
         const versionsRes = await fetch(`${API_BASE_URL}/api/versions`).then(r => r.json());
-        setVersions(versionsRes);
+        setVersions(mergeChangelog(versionsRes));
         logAuditEvent('REGISTER_VERSION', 'security', `Registro de versión con descripción: ${description}`);
         return { success: true };
       }
