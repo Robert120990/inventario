@@ -6,6 +6,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils';
 import { CONTRACT_INFO } from '../../utils/contractRates';
+import { toast } from 'react-hot-toast';
 
 const Summary2 = () => {
   const { products, movements, categories, categoryUnits, settings } = useInventory();
@@ -158,36 +159,48 @@ const Summary2 = () => {
 
   // Exportar Excel
   const handleExportXLSX = () => {
-    exportCuadroClienteCuartoFrio({
-      clientName,
-      startDate,
-      endDate,
-      dailyRows,
-      extraServices: servicesData,
-      totals: {
-        subtotal: reportSubtotal,
-        iva: reportIva,
-        totalGeneral: reportGrandTotal
-      },
-      format: 'xlsx'
-    });
+    try {
+      exportCuadroClienteCuartoFrio({
+        clientName,
+        startDate,
+        endDate,
+        dailyRows,
+        extraServices: servicesData,
+        totals: {
+          subtotal: reportSubtotal,
+          iva: reportIva,
+          totalGeneral: reportGrandTotal
+        },
+        format: 'xlsx'
+      });
+      toast.success('Cuadro de cliente descargado en formato Excel (.xlsx)');
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al exportar a Excel: ' + err.message);
+    }
   };
 
   // Exportar CSV
   const handleExportCSV = () => {
-    exportCuadroClienteCuartoFrio({
-      clientName,
-      startDate,
-      endDate,
-      dailyRows,
-      extraServices: servicesData,
-      totals: {
-        subtotal: reportSubtotal,
-        iva: reportIva,
-        totalGeneral: reportGrandTotal
-      },
-      format: 'csv'
-    });
+    try {
+      exportCuadroClienteCuartoFrio({
+        clientName,
+        startDate,
+        endDate,
+        dailyRows,
+        extraServices: servicesData,
+        totals: {
+          subtotal: reportSubtotal,
+          iva: reportIva,
+          totalGeneral: reportGrandTotal
+        },
+        format: 'csv'
+      });
+      toast.success('Cuadro de cliente descargado en formato CSV');
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al exportar a CSV: ' + err.message);
+    }
   };
 
   // Exportar PDF

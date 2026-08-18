@@ -4,6 +4,7 @@ import { Plus, Download, Search, FileSpreadsheet } from 'lucide-react';
 import { exportMovimientos } from '../../utils/exportManager';
 import MovementForm from './MovementForm';
 import { formatDate } from '../../utils/formatUtils';
+import { toast } from 'react-hot-toast';
 
 const MovementList = () => {
   const { movements, products, deleteMovement, currentUser, canCreate, canEdit, canDelete } = useInventory();
@@ -81,19 +82,31 @@ const MovementList = () => {
   };
 
   const handleExportXlsx = () => {
-    exportMovimientos({
-      movements: filteredMovements,
-      products,
-      format: 'xlsx'
-    });
+    try {
+      exportMovimientos({
+        movements: filteredMovements,
+        products,
+        format: 'xlsx'
+      });
+      toast.success('Movimientos exportados a Excel (.xlsx)');
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al exportar a Excel: ' + err.message);
+    }
   };
 
   const handleExportCsv = () => {
-    exportMovimientos({
-      movements: filteredMovements,
-      products,
-      format: 'csv'
-    });
+    try {
+      exportMovimientos({
+        movements: filteredMovements,
+        products,
+        format: 'csv'
+      });
+      toast.success('Movimientos exportados a CSV');
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al exportar a CSV: ' + err.message);
+    }
   };
 
   if (isAdding) {

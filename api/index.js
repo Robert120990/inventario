@@ -10,18 +10,28 @@ const router = express.Router();
 app.use(cors());
 app.use(express.json());
 
-// Initialize Schema once per cold start - safely
-let initializationPromise = null;
+// Initialize Schema once per cold start - safely without hanging requests
+let isInitialized = false;
 
-const initializeApp = () => {
-    if (!initializationPromise) {
-        initializationPromise = ensureSchema();
+const initializeApp = async () => {
+    if (isInitialized) return;
+    try {
+        await Promise.race([
+            ensureSchema(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Init timeout')), 4000))
+        ]);
+        isInitialized = true;
+    } catch (err) {
+        console.warn('[Backend] Schema initialization warning:', err.message);
+        // Do not block requests even if schema check timed out
+        isInitialized = true;
     }
-    return initializationPromise;
 };
 
 app.use(async (req, res, next) => {
-    await initializeApp();
+    if (!isInitialized) {
+        await initializeApp();
+    }
     next();
 });
 

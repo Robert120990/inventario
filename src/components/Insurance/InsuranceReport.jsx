@@ -5,6 +5,7 @@ import { exportCorteSeguro } from '../../utils/exportManager';
 import { formatCurrency, formatDate, formatPrice } from '../../utils/formatUtils';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { toast } from 'react-hot-toast';
 
 const getLocalDate = () => {
   const now = new Date();
@@ -90,37 +91,49 @@ const InsuranceReport = () => {
   }, [cutoffDate]);
 
   const handleExportXlsx = () => {
-    exportCorteSeguro({
-      customerName,
-      warehouseName,
-      cutoffDate,
-      premiumRate,
-      reportRows,
-      totals: {
-        totalPounds,
-        totalBaskets,
-        totalInsuredValue,
-        totalPremium
-      },
-      format: 'xlsx'
-    });
+    try {
+      exportCorteSeguro({
+        customerName,
+        warehouseName,
+        cutoffDate,
+        premiumRate,
+        reportRows,
+        totals: {
+          totalPounds,
+          totalBaskets,
+          totalInsuredValue,
+          totalPremium
+        },
+        format: 'xlsx'
+      });
+      toast.success('Corte de seguro descargado en Excel (.xlsx)');
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al exportar a Excel: ' + err.message);
+    }
   };
 
   const handleExportCsv = () => {
-    exportCorteSeguro({
-      customerName,
-      warehouseName,
-      cutoffDate,
-      premiumRate,
-      reportRows,
-      totals: {
-        totalPounds,
-        totalBaskets,
-        totalInsuredValue,
-        totalPremium
-      },
-      format: 'csv'
-    });
+    try {
+      exportCorteSeguro({
+        customerName,
+        warehouseName,
+        cutoffDate,
+        premiumRate,
+        reportRows,
+        totals: {
+          totalPounds,
+          totalBaskets,
+          totalInsuredValue,
+          totalPremium
+        },
+        format: 'csv'
+      });
+      toast.success('Corte de seguro descargado en CSV');
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al exportar a CSV: ' + err.message);
+    }
   };
 
   const handleExportPdf = () => {

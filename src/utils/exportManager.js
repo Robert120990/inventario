@@ -2,38 +2,58 @@ import * as XLSX from 'xlsx';
 import { formatDate, formatCurrency } from './formatUtils.js';
 
 /**
- * Agrega el Byte Order Mark (BOM) para que Excel abra UTF-8 con tildes y eñes sin problemas
+ * Descarga universal y segura de archivos en cualquier navegador
  */
 const downloadFile = (blob, filename) => {
-  const link = document.createElement('a');
-  if (link.download !== undefined) {
+  try {
     const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
+    const link = document.createElement('a');
+    link.href = url;
     link.setAttribute('download', filename);
-    link.style.visibility = 'hidden';
+    link.download = filename;
+    link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    setTimeout(() => {
+      if (document.body.contains(link)) {
+        document.body.removeChild(link);
+      }
+      URL.revokeObjectURL(url);
+    }, 500);
+  } catch (err) {
+    console.error('Error al descargar archivo:', err);
+    alert('Error al descargar el archivo: ' + err.message);
   }
 };
 
 /**
- * Exporta un libro XLSX
+ * Exporta un libro XLSX nativo de Microsoft Excel
  */
 export const downloadXLSX = (workbook, filename) => {
-  const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  downloadFile(blob, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`);
+  try {
+    const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const safeFilename = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
+    downloadFile(blob, safeFilename);
+  } catch (err) {
+    console.error('Error en downloadXLSX:', err);
+    throw err;
+  }
 };
 
 /**
  * Convierte un arreglo de filas de texto a CSV con BOM UTF-8 y descarga
  */
 export const downloadCSV = (csvRows, filename) => {
-  const csvContent = '\uFEFF' + csvRows.join('\r\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  downloadFile(blob, filename.endsWith('.csv') ? filename : `${filename}.csv`);
+  try {
+    const csvContent = '\uFEFF' + csvRows.join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const safeFilename = filename.endsWith('.csv') ? filename : `${filename}.csv`;
+    downloadFile(blob, safeFilename);
+  } catch (err) {
+    console.error('Error en downloadCSV:', err);
+    throw err;
+  }
 };
 
 /**
@@ -61,10 +81,11 @@ export const exportCuadroClienteCuartoFrio = ({
   totals = {},
   format = 'xlsx' // 'xlsx' | 'csv'
 }) => {
-  const formattedStart = formatDate(startDate);
-  const formattedEnd = formatDate(endDate);
+  const safeStart = startDate ? String(startDate) : new Date().toISOString().split('T')[0];
+  const safeEnd = endDate ? String(endDate) : new Date().toISOString().split('T')[0];
+  const formattedStart = formatDate(safeStart);
+  const formattedEnd = formatDate(safeEnd);
   const title = 'PROCESO DE FACTURACION POR ALMACENAMIENTO CONGELADO(-18°) Y SERVICIOS EXTRA-ORDINARIOS';
-  const subtitle = `Movimientos diarios entre: ${formattedStart} Hasta ${formattedEnd}`;
 
   // Totales de almacenamiento
   const totalInvInicial = dailyRows.reduce((acc, r) => acc + Number(r.stockInicial || 0), 0);
@@ -100,19 +121,23 @@ export const exportCuadroClienteCuartoFrio = ({
     wsData.push(['', 'FECHA', 'DESCRIPCION', 'INV-INICIAL', 'ENTRADA', 'SALIDA', 'TOTAL LIBRAS', 'PRECIO', 'Total $']);
 
     // Filas de datos diarios
-    dailyRows.forEach(row => {
-      wsData.push([
-        '',
-        formatDate(row.fecha),
-        row.descripcion || `Mantenimiento congelado (${row.categoria || 'General'})`,
-        Number(row.stockInicial || 0),
-        Number(row.entradas || 0),
-        Number(row.salidas || 0),
-        Number(row.stockFinal || 0),
-        Number(row.precio || 0.001),
-        Number(row.totalMonto || 0)
-      ]);
-    });
+    if (dailyRows.length > 0) {
+      dailyRows.forEach(row => {
+        wsData.push([
+          '',
+          formatDate(row.fecha),
+          row.descripcion || `Mantenimiento congelado (${row.categoria || 'General'})`,
+          Number(row.stockInicial || 0),
+          Number(row.entradas || 0),
+          Number(row.salidas || 0),
+          Number(row.stockFinal || 0),
+          Number(row.precio || 0.001),
+          Number(row.totalMonto || 0)
+        ]);
+      });
+    } else {
+      wsData.push(['', 'Sin movimientos registrados en este período', '', 0, 0, 0, 0, 0.001, 0]);
+    }
 
     // Fila de Totales de Almacenamiento
     wsData.push([
@@ -186,10 +211,10 @@ export const exportCuadroClienteCuartoFrio = ({
     ];
 
     const wb = XLSX.utils.book_new();
-    const sheetName = `${startDate.slice(5)}_al_${endDate.slice(5)}`.substring(0, 31);
+    const sheetName = (safeStart.length >= 5 && safeEnd.length >= 5 ? `${safeStart.slice(5)}_al_${safeEnd.slice(5)}` : 'Cuadro_Cliente').substring(0, 31);
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
-    downloadXLSX(wb, `Cuadro_cliente_cuarto_frio_${startDate}_al_${endDate}.xlsx`);
+    downloadXLSX(wb, `Cuadro_cliente_cuarto_frio_${safeStart}_al_${safeEnd}.xlsx`);
   } else {
     // Exportación a CSV formateado con enunciados
     const lines = [];
@@ -202,21 +227,23 @@ export const exportCuadroClienteCuartoFrio = ({
     lines.push(['FECHA', 'DESCRIPCION', 'INV-INICIAL', 'ENTRADA', 'SALIDA', 'TOTAL LIBRAS', 'PRECIO', 'Total $'].map(escapeCsvCell).join(','));
 
     // Filas
-    dailyRows.forEach(row => {
-      lines.push([
-        formatDate(row.fecha),
-        row.descripcion || `Mantenimiento congelado (${row.categoria || 'General'})`,
-        row.stockInicial || 0,
-        row.entradas || 0,
-        row.salidas || 0,
-        row.stockFinal || 0,
-        row.precio || 0.001,
-        row.totalMonto ? row.totalMonto.toFixed(2) : '0.00'
-      ].map(escapeCsvCell).join(','));
-    });
+    if (dailyRows.length > 0) {
+      dailyRows.forEach(row => {
+        lines.push([
+          formatDate(row.fecha),
+          row.descripcion || `Mantenimiento congelado (${row.categoria || 'General'})`,
+          row.stockInicial || 0,
+          row.entradas || 0,
+          row.salidas || 0,
+          row.stockFinal || 0,
+          row.precio || 0.001,
+          row.totalMonto ? Number(row.totalMonto).toFixed(2) : '0.00'
+        ].map(escapeCsvCell).join(','));
+      });
+    }
 
     // Totales Almacenamiento
-    lines.push(['', 'Totales', totalInvInicial, totalEntradas, totalSalidas, totalLibrasAcum, '', totalAlmacenaje.toFixed(2)].map(escapeCsvCell).join(','));
+    lines.push(['', 'Totales', totalInvInicial, totalEntradas, totalSalidas, totalLibrasAcum, '', Number(totalAlmacenaje).toFixed(2)].map(escapeCsvCell).join(','));
     lines.push('');
 
     // Servicios Extraordinarios
@@ -235,13 +262,13 @@ export const exportCuadroClienteCuartoFrio = ({
       });
     }
 
-    lines.push(['', 'TOTALES', totalServiciosQty, '', totalServiciosValor.toFixed(2)].map(escapeCsvCell).join(','));
+    lines.push(['', 'TOTALES', totalServiciosQty, '', Number(totalServiciosValor).toFixed(2)].map(escapeCsvCell).join(','));
     lines.push('');
-    lines.push(['', 'Sub Total', '', '', subtotal.toFixed(2)].map(escapeCsvCell).join(','));
-    lines.push(['', 'Iva 13%', '', '', iva.toFixed(2)].map(escapeCsvCell).join(','));
-    lines.push(['', 'Total General', '', '', totalGeneral.toFixed(2)].map(escapeCsvCell).join(','));
+    lines.push(['', 'Sub Total', '', '', Number(subtotal).toFixed(2)].map(escapeCsvCell).join(','));
+    lines.push(['', 'Iva 13%', '', '', Number(iva).toFixed(2)].map(escapeCsvCell).join(','));
+    lines.push(['', 'Total General', '', '', Number(totalGeneral).toFixed(2)].map(escapeCsvCell).join(','));
 
-    downloadCSV(lines, `Cuadro_cliente_cuarto_frio_${startDate}_al_${endDate}.csv`);
+    downloadCSV(lines, `Cuadro_cliente_cuarto_frio_${safeStart}_al_${safeEnd}.csv`);
   }
 };
 
@@ -258,8 +285,10 @@ export const exportResumenCompleto = ({
   totals = {},
   format = 'xlsx'
 }) => {
-  const formattedStart = formatDate(startDate);
-  const formattedEnd = formatDate(endDate);
+  const safeStart = startDate ? String(startDate) : new Date().toISOString().split('T')[0];
+  const safeEnd = endDate ? String(endDate) : new Date().toISOString().split('T')[0];
+  const formattedStart = formatDate(safeStart);
+  const formattedEnd = formatDate(safeEnd);
   const title = 'RESUMEN DE ACTIVIDAD Y VALORACION DE INVENTARIO';
 
   const subtotal = totals.subtotal || 0;
@@ -277,20 +306,24 @@ export const exportResumenCompleto = ({
     wsData.push([]);
     wsData.push(['', 'Producto / SKU', 'Categoría', 'U.M.', 'Stock Inicial', 'Entradas', 'Salidas', 'Stock Final', 'Precio Unit ($)', 'Total Valor ($)']);
 
-    summaryData.forEach(d => {
-      wsData.push([
-        '',
-        d.producto,
-        d.categoria,
-        d.unidad,
-        Number(d.stockInicial || 0),
-        Number(d.entradas || 0),
-        Number(d.salidas || 0),
-        Number(d.stockFinal || 0),
-        Number(d.precio || 0),
-        Number(d.total || 0)
-      ]);
-    });
+    if (summaryData.length > 0) {
+      summaryData.forEach(d => {
+        wsData.push([
+          '',
+          d.producto,
+          d.categoria,
+          d.unidad,
+          Number(d.stockInicial || 0),
+          Number(d.entradas || 0),
+          Number(d.salidas || 0),
+          Number(d.stockFinal || 0),
+          Number(d.precio || 0),
+          Number(d.total || 0)
+        ]);
+      });
+    } else {
+      wsData.push(['', 'Sin movimientos en el período', '', '', 0, 0, 0, 0, 0, 0]);
+    }
 
     wsData.push(['', 'TOTAL VALORACION INVENTARIO', '', '', '', '', '', '', '', invTotal]);
     wsData.push([]);
@@ -338,7 +371,7 @@ export const exportResumenCompleto = ({
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Resumen_Actividad');
-    downloadXLSX(wb, `resumen_actividad_${startDate}_al_${endDate}.xlsx`);
+    downloadXLSX(wb, `resumen_actividad_${safeStart}_al_${safeEnd}.xlsx`);
   } else {
     const lines = [];
     lines.push(escapeCsvCell(title));
@@ -381,7 +414,7 @@ export const exportResumenCompleto = ({
     lines.push(['IVA (13%)', '', '', iva.toFixed(2)].map(escapeCsvCell).join(','));
     lines.push(['GRAN TOTAL FACTURABLE', '', '', totalGeneral.toFixed(2)].map(escapeCsvCell).join(','));
 
-    downloadCSV(lines, `resumen_actividad_${startDate}_al_${endDate}.csv`);
+    downloadCSV(lines, `resumen_actividad_${safeStart}_al_${safeEnd}.csv`);
   }
 };
 
@@ -397,12 +430,19 @@ export const exportCorteSeguro = ({
   totals = {},
   format = 'xlsx'
 }) => {
-  const formattedDate = formatDate(cutoffDate);
+  const safeCutoff = cutoffDate ? String(cutoffDate) : new Date().toISOString().split('T')[0];
+  const formattedDate = formatDate(safeCutoff);
   const title = `CIERRE DE INVENTARIO PARA SEGURO - ${warehouseName}`;
-  const periodLabel = new Date(`${cutoffDate}T12:00:00`).toLocaleDateString('es-SV', {
-    month: 'long',
-    year: 'numeric'
-  });
+  
+  let periodLabel = safeCutoff;
+  try {
+    const periodDate = new Date(`${safeCutoff}T12:00:00`);
+    if (!isNaN(periodDate.getTime())) {
+      periodLabel = periodDate.toLocaleDateString('es-SV', { month: 'long', year: 'numeric' });
+    }
+  } catch {
+    periodLabel = safeCutoff;
+  }
 
   const totalPounds = totals.totalPounds || 0;
   const totalBaskets = totals.totalBaskets || 0;
@@ -420,20 +460,24 @@ export const exportCorteSeguro = ({
     wsData.push([]);
     wsData.push(['', 'Código', 'Material / Descripción', 'Unidades', 'Total LB', 'Total Cesta', 'Valor por LB $', 'Valor por Cestas $', 'Total $ (Valor CIF)', `Prima (${premiumRate}%)`]);
 
-    reportRows.forEach(row => {
-      wsData.push([
-        '',
-        row.code,
-        row.material,
-        Number(row.units || 0),
-        Number(row.pounds || 0),
-        Number(row.baskets || 0),
-        row.poundRate != null ? Number(row.poundRate) : '',
-        row.basketRate != null ? Number(row.basketRate) : '',
-        Number(row.insuredValue || 0),
-        Number(row.premium || 0)
-      ]);
-    });
+    if (reportRows.length > 0) {
+      reportRows.forEach(row => {
+        wsData.push([
+          '',
+          row.code,
+          row.material,
+          Number(row.units || 0),
+          Number(row.pounds || 0),
+          Number(row.baskets || 0),
+          row.poundRate != null ? Number(row.poundRate) : '',
+          row.basketRate != null ? Number(row.basketRate) : '',
+          Number(row.insuredValue || 0),
+          Number(row.premium || 0)
+        ]);
+      });
+    } else {
+      wsData.push(['', 'Sin productos para corte en esta fecha', '', 0, 0, 0, '', '', 0, 0]);
+    }
 
     wsData.push([
       '',
@@ -468,7 +512,7 @@ export const exportCorteSeguro = ({
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Corte_Seguro');
-    downloadXLSX(wb, `corte_seguro_${cutoffDate}.xlsx`);
+    downloadXLSX(wb, `corte_seguro_${safeCutoff}.xlsx`);
   } else {
     const lines = [];
     lines.push(escapeCsvCell(title));
@@ -497,7 +541,7 @@ export const exportCorteSeguro = ({
     lines.push('');
     lines.push([`Monto total a facturar por seguro: $${totalPremium.toFixed(2)}`].map(escapeCsvCell).join(','));
 
-    downloadCSV(lines, `corte_seguro_${cutoffDate}.csv`);
+    downloadCSV(lines, `corte_seguro_${safeCutoff}.csv`);
   }
 };
 
@@ -544,47 +588,51 @@ export const exportMovimientos = ({
       'Servicios Extraordinarios'
     ]);
 
-    movements.forEach(mov => {
-      const servicesStr = (mov.services || []).map(s => `${s.description} ($${Number(s.value || 0).toFixed(2)})`).join(' | ');
-      const baseInfo = [
-        formatDate(mov.date),
-        mov.timeStart || '',
-        mov.timeEnd || '',
-        mov.type === 'in' ? 'Entrada' : 'Salida',
-        mov.refType || '',
-        mov.refNumber || '',
-        mov.carrier || '',
-        mov.equipment || '',
-        mov.seal || '',
-        mov.auditUser || ''
-      ];
+    if (movements.length > 0) {
+      movements.forEach(mov => {
+        const servicesStr = (mov.services || []).map(s => `${s.description} ($${Number(s.value || 0).toFixed(2)})`).join(' | ');
+        const baseInfo = [
+          formatDate(mov.date),
+          mov.timeStart || '',
+          mov.timeEnd || '',
+          mov.type === 'in' ? 'Entrada' : 'Salida',
+          mov.refType || '',
+          mov.refNumber || '',
+          mov.carrier || '',
+          mov.equipment || '',
+          mov.seal || '',
+          mov.auditUser || ''
+        ];
 
-      if (mov.items && mov.items.length > 0) {
-        mov.items.forEach(it => {
+        if (mov.items && mov.items.length > 0) {
+          mov.items.forEach(it => {
+            wsData.push([
+              '',
+              ...baseInfo,
+              getProductName(it.productId),
+              it.temperature != null && it.temperature !== '' ? Number(it.temperature) : '',
+              Number(it.qtyUnits || 0),
+              Number(it.qtyPounds || 0),
+              Number(it.qtyBaskets || 0),
+              servicesStr
+            ]);
+          });
+        } else {
           wsData.push([
             '',
             ...baseInfo,
-            getProductName(it.productId),
-            it.temperature != null ? Number(it.temperature) : '',
-            Number(it.qtyUnits || 0),
-            Number(it.qtyPounds || 0),
-            Number(it.qtyBaskets || 0),
+            'Sin productos',
+            '',
+            0,
+            0,
+            0,
             servicesStr
           ]);
-        });
-      } else {
-        wsData.push([
-          '',
-          ...baseInfo,
-          'Sin productos',
-          '',
-          0,
-          0,
-          0,
-          servicesStr
-        ]);
-      }
-    });
+        }
+      });
+    } else {
+      wsData.push(['', 'Sin movimientos registrados', '', '', '', '', '', '', '', '', '', '', '', 0, 0, 0, '']);
+    }
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
     ws['!cols'] = [
@@ -720,26 +768,28 @@ export const exportProductos = ({
       'Valorización Estimada ($)'
     ]);
 
-    products.forEach(p => {
-      const unitType = categoryUnits[p.category] || 'units';
-      const unitLabel = unitType === 'units' ? 'Unidades' : unitType === 'pounds' ? 'Libras' : 'Cestas';
-      const qty = unitType === 'baskets' ? Number(p.stockBaskets || 0) :
-                  unitType === 'pounds' ? Number(p.stockPounds || 0) : Number(p.stockUnits || 0);
-      const val = qty * Number(p.price || 0);
+    if (products.length > 0) {
+      products.forEach(p => {
+        const unitType = categoryUnits[p.category] || 'units';
+        const unitLabel = unitType === 'units' ? 'Unidades' : unitType === 'pounds' ? 'Libras' : 'Cestas';
+        const qty = unitType === 'baskets' ? Number(p.stockBaskets || 0) :
+                    unitType === 'pounds' ? Number(p.stockPounds || 0) : Number(p.stockUnits || 0);
+        const val = qty * Number(p.price || 0);
 
-      wsData.push([
-        '',
-        p.sku,
-        p.description,
-        p.category,
-        unitLabel,
-        Number(p.price || 0),
-        Number(p.stockUnits || 0),
-        Number(p.stockPounds || 0),
-        Number(p.stockBaskets || 0),
-        val
-      ]);
-    });
+        wsData.push([
+          '',
+          p.sku,
+          p.description,
+          p.category,
+          unitLabel,
+          Number(p.price || 0),
+          Number(p.stockUnits || 0),
+          Number(p.stockPounds || 0),
+          Number(p.stockBaskets || 0),
+          val
+        ]);
+      });
+    }
 
     wsData.push([
       '',
@@ -834,17 +884,19 @@ export const exportBitacora = ({
     wsData.push([]);
     wsData.push(['', 'Fecha y Hora', 'Usuario', 'Acción', 'Módulo', 'Detalles de la Operación', 'IP Origen']);
 
-    systemLogs.forEach(l => {
-      wsData.push([
-        '',
-        l.timestamp || '',
-        l.username || '',
-        l.action || '',
-        l.module || '',
-        l.details || '',
-        l.ip_address || 'Local'
-      ]);
-    });
+    if (systemLogs.length > 0) {
+      systemLogs.forEach(l => {
+        wsData.push([
+          '',
+          l.timestamp || '',
+          l.username || '',
+          l.action || '',
+          l.module || '',
+          l.details || '',
+          l.ip_address || 'Local'
+        ]);
+      });
+    }
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
     ws['!cols'] = [

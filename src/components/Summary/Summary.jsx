@@ -6,6 +6,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils';
 import { CONTRACT_INFO } from '../../utils/contractRates';
+import { toast } from 'react-hot-toast';
 
 const Summary = () => {
   const { products, movements, categoryUnits } = useInventory();
@@ -129,41 +130,53 @@ const Summary = () => {
   const reportGrandTotal = reportSubtotal + reportIva;
 
   const handleExportXLSX = () => {
-    exportResumenCompleto({
-      clientName,
-      startDate,
-      endDate,
-      summaryData,
-      groupedData,
-      extraServices: servicesData,
-      totals: {
-        invTotal,
-        totalServicios,
-        subtotal: reportSubtotal,
-        iva: reportIva,
-        totalGeneral: reportGrandTotal
-      },
-      format: 'xlsx'
-    });
+    try {
+      exportResumenCompleto({
+        clientName,
+        startDate,
+        endDate,
+        summaryData,
+        groupedData,
+        extraServices: servicesData,
+        totals: {
+          invTotal,
+          totalServicios,
+          subtotal: reportSubtotal,
+          iva: reportIva,
+          totalGeneral: reportGrandTotal
+        },
+        format: 'xlsx'
+      });
+      toast.success('Resumen de actividad descargado en Excel (.xlsx)');
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al exportar a Excel: ' + err.message);
+    }
   };
 
   const handleExportCSV = () => {
-    exportResumenCompleto({
-      clientName,
-      startDate,
-      endDate,
-      summaryData,
-      groupedData,
-      extraServices: servicesData,
-      totals: {
-        invTotal,
-        totalServicios,
-        subtotal: reportSubtotal,
-        iva: reportIva,
-        totalGeneral: reportGrandTotal
-      },
-      format: 'csv'
-    });
+    try {
+      exportResumenCompleto({
+        clientName,
+        startDate,
+        endDate,
+        summaryData,
+        groupedData,
+        extraServices: servicesData,
+        totals: {
+          invTotal,
+          totalServicios,
+          subtotal: reportSubtotal,
+          iva: reportIva,
+          totalGeneral: reportGrandTotal
+        },
+        format: 'csv'
+      });
+      toast.success('Resumen de actividad descargado en CSV');
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al exportar a CSV: ' + err.message);
+    }
   };
 
   const handleExportPDF = () => {
