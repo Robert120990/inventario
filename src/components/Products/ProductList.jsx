@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { Plus, Download, Search, SlidersHorizontal, X, FileSpreadsheet } from 'lucide-react';
+import { Plus, Download, Search, SlidersHorizontal, X, FileSpreadsheet, Printer } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { exportProductos } from '../../utils/exportManager';
 import ProductForm from './ProductForm';
 import ProductExcelImportModal from './ProductExcelImportModal';
+import ProductLabelModal from './ProductLabelModal';
 import { formatPrice } from '../../utils/formatUtils';
 
 const normalizeSearchText = (value) => String(value ?? '')
@@ -34,6 +35,7 @@ const ProductList = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [labelProduct, setLabelProduct] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [unitFilter, setUnitFilter] = useState('all');
@@ -45,7 +47,7 @@ const ProductList = () => {
   const allowEdit = canEdit('products');
   const allowDelete = canDelete('products');
   const allowExport = canExport('products');
-  const showActions = allowEdit || allowDelete;
+  const showActions = true;
 
   const filteredProducts = useMemo(() => {
     const minimum = minPrice === '' ? null : Number(minPrice);
@@ -251,7 +253,16 @@ const ProductList = () => {
                   <td>{product.stockPounds}</td><td>{product.stockBaskets}</td>
                   {showActions && (
                     <td>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => setLabelProduct(product)}
+                          className="btn btn-outline"
+                          style={{ padding: '0.25rem 0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', color: 'var(--color-primary)', borderColor: 'var(--color-primary)' }}
+                          title="Imprimir Etiqueta de Precio y Código de Barras"
+                        >
+                          <Printer size={15} /> Etiqueta
+                        </button>
                         {allowEdit && (
                           <button onClick={() => { setEditingProduct(product); setIsAdding(true); }} className="btn btn-outline" style={{ padding: '0.25rem 0.5rem' }}>Editar</button>
                         )}
@@ -283,6 +294,13 @@ const ProductList = () => {
 
       {isImportModalOpen && (
         <ProductExcelImportModal onClose={() => setIsImportModalOpen(false)} />
+      )}
+
+      {labelProduct && (
+        <ProductLabelModal
+          product={labelProduct}
+          onClose={() => setLabelProduct(null)}
+        />
       )}
     </div>
   );
