@@ -21,22 +21,23 @@ const ProductLabelModal = ({ product, onClose }) => {
   const [customCategory, setCustomCategory] = useState(product?.category || '');
   const [customSku, setCustomSku] = useState(product?.sku || '');
   const [customDate, setCustomDate] = useState(getDefaultDateFormatted());
-  const [labelSize, setLabelSize] = useState('58x40'); // '58x40' | '50x30' | 'sheet'
+  const [labelSize, setLabelSize] = useState('72x45'); // '72x45' | '72x60' | '58x40' | 'sheet'
   const [barcodeType, setBarcodeType] = useState('CODE128'); // 'CODE128' | 'EAN13' | 'CODE39'
   
   const barcodeSvgRef = useRef(null);
 
-  // Renderizar código de barras reactivamente
+  // Renderizar código de barras reactivamente adaptado a 72mm
   useEffect(() => {
     if (barcodeSvgRef.current && customSku) {
+      const is72mm = labelSize.startsWith('72');
       try {
         JsBarcode(barcodeSvgRef.current, String(customSku).trim(), {
           format: barcodeType,
-          width: 2.0,
-          height: 42,
+          width: is72mm ? 2.2 : 1.9,
+          height: is72mm ? 44 : 38,
           displayValue: true,
           font: 'Arial',
-          fontSize: 13,
+          fontSize: is72mm ? 13 : 12,
           textMargin: 3,
           margin: 0,
           background: '#ffffff',
@@ -46,8 +47,8 @@ const ProductLabelModal = ({ product, onClose }) => {
         try {
           JsBarcode(barcodeSvgRef.current, String(customSku).trim(), {
             format: 'CODE128',
-            width: 2.0,
-            height: 42,
+            width: is72mm ? 2.2 : 1.9,
+            height: is72mm ? 44 : 38,
             displayValue: true,
             fontSize: 13,
             margin: 0
@@ -57,9 +58,9 @@ const ProductLabelModal = ({ product, onClose }) => {
         }
       }
     }
-  }, [customSku, barcodeType, customDescription, customCategory]);
+  }, [customSku, barcodeType, customDescription, customCategory, labelSize]);
 
-  // Imprimir directamente vía diálogo del navegador con contorno y márgenes precisos
+  // Imprimir directamente vía diálogo del navegador optimizado para ticket térmico de 72mm
   const handlePrint = () => {
     const printWindow = window.open('', '_blank', 'width=750,height=600');
     if (!printWindow) {
@@ -71,8 +72,17 @@ const ProductLabelModal = ({ product, onClose }) => {
     const numCopies = Math.max(1, parseInt(copies, 10) || 1);
 
     const isContinuousRoll = labelSize !== 'sheet';
-    const labelWidthMm = labelSize === '50x30' ? '50mm' : '58mm';
-    const labelHeightMm = labelSize === '50x30' ? '30mm' : '40mm';
+    
+    let labelWidthMm = '72mm';
+    let labelHeightMm = '45mm';
+
+    if (labelSize === '72x60') {
+      labelWidthMm = '72mm';
+      labelHeightMm = '60mm';
+    } else if (labelSize === '58x40') {
+      labelWidthMm = '58mm';
+      labelHeightMm = '40mm';
+    }
 
     let labelsHtml = '';
     for (let i = 0; i < numCopies; i++) {
@@ -100,11 +110,11 @@ const ProductLabelModal = ({ product, onClose }) => {
       <html>
         <head>
           <meta charset="utf-8">
-          <title>Etiqueta - ${escapeHtml(customSku)}</title>
+          <title>Ticket Etiqueta - ${escapeHtml(customSku)}</title>
           <style>
             @page {
               size: ${isContinuousRoll ? `${labelWidthMm} ${labelHeightMm}` : 'letter portrait'};
-              margin: ${isContinuousRoll ? '0mm' : '8mm'};
+              margin: 0mm;
             }
             * {
               box-sizing: border-box;
@@ -117,24 +127,27 @@ const ProductLabelModal = ({ product, onClose }) => {
               background: #fff;
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
+              width: ${isContinuousRoll ? labelWidthMm : 'auto'};
             }
             .labels-container {
               display: ${isContinuousRoll ? 'block' : 'flex'};
               flex-wrap: wrap;
-              gap: 4mm;
+              gap: ${isContinuousRoll ? '0mm' : '4mm'};
               justify-content: flex-start;
+              margin: 0 auto;
             }
             .label-wrapper {
               width: ${labelWidthMm};
               height: ${labelHeightMm};
               padding: 1.5mm;
+              margin: 0 auto;
               page-break-inside: avoid;
               ${isContinuousRoll ? 'page-break-after: always;' : ''}
             }
             .label-box {
               width: 100%;
               height: 100%;
-              padding: 2mm 3mm 1.5mm 3mm;
+              padding: 2.5mm 3.5mm 2mm 3.5mm;
               border: 2px solid #000000;
               border-radius: 2px;
               display: flex;
@@ -147,10 +160,10 @@ const ProductLabelModal = ({ product, onClose }) => {
               text-align: left;
             }
             .product-title {
-              font-size: 11.5px;
+              font-size: ${labelSize.startsWith('72') ? '12.5px' : '11px'};
               font-weight: 900;
               line-height: 1.2;
-              max-height: 28px;
+              max-height: 32px;
               overflow: hidden;
               text-overflow: ellipsis;
               display: -webkit-box;
@@ -161,40 +174,39 @@ const ProductLabelModal = ({ product, onClose }) => {
               letter-spacing: -0.2px;
             }
             .product-category {
-              font-size: 8.5px;
-              font-weight: 600;
-              color: #333333;
+              font-size: 9px;
+              font-weight: 700;
+              color: #222222;
               text-transform: uppercase;
-              margin-top: 1px;
+              margin-top: 1.5px;
             }
             .barcode-container {
               text-align: center;
               display: flex;
               justify-content: center;
               align-items: center;
-              margin: 1mm 0 0 0;
+              margin: 1.5mm 0 1mm 0;
             }
             .barcode-container svg {
               max-width: 100%;
               height: auto;
-              max-height: 22mm;
+              max-height: 24mm;
             }
             .label-footer {
               display: flex;
               justify-content: space-between;
               align-items: center;
               margin-top: 1px;
-              font-size: 8px;
-              font-weight: bold;
-              border-top: 0.5px solid #eaeaea;
-              padding-top: 1px;
+              font-size: 8.5px;
+              font-weight: 800;
+              border-top: 1px solid #000000;
+              padding-top: 1.5px;
             }
             .label-sku {
-              color: #444;
+              color: #000000;
             }
             .label-date {
-              color: #000;
-              font-weight: 800;
+              color: #000000;
             }
           </style>
         </head>
@@ -205,7 +217,7 @@ const ProductLabelModal = ({ product, onClose }) => {
           <script>
             window.onload = function() {
               window.print();
-              setTimeout(function() { window.close(); }, 500);
+              setTimeout(function() { window.close(); }, 600);
             };
           </script>
         </body>
@@ -217,14 +229,22 @@ const ProductLabelModal = ({ product, onClose }) => {
     printWindow.document.close();
   };
 
-  // Descargar archivo PDF de las etiquetas con contorno/marco
+  // Descargar archivo PDF de las etiquetas optimizado para ticket 72mm
   const handleDownloadPdf = () => {
     try {
       const numCopies = Math.max(1, parseInt(copies, 10) || 1);
       const isContinuous = labelSize !== 'sheet';
 
-      const widthMm = labelSize === '50x30' ? 50 : 58;
-      const heightMm = labelSize === '50x30' ? 30 : 40;
+      let widthMm = 72;
+      let heightMm = 45;
+
+      if (labelSize === '72x60') {
+        widthMm = 72;
+        heightMm = 60;
+      } else if (labelSize === '58x40') {
+        widthMm = 58;
+        heightMm = 40;
+      }
 
       const doc = isContinuous 
         ? new jsPDF({ orientation: 'landscape', unit: 'mm', format: [heightMm, widthMm] })
@@ -258,39 +278,44 @@ const ProductLabelModal = ({ product, onClose }) => {
 
             // Información del Producto (Nombre y Categoría)
             doc.setFont('Helvetica', 'bold');
-            doc.setFontSize(9);
-            doc.text(customDescription.toUpperCase().substring(0, 32), 3, 5.5);
+            doc.setFontSize(9.5);
+            doc.text(customDescription.toUpperCase().substring(0, 36), 3.5, 6);
 
             if (customCategory) {
-              doc.setFontSize(6.5);
-              doc.setFont('Helvetica', 'normal');
-              doc.text(`CAT: ${customCategory.toUpperCase()}`, 3, 8.5);
+              doc.setFontSize(7);
+              doc.setFont('Helvetica', 'bold');
+              doc.text(`CAT: ${customCategory.toUpperCase()}`, 3.5, 9.5);
             }
 
             // Código de barras centrado
-            doc.addImage(barcodeImgData, 'PNG', (widthMm - 48) / 2, 10, 48, 23);
+            const bcWidth = widthMm - 14;
+            doc.addImage(barcodeImgData, 'PNG', (widthMm - bcWidth) / 2, 11, bcWidth, heightMm - 18);
+
+            // Línea separadora de pie
+            doc.setLineWidth(0.3);
+            doc.line(3.5, heightMm - 4.5, widthMm - 3.5, heightMm - 4.5);
 
             // Fecha y SKU en el pie
-            doc.setFontSize(6.5);
+            doc.setFontSize(7);
             doc.setFont('Helvetica', 'bold');
-            doc.text(`SKU: ${customSku}`, 3, heightMm - 2.5);
-            doc.text(customDate, widthMm - 3, heightMm - 2.5, { align: 'right' });
+            doc.text(`SKU: ${customSku}`, 3.5, heightMm - 2);
+            doc.text(customDate, widthMm - 3.5, heightMm - 2, { align: 'right' });
           }
         } else {
           // Hoja Carta con cuadrícula
-          let x = 12;
+          let x = 10;
           let y = 15;
           const cols = 3;
-          const colWidth = 60;
-          const rowHeight = 42;
+          const colWidth = 64;
+          const rowHeight = 44;
 
           for (let i = 0; i < numCopies; i++) {
             const col = i % cols;
-            const row = Math.floor((i % (cols * 6)) / cols);
+            const row = Math.floor((i % (cols * 5)) / cols);
 
-            if (i > 0 && i % (cols * 6) === 0) {
+            if (i > 0 && i % (cols * 5) === 0) {
               doc.addPage();
-              x = 12;
+              x = 10;
               y = 15;
             }
 
@@ -300,31 +325,35 @@ const ProductLabelModal = ({ product, onClose }) => {
             // Contorno
             doc.setDrawColor(0, 0, 0);
             doc.setLineWidth(0.6);
-            doc.rect(currentX, currentY, 58, 38);
+            doc.rect(currentX, currentY, 60, 40);
 
             // Información del Producto
             doc.setFont('Helvetica', 'bold');
             doc.setFontSize(8.5);
-            doc.text(customDescription.toUpperCase().substring(0, 28), currentX + 2.5, currentY + 5);
+            doc.text(customDescription.toUpperCase().substring(0, 30), currentX + 3, currentY + 5.5);
 
             if (customCategory) {
               doc.setFontSize(6.5);
-              doc.setFont('Helvetica', 'normal');
-              doc.text(`CAT: ${customCategory.toUpperCase()}`, currentX + 2.5, currentY + 8);
+              doc.setFont('Helvetica', 'bold');
+              doc.text(`CAT: ${customCategory.toUpperCase()}`, currentX + 3, currentY + 8.5);
             }
 
             // Código de barras
-            doc.addImage(barcodeImgData, 'PNG', currentX + 5, currentY + 9, 48, 23);
+            doc.addImage(barcodeImgData, 'PNG', currentX + 5, currentY + 10, 50, 24);
+
+            // Línea separadora
+            doc.setLineWidth(0.2);
+            doc.line(currentX + 3, currentY + 35.5, currentX + 57, currentY + 35.5);
 
             // Fecha y SKU
             doc.setFontSize(6.5);
             doc.setFont('Helvetica', 'bold');
-            doc.text(`SKU: ${customSku}`, currentX + 2.5, currentY + 36);
-            doc.text(customDate, currentX + 55, currentY + 36, { align: 'right' });
+            doc.text(`SKU: ${customSku}`, currentX + 3, currentY + 38.5);
+            doc.text(customDate, currentX + 57, currentY + 38.5, { align: 'right' });
           }
         }
 
-        doc.save(`Etiqueta_${customSku}_${customDate.replace(/\//g, '-')}.pdf`);
+        doc.save(`Ticket_Etiqueta_72mm_${customSku}_${customDate.replace(/\//g, '-')}.pdf`);
         toast.success('Etiquetas exportadas a PDF exitosamente');
       };
 
@@ -347,14 +376,14 @@ const ProductLabelModal = ({ product, onClose }) => {
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: '680px', width: '95%' }}>
+      <div className="modal-content" style={{ maxWidth: '720px', width: '95%' }}>
         <div className="topbar" style={{ marginBottom: '1.25rem', borderBottom: 'none' }}>
           <div>
             <h2 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Printer size={22} /> Imprimir Etiqueta de Producto
+              <Printer size={22} /> Imprimir Etiqueta Térmica (72mm)
             </h2>
             <p style={{ color: 'var(--color-text-light)', fontSize: '0.8rem', margin: '0.2rem 0 0 0' }}>
-              Formato con contorno exterior, descripción del producto, código de barras y fecha (sin precio).
+              Configurada para impresoras térmicas de ticket de 72mm (rollo de 80mm) con contorno de corte e información de producto.
             </p>
           </div>
           <button type="button" className="btn btn-outline" onClick={onClose} style={{ padding: '0.25rem' }}>
@@ -363,7 +392,7 @@ const ProductLabelModal = ({ product, onClose }) => {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.15fr', gap: '1.5rem', alignItems: 'start' }}>
-          {/* Panel de Configuración de la Etiqueta */}
+          {/* Panel de Configuración */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" style={{ fontSize: '0.8rem' }}>Descripción del Producto</label>
@@ -385,7 +414,7 @@ const ProductLabelModal = ({ product, onClose }) => {
                   className="form-input"
                   value={customCategory}
                   onChange={(e) => setCustomCategory(e.target.value)}
-                  placeholder="Categoría del producto"
+                  placeholder="Categoría"
                   style={{ fontSize: '0.85rem' }}
                 />
               </div>
@@ -432,15 +461,16 @@ const ProductLabelModal = ({ product, onClose }) => {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.8rem' }}>Tamaño de Etiqueta</label>
+                <label className="form-label" style={{ fontSize: '0.8rem' }}>Formato de Impresora</label>
                 <select
                   className="form-select"
                   value={labelSize}
                   onChange={(e) => setLabelSize(e.target.value)}
-                  style={{ fontSize: '0.85rem' }}
+                  style={{ fontSize: '0.85rem', fontWeight: '600' }}
                 >
-                  <option value="58x40">Rollo 58mm x 40mm (Estándar)</option>
-                  <option value="50x30">Rollo 50mm x 30mm (Compacto)</option>
+                  <option value="72x45">Ticket Térmico 72mm x 45mm (Rollo 80mm)</option>
+                  <option value="72x60">Ticket Térmico 72mm x 60mm (Extendido)</option>
+                  <option value="58x40">Ticket Térmico 58mm x 40mm (Rollo 58mm)</option>
                   <option value="sheet">Hoja Carta (Cuadrícula)</option>
                 </select>
               </div>
@@ -461,46 +491,46 @@ const ProductLabelModal = ({ product, onClose }) => {
             </div>
           </div>
 
-          {/* Vista Previa Visual con Contorno / Marco */}
+          {/* Vista Previa Visual 72mm */}
           <div>
             <label className="form-label" style={{ fontSize: '0.8rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-              <Settings2 size={14} /> Vista Previa con Contorno (Margen):
+              <Settings2 size={14} /> Vista Previa Ticket Térmico 72mm:
             </label>
 
-            {/* Contenedor simulando el papel con margen */}
+            {/* Contenedor del papel térmico */}
             <div
               style={{
                 backgroundColor: '#f1f5f9',
-                padding: '10px',
+                padding: '12px',
                 borderRadius: '6px',
                 display: 'flex',
                 justifyContent: 'center',
                 alignItems: 'center'
               }}
             >
-              {/* Etiqueta con Contorno Sólido */}
+              {/* Etiqueta 72mm con Contorno Sólido */}
               <div
                 style={{
                   backgroundColor: '#ffffff',
                   color: '#000000',
                   border: '2.5px solid #000000',
                   borderRadius: '2px',
-                  padding: '10px 12px 8px 12px',
-                  boxShadow: '0 4px 10px rgba(0,0,0,0.12)',
+                  padding: '10px 14px 8px 14px',
+                  boxShadow: '0 4px 10px rgba(0,0,0,0.15)',
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
                   width: '100%',
-                  minHeight: '185px',
+                  minHeight: '190px',
                   userSelect: 'none'
                 }}
               >
-                {/* Fila Superior: Nombre del Producto y Categoría */}
+                {/* Cabecera: Descripción y Categoría */}
                 <div>
                   <div
                     style={{
                       fontFamily: 'Arial, sans-serif',
-                      fontSize: '0.9rem',
+                      fontSize: '0.95rem',
                       fontWeight: '900',
                       lineHeight: '1.2',
                       textTransform: 'uppercase',
@@ -514,9 +544,9 @@ const ProductLabelModal = ({ product, onClose }) => {
                     <div
                       style={{
                         fontFamily: 'Arial, sans-serif',
-                        fontSize: '0.72rem',
-                        fontWeight: '600',
-                        color: '#334155',
+                        fontSize: '0.75rem',
+                        fontWeight: '700',
+                        color: '#1e293b',
                         textTransform: 'uppercase',
                         marginTop: '2px'
                       }}
@@ -531,23 +561,23 @@ const ProductLabelModal = ({ product, onClose }) => {
                   <svg ref={barcodeSvgRef} style={{ maxWidth: '100%', height: 'auto', display: 'block' }}></svg>
                 </div>
 
-                {/* Fila Inferior: SKU a la izquierda y Fecha a la derecha */}
+                {/* Pie: SKU y Fecha */}
                 <div
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     marginTop: '2px',
-                    borderTop: '1px solid #e2e8f0',
+                    borderTop: '1.5px solid #000000',
                     paddingTop: '3px'
                   }}
                 >
                   <span
                     style={{
                       fontFamily: 'Arial, sans-serif',
-                      fontSize: '0.72rem',
-                      fontWeight: '700',
-                      color: '#475569'
+                      fontSize: '0.75rem',
+                      fontWeight: '800',
+                      color: '#000000'
                     }}
                   >
                     SKU: {customSku}
@@ -555,8 +585,8 @@ const ProductLabelModal = ({ product, onClose }) => {
                   <span
                     style={{
                       fontFamily: 'Arial, sans-serif',
-                      fontSize: '0.75rem',
-                      fontWeight: '800',
+                      fontSize: '0.78rem',
+                      fontWeight: '900',
                       color: '#000000'
                     }}
                   >
@@ -567,7 +597,7 @@ const ProductLabelModal = ({ product, onClose }) => {
             </div>
 
             <div style={{ marginTop: '0.65rem', fontSize: '0.75rem', color: 'var(--color-text-light)', textAlign: 'center' }}>
-              Etiqueta con contorno exterior nítido, ideal para identificación de productos en cuarto frío y almacén.
+              ✓ Ancho optimizado a <strong>72mm</strong> para impresoras térmicas POS (rollo estándar de 80mm).
             </div>
           </div>
         </div>
@@ -575,7 +605,7 @@ const ProductLabelModal = ({ product, onClose }) => {
         {/* Acciones del Modal */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
           <button type="button" className="btn btn-outline" onClick={handleDownloadPdf}>
-            <Download size={16} /> Descargar PDF ({copies} {copies === 1 ? 'etiqueta' : 'etiquetas'})
+            <Download size={16} /> Descargar PDF 72mm ({copies} {copies === 1 ? 'ticket' : 'tickets'})
           </button>
 
           <div style={{ display: 'flex', gap: '0.75rem' }}>
@@ -583,7 +613,7 @@ const ProductLabelModal = ({ product, onClose }) => {
               Cerrar
             </button>
             <button type="button" className="btn btn-primary" onClick={handlePrint}>
-              <Printer size={16} /> Imprimir {copies > 1 ? `(${copies} copias)` : ''}
+              <Printer size={16} /> Imprimir en Ticket Térmico {copies > 1 ? `(${copies} copias)` : ''}
             </button>
           </div>
         </div>
