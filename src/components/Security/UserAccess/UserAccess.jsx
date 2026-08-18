@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useInventory } from '../../../context/InventoryContext';
-import { GitBranch, Save, Check, X, User, Sparkles, Eye, Plus, Edit2, Trash2, Shield, Layers } from 'lucide-react';
+import { GitBranch, Save, Check, X, User, Sparkles, Eye, Plus, Edit2, Trash2, Download, Shield, Layers } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { SYSTEM_MODULES, GROUPS_ORDER } from '../../../config/modules';
 
@@ -39,7 +39,8 @@ const UserAccess = ({ initialSelectedUserId }) => {
           view: hasExplicit ? Boolean(modPerm.view) : isLegacyAdmin,
           create: hasExplicit ? Boolean(modPerm.create) : (isLegacyAdmin && m.actions.includes('create')),
           edit: hasExplicit ? Boolean(modPerm.edit) : (isLegacyAdmin && m.actions.includes('edit')),
-          delete: hasExplicit ? Boolean(modPerm.delete) : (isLegacyAdmin && m.actions.includes('delete'))
+          delete: hasExplicit ? Boolean(modPerm.delete) : (isLegacyAdmin && m.actions.includes('delete')),
+          export: hasExplicit ? Boolean(modPerm.export) : (isLegacyAdmin && m.actions.includes('export'))
         };
       });
       setPermissions(formatted);
@@ -52,15 +53,16 @@ const UserAccess = ({ initialSelectedUserId }) => {
       const nextVal = !currentMod[action];
       const updatedMod = { ...currentMod, [action]: nextVal };
       
-      // If enabling create, edit, delete -> auto-enable view
+      // If enabling create, edit, delete, export -> auto-enable view
       if (nextVal && action !== 'view') {
         updatedMod.view = true;
       }
-      // If disabling view -> auto-disable create, edit, delete
+      // If disabling view -> auto-disable create, edit, delete, export
       if (!nextVal && action === 'view') {
         updatedMod.create = false;
         updatedMod.edit = false;
         updatedMod.delete = false;
+        updatedMod.export = false;
       }
 
       return {
@@ -77,7 +79,8 @@ const UserAccess = ({ initialSelectedUserId }) => {
         view: enable,
         create: enable && m.actions.includes('create'),
         edit: enable && m.actions.includes('edit'),
-        delete: enable && m.actions.includes('delete')
+        delete: enable && m.actions.includes('delete'),
+        export: enable && m.actions.includes('export')
       };
     });
     setPermissions(next);
@@ -90,7 +93,8 @@ const UserAccess = ({ initialSelectedUserId }) => {
         view: true,
         create: false,
         edit: false,
-        delete: false
+        delete: false,
+        export: false
       };
     });
     setPermissions(next);
@@ -104,7 +108,8 @@ const UserAccess = ({ initialSelectedUserId }) => {
           view: enable,
           create: enable && m.actions.includes('create'),
           edit: enable && m.actions.includes('edit'),
-          delete: enable && m.actions.includes('delete')
+          delete: enable && m.actions.includes('delete'),
+          export: enable && m.actions.includes('export')
         };
       });
       return updated;
@@ -144,11 +149,11 @@ const UserAccess = ({ initialSelectedUserId }) => {
             <GitBranch size={24} style={{ color: 'var(--color-primary)' }} /> Accesos y Permisos por Pantalla
           </h1>
           <p style={{ color: 'var(--color-text-light)', fontSize: '0.875rem' }}>
-            Cada pantalla del sistema cuenta con su respectivo permiso de visualización y control de acciones.
+            Cada pantalla del sistema cuenta con su respectivo permiso de visualización, edición y descarga de archivos.
           </p>
         </div>
         <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-          <Save size={18} /> {saving ? 'Guardando...' : 'Guardar Permisos'}
+          <Save size={18} /> {saving ? 'Guardando...' : 'Guardar Cambios'}
         </button>
       </div>
 
@@ -225,25 +230,30 @@ const UserAccess = ({ initialSelectedUserId }) => {
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: '40%' }}>Pantalla / Módulo del Sistema</th>
-                  <th style={{ textAlign: 'center', width: '15%' }}>
+                  <th style={{ width: '35%' }}>Pantalla / Módulo del Sistema</th>
+                  <th style={{ textAlign: 'center', width: '13%' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', justifyContent: 'center' }}>
                       <Eye size={13} /> Ver (Acceso)
                     </span>
                   </th>
-                  <th style={{ textAlign: 'center', width: '15%' }}>
+                  <th style={{ textAlign: 'center', width: '13%' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', justifyContent: 'center' }}>
                       <Plus size={13} /> Crear
                     </span>
                   </th>
-                  <th style={{ textAlign: 'center', width: '15%' }}>
+                  <th style={{ textAlign: 'center', width: '13%' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', justifyContent: 'center' }}>
                       <Edit2 size={13} /> Editar
                     </span>
                   </th>
-                  <th style={{ textAlign: 'center', width: '15%' }}>
+                  <th style={{ textAlign: 'center', width: '13%' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', justifyContent: 'center' }}>
                       <Trash2 size={13} /> Eliminar
+                    </span>
+                  </th>
+                  <th style={{ textAlign: 'center', width: '13%' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', justifyContent: 'center' }}>
+                      <Download size={13} /> Exportar
                     </span>
                   </th>
                 </tr>
@@ -253,7 +263,7 @@ const UserAccess = ({ initialSelectedUserId }) => {
                   <React.Fragment key={groupObj.group}>
                     {/* Group Header Row */}
                     <tr style={{ backgroundColor: 'rgba(255,255,255,0.03)', borderTop: '2px solid var(--color-border)' }}>
-                      <td colSpan="5" style={{ padding: '0.65rem 1rem' }}>
+                      <td colSpan="6" style={{ padding: '0.65rem 1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <span style={{ fontWeight: '700', fontSize: '0.85rem', color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                             <Layers size={14} /> {groupObj.group}
@@ -349,6 +359,22 @@ const UserAccess = ({ initialSelectedUserId }) => {
                                 title={modPerms.delete ? 'Permiso para eliminar' : 'Sin permiso de eliminación'}
                               >
                                 {modPerms.delete ? <Check size={18} /> : <X size={18} />}
+                              </button>
+                            ) : (
+                              <span style={{ color: 'var(--color-text-light)', opacity: 0.4 }}>—</span>
+                            )}
+                          </td>
+
+                          {/* Export */}
+                          <td style={{ textAlign: 'center' }}>
+                            {mod.actions.includes('export') ? (
+                              <button
+                                type="button"
+                                className={`perm-toggle-btn ${modPerms.export ? 'active view-act' : ''}`}
+                                onClick={() => handleToggle(mod.id, 'export')}
+                                title={modPerms.export ? 'Permiso para exportar' : 'Sin permiso de exportación'}
+                              >
+                                {modPerms.export ? <Check size={18} /> : <X size={18} />}
                               </button>
                             ) : (
                               <span style={{ color: 'var(--color-text-light)', opacity: 0.4 }}>—</span>

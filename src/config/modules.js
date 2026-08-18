@@ -1,4 +1,4 @@
-// Master list of all screens and modules in the system
+// Master list of all screens and modules in the system with granular RBAC actions
 export const SYSTEM_MODULES = [
   // 1. Operaciones
   {
@@ -13,21 +13,21 @@ export const SYSTEM_MODULES = [
     name: 'Catálogo de Productos',
     group: 'Operaciones',
     desc: 'Existencias, precios, categorías y SKU',
-    actions: ['view', 'create', 'edit', 'delete']
+    actions: ['view', 'create', 'edit', 'delete', 'export']
   },
   {
     id: 'inventory-count',
     name: 'Toma de Inventario',
     group: 'Operaciones',
     desc: 'Conteo físico y ajustes transaccionales',
-    actions: ['view', 'create', 'edit', 'delete']
+    actions: ['view', 'create', 'edit', 'delete', 'export']
   },
   {
     id: 'movements',
     name: 'Movimientos de Almacén',
     group: 'Operaciones',
     desc: 'Entradas, salidas, transporte y remisiones',
-    actions: ['view', 'create', 'edit', 'delete']
+    actions: ['view', 'create', 'edit', 'delete', 'export']
   },
 
   // 2. Reportes
@@ -36,21 +36,21 @@ export const SYSTEM_MODULES = [
     name: 'Corte de Seguro',
     group: 'Reportes',
     desc: 'Reporte valorizado de póliza asegurada',
-    actions: ['view']
+    actions: ['view', 'export']
   },
   {
     id: 'summary',
     name: 'Resumen Detallado',
     group: 'Reportes',
     desc: 'Kardex consolidado de existencias y flujo',
-    actions: ['view']
+    actions: ['view', 'export']
   },
   {
     id: 'summary2',
     name: 'Resumen Diario',
     group: 'Reportes',
     desc: 'Volumen diario y operaciones de almacén',
-    actions: ['view']
+    actions: ['view', 'export']
   },
 
   // 3. Seguridad
@@ -59,7 +59,7 @@ export const SYSTEM_MODULES = [
     name: 'Usuarios del Sistema',
     group: 'Seguridad',
     desc: 'Crear, editar, desactivar y resetear usuarios',
-    actions: ['view', 'create', 'edit', 'delete']
+    actions: ['view', 'create', 'edit', 'delete', 'export']
   },
   {
     id: 'security-access',
@@ -80,7 +80,7 @@ export const SYSTEM_MODULES = [
     name: 'Bitácora del Sistema',
     group: 'Seguridad',
     desc: 'Auditoría y registro de actividad en tiempo real',
-    actions: ['view']
+    actions: ['view', 'export']
   },
   {
     id: 'security-sessions',

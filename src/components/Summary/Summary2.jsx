@@ -9,7 +9,8 @@ import { CONTRACT_INFO } from '../../utils/contractRates';
 import { toast } from 'react-hot-toast';
 
 const Summary2 = () => {
-  const { products, movements, categories, categoryUnits, settings } = useInventory();
+  const { products, movements, categories, categoryUnits, settings, canExport } = useInventory();
+  const allowExport = canExport('summary2');
   
   // Rango de fechas por defecto: Mes actual (1 al día actual)
   const [startDate, setStartDate] = useState(() => {
@@ -305,17 +306,19 @@ const Summary2 = () => {
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-          <button className="btn btn-primary" onClick={handleExportXLSX} title="Descargar en formato Microsoft Excel nativo">
-            <FileSpreadsheet size={18} /> Exportar Excel (.xlsx)
-          </button>
-          <button className="btn btn-outline" onClick={handleExportCSV} title="Descargar en formato CSV compatible">
-            <Download size={18} /> Exportar CSV
-          </button>
-          <button className="btn btn-outline" onClick={handleExportPDF} title="Descargar reporte en PDF">
-            <FileOutput size={18} /> Exportar PDF
-          </button>
-        </div>
+        {allowExport && (
+          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <button className="btn btn-primary" onClick={handleExportXLSX} title="Descargar en formato Microsoft Excel nativo">
+              <FileSpreadsheet size={18} /> Exportar Excel (.xlsx)
+            </button>
+            <button className="btn btn-outline" onClick={handleExportCSV} title="Descargar en formato CSV compatible">
+              <Download size={18} /> Exportar CSV
+            </button>
+            <button className="btn btn-outline" onClick={handleExportPDF} title="Descargar reporte en PDF">
+              <FileOutput size={18} /> Exportar PDF
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Panel de Filtros y Configuración del Corte */}

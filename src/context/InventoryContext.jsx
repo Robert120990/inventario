@@ -231,6 +231,7 @@ export const InventoryProvider = ({ children }) => {
   const canCreate = (module) => hasPermission(module, 'create');
   const canEdit = (module) => hasPermission(module, 'edit');
   const canDelete = (module) => hasPermission(module, 'delete');
+  const canExport = (module) => hasPermission(module, 'export');
 
   const logAuditEvent = async (action, module, details) => {
     try {
@@ -853,6 +854,7 @@ export const InventoryProvider = ({ children }) => {
       canCreate,
       canEdit,
       canDelete,
+      canExport,
       logAuditEvent,
       addProduct,
       updateProduct,

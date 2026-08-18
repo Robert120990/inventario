@@ -28,7 +28,8 @@ const ACTION_COLORS = {
 };
 
 const SystemLog = () => {
-  const { systemLogs, fetchSystemLogs } = useInventory();
+  const { systemLogs, fetchSystemLogs, canExport } = useInventory();
+  const allowExport = canExport('security-logs');
   const [search, setSearch] = useState('');
   const [selectedModule, setSelectedModule] = useState('all');
   const [selectedAction, setSelectedAction] = useState('all');
@@ -108,12 +109,16 @@ const SystemLog = () => {
           <button className="btn btn-outline" onClick={loadLogs} disabled={loading} title="Actualizar">
             <RefreshCw size={16} className={loading ? 'spin' : ''} /> Actualizar
           </button>
-          <button className="btn btn-primary" onClick={handleExportXlsx} title="Exportar a Microsoft Excel">
-            <FileSpreadsheet size={16} /> Excel (.xlsx)
-          </button>
-          <button className="btn btn-outline" onClick={handleExportCsv} title="Exportar a CSV estructurado">
-            <Download size={16} /> CSV
-          </button>
+          {allowExport && (
+            <>
+              <button className="btn btn-primary" onClick={handleExportXlsx} title="Exportar a Microsoft Excel">
+                <FileSpreadsheet size={16} /> Excel (.xlsx)
+              </button>
+              <button className="btn btn-outline" onClick={handleExportCsv} title="Exportar a CSV estructurado">
+                <Download size={16} /> CSV
+              </button>
+            </>
+          )}
         </div>
       </div>
 

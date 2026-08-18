@@ -18,7 +18,8 @@ const RoleForm = ({ onCancel, initialData }) => {
         view: Boolean(base[m.id]?.view),
         create: Boolean(base[m.id]?.create),
         edit: Boolean(base[m.id]?.edit),
-        delete: Boolean(base[m.id]?.delete)
+        delete: Boolean(base[m.id]?.delete),
+        export: Boolean(base[m.id]?.export)
       };
     });
     return formatted;
@@ -34,6 +35,7 @@ const RoleForm = ({ onCancel, initialData }) => {
         updated.create = false;
         updated.edit = false;
         updated.delete = false;
+        updated.export = false;
       }
       return { ...prev, [moduleId]: updated };
     });
@@ -46,7 +48,8 @@ const RoleForm = ({ onCancel, initialData }) => {
         view: enable,
         create: enable && m.actions.includes('create'),
         edit: enable && m.actions.includes('edit'),
-        delete: enable && m.actions.includes('delete')
+        delete: enable && m.actions.includes('delete'),
+        export: enable && m.actions.includes('export')
       };
     });
     setPermissions(next);
@@ -59,7 +62,8 @@ const RoleForm = ({ onCancel, initialData }) => {
         view: true,
         create: false,
         edit: false,
-        delete: false
+        delete: false,
+        export: false
       };
     });
     setPermissions(next);
@@ -73,7 +77,8 @@ const RoleForm = ({ onCancel, initialData }) => {
           view: enable,
           create: enable && m.actions.includes('create'),
           edit: enable && m.actions.includes('edit'),
-          delete: enable && m.actions.includes('delete')
+          delete: enable && m.actions.includes('delete'),
+          export: enable && m.actions.includes('export')
         };
       });
       return updated;
@@ -138,7 +143,7 @@ const RoleForm = ({ onCancel, initialData }) => {
                 className="form-input"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ej. Auditor de Inventario, Supervisor..."
+                placeholder="Ej. Auditor de Calidad, Facturación..."
                 required
               />
             </div>
@@ -149,44 +154,43 @@ const RoleForm = ({ onCancel, initialData }) => {
                 className="form-input"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Breve detalle de las funciones del rol"
+                placeholder="Breve descripción de las responsabilidades..."
               />
             </div>
           </div>
 
-          {/* Quick presets */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--color-bg)', padding: '0.75rem 1rem', borderRadius: 'var(--radius)', border: '1px solid var(--color-border)', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text)' }}>Permisos por Pantalla:</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: '600' }}>Matriz de Permisos del Rol:</span>
             <div style={{ display: 'flex', gap: '0.4rem' }}>
-              <button type="button" className="btn btn-outline" onClick={() => handleSetAll(true)} style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}>
-                <Sparkles size={12} style={{ color: 'var(--color-success)' }} /> Activar Todo
+              <button type="button" className="btn btn-outline" onClick={() => handleSetAll(true)} style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}>
+                <Check size={13} style={{ color: 'var(--color-success)' }} /> Todo
               </button>
-              <button type="button" className="btn btn-outline" onClick={handleSetReadOnly} style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}>
-                <Eye size={12} style={{ color: 'var(--color-primary)' }} /> Solo Lectura
+              <button type="button" className="btn btn-outline" onClick={handleSetReadOnly} style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}>
+                <Eye size={13} style={{ color: 'var(--color-primary)' }} /> Lectura
               </button>
-              <button type="button" className="btn btn-outline" onClick={() => handleSetAll(false)} style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', color: 'var(--color-danger)' }}>
-                <X size={12} /> Bloquear Todo
+              <button type="button" className="btn btn-outline" onClick={() => handleSetAll(false)} style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}>
+                <X size={13} style={{ color: 'var(--color-danger)' }} /> Bloquear
               </button>
             </div>
           </div>
 
-          {/* Permissions Table */}
           <div className="table-container" style={{ maxHeight: '380px', overflowY: 'auto' }}>
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: '40%' }}>Pantalla / Módulo</th>
-                  <th style={{ textAlign: 'center', width: '15%' }}>Ver</th>
-                  <th style={{ textAlign: 'center', width: '15%' }}>Crear</th>
-                  <th style={{ textAlign: 'center', width: '15%' }}>Editar</th>
-                  <th style={{ textAlign: 'center', width: '15%' }}>Eliminar</th>
+                  <th style={{ width: '35%' }}>Pantalla / Módulo</th>
+                  <th style={{ textAlign: 'center', width: '13%' }}>Ver</th>
+                  <th style={{ textAlign: 'center', width: '13%' }}>Crear</th>
+                  <th style={{ textAlign: 'center', width: '13%' }}>Editar</th>
+                  <th style={{ textAlign: 'center', width: '13%' }}>Eliminar</th>
+                  <th style={{ textAlign: 'center', width: '13%' }}>Exportar</th>
                 </tr>
               </thead>
               <tbody>
                 {groupedModules.map(groupObj => (
                   <React.Fragment key={groupObj.group}>
                     <tr style={{ backgroundColor: 'rgba(255,255,255,0.03)', borderTop: '1px solid var(--color-border)' }}>
-                      <td colSpan="5" style={{ padding: '0.45rem 0.75rem' }}>
+                      <td colSpan="6" style={{ padding: '0.45rem 0.75rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <strong style={{ fontSize: '0.75rem', color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                             {groupObj.group}
@@ -241,6 +245,13 @@ const RoleForm = ({ onCancel, initialData }) => {
                             {mod.actions.includes('delete') ? (
                               <button type="button" className={`perm-toggle-btn ${modPerms.delete ? 'active del-act' : ''}`} onClick={() => handleToggle(mod.id, 'delete')}>
                                 {modPerms.delete ? <Check size={16} /> : <X size={16} />}
+                              </button>
+                            ) : <span style={{ color: 'var(--color-text-light)', opacity: 0.3 }}>—</span>}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            {mod.actions.includes('export') ? (
+                              <button type="button" className={`perm-toggle-btn ${modPerms.export ? 'active view-act' : ''}`} onClick={() => handleToggle(mod.id, 'export')}>
+                                {modPerms.export ? <Check size={16} /> : <X size={16} />}
                               </button>
                             ) : <span style={{ color: 'var(--color-text-light)', opacity: 0.3 }}>—</span>}
                           </td>

@@ -30,7 +30,7 @@ const matchesSearchTerms = (product, searchTerm) => {
 const number = (value) => Number(value) || 0;
 
 const ProductList = () => {
-  const { products, deleteProduct, currentUser, categories, categoryUnits, canCreate, canEdit, canDelete } = useInventory();
+  const { products, deleteProduct, currentUser, categories, categoryUnits, canCreate, canEdit, canDelete, canExport } = useInventory();
   const [isAdding, setIsAdding] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -44,6 +44,7 @@ const ProductList = () => {
   const allowCreate = canCreate('products');
   const allowEdit = canEdit('products');
   const allowDelete = canDelete('products');
+  const allowExport = canExport('products');
   const showActions = allowEdit || allowDelete;
 
   const filteredProducts = useMemo(() => {
@@ -125,12 +126,16 @@ const ProductList = () => {
       <div className="topbar">
         <h1 className="page-title">Productos</h1>
         <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-          <button className="btn btn-primary" onClick={handleExportXlsx} disabled={filteredProducts.length === 0} title="Exportar catálogo a Microsoft Excel">
-            <FileSpreadsheet size={18} /> Exportar Excel (.xlsx)
-          </button>
-          <button className="btn btn-outline" onClick={handleExportCsv} disabled={filteredProducts.length === 0} title="Exportar catálogo a CSV estructurado">
-            <Download size={18} /> Exportar CSV
-          </button>
+          {allowExport && (
+            <>
+              <button className="btn btn-primary" onClick={handleExportXlsx} disabled={filteredProducts.length === 0} title="Exportar catálogo a Microsoft Excel">
+                <FileSpreadsheet size={18} /> Exportar Excel (.xlsx)
+              </button>
+              <button className="btn btn-outline" onClick={handleExportCsv} disabled={filteredProducts.length === 0} title="Exportar catálogo a CSV estructurado">
+                <Download size={18} /> Exportar CSV
+              </button>
+            </>
+          )}
           {(allowCreate || allowEdit) && (
             <button className="btn btn-outline" onClick={() => setIsImportModalOpen(true)} title="Actualizar precios o crear productos desde Excel">
               <FileSpreadsheet size={18} style={{ color: 'var(--color-success)' }} /> Importar Excel

@@ -7,13 +7,14 @@ import { formatDate } from '../../utils/formatUtils';
 import { toast } from 'react-hot-toast';
 
 const MovementList = () => {
-  const { movements, products, deleteMovement, currentUser, canCreate, canEdit, canDelete } = useInventory();
+  const { movements, products, deleteMovement, currentUser, canCreate, canEdit, canDelete, canExport } = useInventory();
   const [isAdding, setIsAdding] = useState(false);
   const [editingMovement, setEditingMovement] = useState(null);
   
   const allowCreate = canCreate('movements');
   const allowEdit = canEdit('movements');
   const allowDelete = canDelete('movements');
+  const allowExport = canExport('movements');
   const showActions = allowEdit || allowDelete;
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -118,12 +119,16 @@ const MovementList = () => {
       <div className="topbar">
         <h1 className="page-title">Movimientos</h1>
         <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-          <button className="btn btn-primary" onClick={handleExportXlsx} title="Descargar en formato Excel (.xlsx)">
-            <FileSpreadsheet size={18} /> Exportar Excel (.xlsx)
-          </button>
-          <button className="btn btn-outline" onClick={handleExportCsv} title="Descargar en formato CSV estructurado">
-            <Download size={18} /> Exportar CSV
-          </button>
+          {allowExport && (
+            <>
+              <button className="btn btn-primary" onClick={handleExportXlsx} title="Descargar en formato Excel (.xlsx)">
+                <FileSpreadsheet size={18} /> Exportar Excel (.xlsx)
+              </button>
+              <button className="btn btn-outline" onClick={handleExportCsv} title="Descargar en formato CSV estructurado">
+                <Download size={18} /> Exportar CSV
+              </button>
+            </>
+          )}
           {allowCreate && (
             <button className="btn btn-primary" onClick={() => { setEditingMovement(null); setIsAdding(true); }}>
               <Plus size={18} /> Registrar Movimiento

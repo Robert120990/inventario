@@ -17,7 +17,8 @@ const getLocalDate = () => {
 };
 
 const InsuranceReport = () => {
-  const { products, movements, categoryUnits } = useInventory();
+  const { products, movements, categoryUnits, canExport } = useInventory();
+  const allowExport = canExport('insurance');
   const [cutoffDate, setCutoffDate] = useState(getLocalDate);
   const [premiumRate, setPremiumRate] = useState(0.10);
   const [customerName, setCustomerName] = useState('AVICOLA SALVADOREÑA S.A. DE C.V.');
@@ -231,17 +232,19 @@ const InsuranceReport = () => {
         <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           <ShieldCheck size={24} /> Corte de Seguro
         </h1>
-        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-          <button className="btn btn-primary" onClick={handleExportXlsx}>
-            <FileSpreadsheet size={18} /> Exportar Excel (.xlsx)
-          </button>
-          <button className="btn btn-outline" onClick={handleExportCsv}>
-            <Download size={18} /> Exportar CSV
-          </button>
-          <button className="btn btn-outline" onClick={handleExportPdf}>
-            <FileOutput size={18} /> Exportar PDF
-          </button>
-        </div>
+        {allowExport && (
+          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <button className="btn btn-primary" onClick={handleExportXlsx}>
+              <FileSpreadsheet size={18} /> Exportar Excel (.xlsx)
+            </button>
+            <button className="btn btn-outline" onClick={handleExportCsv}>
+              <Download size={18} /> Exportar CSV
+            </button>
+            <button className="btn btn-outline" onClick={handleExportPdf}>
+              <FileOutput size={18} /> Exportar PDF
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ marginBottom: '1.5rem' }}>

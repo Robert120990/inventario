@@ -9,7 +9,8 @@ import { CONTRACT_INFO } from '../../utils/contractRates';
 import { toast } from 'react-hot-toast';
 
 const Summary = () => {
-  const { products, movements, categoryUnits } = useInventory();
+  const { products, movements, categoryUnits, canExport } = useInventory();
+  const allowExport = canExport('summary');
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(1); // First day of the current month
@@ -269,17 +270,19 @@ const Summary = () => {
     <div>
       <div className="topbar">
         <h1 className="page-title">Resumen de Actividad</h1>
-        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-          <button className="btn btn-primary" onClick={handleExportXLSX}>
-            <FileSpreadsheet size={18} /> Exportar Excel (.xlsx)
-          </button>
-          <button className="btn btn-outline" onClick={handleExportCSV}>
-            <Download size={18} /> Exportar CSV
-          </button>
-          <button className="btn btn-outline" onClick={handleExportPDF}>
-            <FileOutput size={18} /> Exportar PDF
-          </button>
-        </div>
+        {allowExport && (
+          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <button className="btn btn-primary" onClick={handleExportXLSX}>
+              <FileSpreadsheet size={18} /> Exportar Excel (.xlsx)
+            </button>
+            <button className="btn btn-outline" onClick={handleExportCSV}>
+              <Download size={18} /> Exportar CSV
+            </button>
+            <button className="btn btn-outline" onClick={handleExportPDF}>
+              <FileOutput size={18} /> Exportar PDF
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
