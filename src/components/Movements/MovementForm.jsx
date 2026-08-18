@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { Save, X, Plus, Trash2 } from 'lucide-react';
+import { Save, X, Plus, Trash2, Zap, ThermometerSnowflake } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { EXTRA_SERVICE_PRESETS, calculateTemperatureService, getTemperatureRate } from '../../utils/contractRates';
 
 const MovementForm = ({ onCancel, initialData }) => {
   const { products, addMovement, updateMovement, documentTypes, currentUser } = useInventory();
@@ -11,7 +12,12 @@ const MovementForm = ({ onCancel, initialData }) => {
     if (initialData) {
       return {
         ...initialData,
-        services: initialData.services || [],
+        services: (initialData.services || []).map(s => ({
+          description: s.description || '',
+          quantity: s.quantity !== undefined ? s.quantity : 1,
+          unitPrice: s.unitPrice !== undefined ? s.unitPrice : s.value,
+          value: s.value || ''
+        })),
         items: initialData.items.map(it => {
           const p = products.find(prod => prod.id === it.productId);
           return {
@@ -67,8 +73,55 @@ const MovementForm = ({ onCancel, initialData }) => {
   const addService = () => {
     setFormData(prev => ({
       ...prev,
-      services: [...prev.services, { description: '', value: '' }]
+      services: [...prev.services, { description: '', quantity: 1, unitPrice: '', value: '' }]
     }));
+  };
+
+  const addPresetService = (presetId) => {
+    const preset = EXTRA_SERVICE_PRESETS.find(p => p.id === presetId);
+    if (!preset) return;
+
+    setFormData(prev => ({
+      ...prev,
+      services: [
+        ...prev.services,
+        {
+          description: preset.label,
+          quantity: 1,
+          unitPrice: preset.unitPrice,
+          value: preset.unitPrice
+        }
+      ]
+    }));
+    toast.success(`Servicio "${preset.label}" añadido`);
+  };
+
+  // Calcular cobro automático por temperatura fuera de rango
+  const handleAutoCalculateTemperaturePenalty = () => {
+    const itemsOutOfRange = formData.items.filter(it => {
+      const temp = Number(it.temperature);
+      const pounds = Number(it.qtyPounds);
+      return it.temperature !== '' && !isNaN(temp) && temp > -14 && pounds > 0;
+    });
+
+    if (itemsOutOfRange.length === 0) {
+      toast.error('No hay productos en este movimiento con temperatura fuera de rango (> -14°C) y libras especificadas.');
+      return;
+    }
+
+    let addedCount = 0;
+    const newServices = [...formData.services];
+
+    itemsOutOfRange.forEach(it => {
+      const service = calculateTemperatureService(it.temperature, it.qtyPounds);
+      if (service) {
+        newServices.push(service);
+        addedCount++;
+      }
+    });
+
+    setFormData(prev => ({ ...prev, services: newServices }));
+    toast.success(`Se agregaron ${addedCount} cobro(s) de temperatura según el Contrato 2025-2026`);
   };
 
   const removeService = (index) => {
@@ -81,6 +134,13 @@ const MovementForm = ({ onCancel, initialData }) => {
   const handleServiceChange = (index, field, value) => {
     const newServices = [...formData.services];
     newServices[index][field] = value;
+
+    if (field === 'quantity' || field === 'unitPrice') {
+      const q = Number(field === 'quantity' ? value : newServices[index].quantity || 1);
+      const p = Number(field === 'unitPrice' ? value : newServices[index].unitPrice || 0);
+      newServices[index].value = Number((q * p).toFixed(2));
+    }
+
     setFormData({ ...formData, services: newServices });
   };
 
@@ -98,13 +158,15 @@ const MovementForm = ({ onCancel, initialData }) => {
       ...formData,
       items: formData.items.map(it => ({
         productId: it.productId,
-        temperature: it.temperature ? Number(it.temperature) : null,
+        temperature: it.temperature !== '' && it.temperature !== null ? Number(it.temperature) : null,
         qtyUnits: Number(it.qtyUnits),
         qtyPounds: Number(it.qtyPounds || 0),
         qtyBaskets: Number(it.qtyBaskets || 0)
       })),
       services: formData.services.map(s => ({
         description: s.description,
+        quantity: Number(s.quantity || 1),
+        unitPrice: Number(s.unitPrice || s.value || 0),
         value: Number(s.value || 0)
       }))
     };
@@ -285,7 +347,7 @@ const MovementForm = ({ onCancel, initialData }) => {
                   <div className="grid grid-cols-4">
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Temp °C</label>
-                      <input type="number" step="0.1" className="form-input" value={item.temperature} onChange={(e) => handleItemChange(index, 'temperature', e.target.value)} />
+                      <input type="number" step="0.1" className="form-input" value={item.temperature} onChange={(e) => handleItemChange(index, 'temperature', e.target.value)} placeholder="-18.0" />
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label">Unidades</label>
@@ -308,13 +370,58 @@ const MovementForm = ({ onCancel, initialData }) => {
 
         {/* Section 4: Servicios Extraordinarios */}
         <div style={{ marginTop: '2.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '2px solid var(--color-border)', paddingBottom: '0.5rem', marginBottom: '1.5rem' }}>
-            <h3 style={{ fontSize: '1.125rem', color: 'var(--color-primary)', margin: 0 }}>
-              Servicios Extraordinarios
-            </h3>
-            <button type="button" className="btn btn-outline" onClick={addService} style={{ fontSize: '0.875rem', padding: '0.25rem 0.75rem' }}>
-              <Plus size={16} /> Agregar Servicio
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '2px solid var(--color-border)', paddingBottom: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div>
+              <h3 style={{ fontSize: '1.125rem', color: 'var(--color-primary)', margin: 0 }}>
+                Servicios Extraordinarios (Contrato 2025-2026)
+              </h3>
+              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: 'var(--color-text-light)' }}>
+                Agrega cobros de maniobras, horas extras o penalización por temperatura fuera de rango.
+              </p>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button 
+                type="button" 
+                className="btn btn-outline" 
+                onClick={handleAutoCalculateTemperaturePenalty} 
+                style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem', borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
+                title="Calcula automáticamente el cobro por producto recibido con temp > -14°C"
+              >
+                <ThermometerSnowflake size={15} /> Cobro Temp. Auto
+              </button>
+              <button type="button" className="btn btn-outline" onClick={addService} style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem' }}>
+                <Plus size={15} /> Servicio Personalizado
+              </button>
+            </div>
+          </div>
+
+          {/* Presets rápidos del contrato */}
+          <div style={{ marginBottom: '1.25rem', padding: '0.75rem', backgroundColor: 'var(--color-bg)', borderRadius: 'var(--radius)', border: '1px dashed var(--color-border)' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-light)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <Zap size={13} style={{ color: 'var(--color-primary)' }} /> Tarifas Rápidas del Contrato:
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {EXTRA_SERVICE_PRESETS.map(preset => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => addPresetService(preset.id)}
+                  style={{
+                    fontSize: '0.75rem',
+                    padding: '0.25rem 0.6rem',
+                    borderRadius: '4px',
+                    border: '1px solid var(--color-border)',
+                    backgroundColor: 'var(--color-surface)',
+                    color: 'var(--color-text)',
+                    cursor: 'pointer'
+                  }}
+                  title={`Añadir ${preset.label} ($${preset.unitPrice.toFixed(2)})`}
+                >
+                  + {preset.label.split('(')[0].trim()} (${preset.unitPrice.toFixed(0)})
+                </button>
+              ))}
+            </div>
           </div>
 
           {formData.services.length === 0 ? (
@@ -322,26 +429,53 @@ const MovementForm = ({ onCancel, initialData }) => {
           ) : (
             <div className="grid grid-cols-1" style={{ gap: '0.75rem' }}>
               {formData.services.map((service, sIndex) => (
-                <div key={sIndex} style={{ display: 'flex', gap: '1rem', alignItems: 'center', backgroundColor: 'var(--color-bg)', padding: '0.75rem', borderRadius: 'var(--radius)' }}>
-                  <div style={{ flex: 1 }}>
+                <div key={sIndex} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 120px 120px 40px', gap: '0.75rem', alignItems: 'center', backgroundColor: 'var(--color-bg)', padding: '0.75rem', borderRadius: 'var(--radius)' }}>
+                  <div>
                     <input 
                       type="text" 
                       className="form-input" 
-                      placeholder="Descripción del servicio (ej. Carga de Exportación)" 
+                      placeholder="Descripción del servicio (ej. Descarga de Rastra)" 
                       value={service.description}
                       onChange={(e) => handleServiceChange(sIndex, 'description', e.target.value)}
                       required
+                      style={{ marginBottom: 0 }}
                     />
                   </div>
-                  <div style={{ width: '150px' }}>
+                  <div>
+                    <input 
+                      type="number" 
+                      step="any"
+                      className="form-input" 
+                      placeholder="Cant/Lbs" 
+                      value={service.quantity !== undefined ? service.quantity : ''}
+                      onChange={(e) => handleServiceChange(sIndex, 'quantity', e.target.value)}
+                      title="Cantidad o Libras"
+                      style={{ marginBottom: 0 }}
+                    />
+                  </div>
+                  <div>
+                    <input 
+                      type="number" 
+                      step="0.001"
+                      className="form-input" 
+                      placeholder="Precio Unit." 
+                      value={service.unitPrice !== undefined ? service.unitPrice : ''}
+                      onChange={(e) => handleServiceChange(sIndex, 'unitPrice', e.target.value)}
+                      title="Precio Unitario"
+                      style={{ marginBottom: 0 }}
+                    />
+                  </div>
+                  <div>
                     <input 
                       type="number" 
                       step="0.01"
                       className="form-input" 
-                      placeholder="Valor $" 
+                      placeholder="Total $" 
                       value={service.value}
                       onChange={(e) => handleServiceChange(sIndex, 'value', e.target.value)}
                       required
+                      title="Total en Dólares"
+                      style={{ marginBottom: 0, fontWeight: 'bold' }}
                     />
                   </div>
                   <button type="button" className="btn btn-danger" onClick={() => removeService(sIndex)} style={{ padding: '0.5rem' }}>

@@ -180,7 +180,7 @@ const SECTIONS = [
           <div className="card" style={{ padding: '1rem' }}>
             <h4 style={{ color: 'var(--color-primary)', margin: '0 0 0.5rem 0' }}>¿Cómo exporto reportes a Excel / CSV?</h4>
             <p style={{ fontSize: '0.85rem', color: 'var(--color-text-light)', margin: 0 }}>
-              En cada módulo de reportes y catálogo de productos encontrarás el botón <strong>Exportar CSV</strong> en la parte superior derecha.
+              En cada pantalla del sistema encontrarás los botones <strong>Exportar Excel (.xlsx)</strong> y <strong>Exportar CSV</strong>. Los archivos se descargan con formato profesional, enunciados institucionales, compatibilidad total con Microsoft Excel y Google Sheets, e incluyen el desglose completo de almacenamiento congelado y servicios extraordinarios según el Contrato 2025-2026.
             </p>
           </div>
         </div>

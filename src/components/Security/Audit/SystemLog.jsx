@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useInventory } from '../../../context/InventoryContext';
-import { FileText, Search, Filter, RefreshCw, Download, User, Calendar, Shield, Activity } from 'lucide-react';
-import { exportToCsv } from '../../../utils/exportCsv';
+import { FileText, Search, Filter, RefreshCw, Download, User, Calendar, Shield, Activity, FileSpreadsheet } from 'lucide-react';
+import { exportBitacora } from '../../../utils/exportManager';
 import { toast } from 'react-hot-toast';
 
 const ACTION_COLORS = {
@@ -59,20 +59,27 @@ const SystemLog = () => {
     loadLogs();
   };
 
-  const handleExport = () => {
+  const handleExportXlsx = () => {
     if (systemLogs.length === 0) {
       toast.error('No hay registros para exportar');
       return;
     }
-    const exportData = systemLogs.map(l => ({
-      'Fecha y Hora': l.timestamp,
-      'Usuario': l.username,
-      'Acción': l.action,
-      'Módulo': l.module,
-      'Detalles': l.details,
-      'Dirección IP': l.ip_address || 'Local'
-    }));
-    exportToCsv(exportData, `Bitacora_Sistema_${new Date().toISOString().slice(0, 10)}.csv`);
+    exportBitacora({
+      systemLogs,
+      format: 'xlsx'
+    });
+    toast.success('Bitácora exportada a Excel');
+  };
+
+  const handleExportCsv = () => {
+    if (systemLogs.length === 0) {
+      toast.error('No hay registros para exportar');
+      return;
+    }
+    exportBitacora({
+      systemLogs,
+      format: 'csv'
+    });
     toast.success('Bitácora exportada a CSV');
   };
 
@@ -87,12 +94,15 @@ const SystemLog = () => {
             Registro cronológico inmutable de todas las acciones, inicios de sesión y modificaciones del sistema.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button className="btn btn-outline" onClick={loadLogs} disabled={loading} title="Actualizar">
             <RefreshCw size={16} className={loading ? 'spin' : ''} /> Actualizar
           </button>
-          <button className="btn btn-primary" onClick={handleExport}>
-            <Download size={16} /> Exportar CSV
+          <button className="btn btn-primary" onClick={handleExportXlsx} title="Exportar a Microsoft Excel">
+            <FileSpreadsheet size={16} /> Excel (.xlsx)
+          </button>
+          <button className="btn btn-outline" onClick={handleExportCsv} title="Exportar a CSV estructurado">
+            <Download size={16} /> CSV
           </button>
         </div>
       </div>

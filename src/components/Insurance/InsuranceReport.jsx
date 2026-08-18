@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Download, FileOutput, ShieldCheck } from 'lucide-react';
+import { Download, FileOutput, ShieldCheck, FileSpreadsheet } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
-import { exportToCsv } from '../../utils/exportCsv';
+import { exportCorteSeguro } from '../../utils/exportManager';
 import { formatCurrency, formatDate, formatPrice } from '../../utils/formatUtils';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -89,32 +89,38 @@ const InsuranceReport = () => {
     });
   }, [cutoffDate]);
 
-  const handleExportCsv = () => {
-    const rows = reportRows.map(row => ({
-      Código: row.code,
-      Material: row.material,
-      Unidades: row.units,
-      'Total LB': row.pounds,
-      'Total Cesta': row.baskets,
-      'Valor por LB $': row.poundRate ?? '',
-      'Valor por Cestas $': row.basketRate ?? '',
-      'Total $': row.insuredValue,
-      [`${premiumRate}%`]: row.premium
-    }));
-
-    rows.push({
-      Código: '',
-      Material: 'TOTAL',
-      Unidades: '',
-      'Total LB': totalPounds,
-      'Total Cesta': totalBaskets,
-      'Valor por LB $': '',
-      'Valor por Cestas $': '',
-      'Total $': totalInsuredValue,
-      [`${premiumRate}%`]: totalPremium
+  const handleExportXlsx = () => {
+    exportCorteSeguro({
+      customerName,
+      warehouseName,
+      cutoffDate,
+      premiumRate,
+      reportRows,
+      totals: {
+        totalPounds,
+        totalBaskets,
+        totalInsuredValue,
+        totalPremium
+      },
+      format: 'xlsx'
     });
+  };
 
-    exportToCsv(rows, `corte_seguro_${cutoffDate}.csv`);
+  const handleExportCsv = () => {
+    exportCorteSeguro({
+      customerName,
+      warehouseName,
+      cutoffDate,
+      premiumRate,
+      reportRows,
+      totals: {
+        totalPounds,
+        totalBaskets,
+        totalInsuredValue,
+        totalPremium
+      },
+      format: 'csv'
+    });
   };
 
   const handleExportPdf = () => {
@@ -212,11 +218,14 @@ const InsuranceReport = () => {
         <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           <ShieldCheck size={24} /> Corte de Seguro
         </h1>
-        <div style={{ display: 'flex', gap: '1rem' }}>
+        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={handleExportXlsx}>
+            <FileSpreadsheet size={18} /> Exportar Excel (.xlsx)
+          </button>
           <button className="btn btn-outline" onClick={handleExportCsv}>
             <Download size={18} /> Exportar CSV
           </button>
-          <button className="btn btn-primary" onClick={handleExportPdf}>
+          <button className="btn btn-outline" onClick={handleExportPdf}>
             <FileOutput size={18} /> Exportar PDF
           </button>
         </div>

@@ -1,0 +1,82 @@
+// Tarifas y Reglas del Contrato Almacenadora LIL y Avícola Salvadoreña 2025-2026
+
+export const CONTRACT_INFO = {
+  clientName: 'Avícola Salvadoreña, S.A. de C.V.',
+  contractorName: 'Inversiones LIL, S.A. de C.V.',
+  facility: 'Cuarto Frío San Martín (Km 19 Carretera Panamericana)',
+  period: '16 de Enero 2025 - 15 de Enero 2026',
+  cutoffs: [10, 25], // Días 10 y 25 de cada mes calendario
+  defaultStorageRatePounds: 0.001, // $0.001 por libra / día (Producto Crudo)
+  defaultStorageRateBaskets: 0.038, // $0.038 por cesta / día (Productos cocinados/patties)
+  palletBasketCapacity: 35, // 35 cestas por pallet ($1.33 / pallet / día)
+  ivaRate: 0.13, // IVA 13%
+  insuranceRate: 0.10 // 0.10% sobre valor CIF
+};
+
+// Catálogo de Servicios Especiales / Extraordinarios según Anexo A
+export const EXTRA_SERVICE_PRESETS = [
+  { id: 'rastra_habil', label: 'Descarga y Carga Rastra (Horas hábiles)', unitPrice: 54.00, unitLabel: 'Servicio' },
+  { id: 'rastra_nohabil', label: 'Descarga y Carga Rastra (Horas no hábiles)', unitPrice: 95.00, unitLabel: 'Servicio' },
+  { id: 'camion8_habil', label: 'Descarga y Carga Camión 8 Ton (Horas hábiles)', unitPrice: 30.00, unitLabel: 'Servicio' },
+  { id: 'camion8_nohabil', label: 'Descarga y Carga Camión 8 Ton (Horas no hábiles)', unitPrice: 60.00, unitLabel: 'Servicio' },
+  { id: 'camion5_habil', label: 'Descarga y Carga Camión 5 Ton (Horas hábiles)', unitPrice: 25.00, unitLabel: 'Servicio' },
+  { id: 'camion5_nohabil', label: 'Descarga y Carga Camión 5 Ton (Horas no hábiles)', unitPrice: 50.00, unitLabel: 'Servicio' },
+  { id: 'hora_extra_normal', label: 'Hora Extra (Día Normal / Horas no hábiles)', unitPrice: 50.00, unitLabel: 'Horas' },
+  { id: 'hora_extra_festivo', label: 'Hora Extra (Día Festivo / No hábil)', unitPrice: 60.00, unitLabel: 'Horas' }
+];
+
+// Tabla de tarifas por temperatura fuera de rango (-18°C a -20°C)
+// Precios por libra recibida según Anexo A
+export const TEMPERATURE_RATES = {
+  '-13': 0.003,
+  '-12': 0.004,
+  '-11': 0.005,
+  '-10': 0.006,
+  '-9': 0.007,
+  '-8': 0.008,
+  '-7': 0.009,
+  '-6': 0.010,
+  '-5': 0.012,
+  '-4': 0.014,
+  '-3': 0.016,
+  '-2': 0.018,
+  '-1': 0.020,
+  '0': 0.022,
+  '1': 0.024,
+  '2': 0.026,
+  '3': 0.028,
+  '4': 0.030,
+  '5': 0.032,
+  '6': 0.034
+};
+
+/**
+ * Obtiene la tarifa por libra según la temperatura en °C
+ * Si la temperatura está dentro del rango (-18°C o menor), la tarifa es 0.
+ * Si es mayor que +6°C, se aplica la tarifa máxima de 6°C ($0.034).
+ */
+export const getTemperatureRate = (tempCelsius) => {
+  if (tempCelsius === null || tempCelsius === undefined || isNaN(tempCelsius)) return 0;
+  const temp = Math.round(Number(tempCelsius));
+  if (temp <= -14) return 0; // Dentro del rango normal o cercano
+  if (temp >= 6) return 0.034;
+  return TEMPERATURE_RATES[String(temp)] || 0;
+};
+
+/**
+ * Calcula el cobro extraordinario por temperatura fuera de rango
+ * @param {number} tempCelsius Temperatura registrada
+ * @param {number} pounds Total de libras recibidas
+ */
+export const calculateTemperatureService = (tempCelsius, pounds) => {
+  const rate = getTemperatureRate(tempCelsius);
+  if (rate <= 0 || !pounds || pounds <= 0) return null;
+  
+  const formattedTemp = Number(tempCelsius) > 0 ? `+${tempCelsius}` : `${tempCelsius}`;
+  return {
+    description: `Temperatura ${formattedTemp}°C (${pounds.toLocaleString('en-US', { maximumFractionDigits: 2 })} lbs)`,
+    quantity: Number(pounds),
+    unitPrice: rate,
+    value: Number((pounds * rate).toFixed(2))
+  };
+};

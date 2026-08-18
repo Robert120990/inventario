@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { Plus, Download, Search, SlidersHorizontal, X, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { exportToCsv } from '../../utils/exportCsv';
+import { exportProductos } from '../../utils/exportManager';
 import ProductForm from './ProductForm';
 import ProductExcelImportModal from './ProductExcelImportModal';
 import { formatPrice } from '../../utils/formatUtils';
@@ -92,17 +92,33 @@ const ProductList = () => {
     setSortBy('sku-asc');
   };
 
-  const handleExport = () => {
-    exportToCsv(filteredProducts, `productos_filtrados_${new Date().toISOString().split('T')[0]}.csv`);
-    toast.success(`${filteredProducts.length} producto(s) exportado(s)`);
+  const handleExportXlsx = () => {
+    exportProductos({
+      products: filteredProducts,
+      categoryUnits,
+      format: 'xlsx'
+    });
+    toast.success(`${filteredProducts.length} producto(s) exportado(s) a Excel`);
+  };
+
+  const handleExportCsv = () => {
+    exportProductos({
+      products: filteredProducts,
+      categoryUnits,
+      format: 'csv'
+    });
+    toast.success(`${filteredProducts.length} producto(s) exportado(s) a CSV`);
   };
 
   return (
     <div>
       <div className="topbar">
         <h1 className="page-title">Productos</h1>
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <button className="btn btn-outline" onClick={handleExport} disabled={filteredProducts.length === 0}>
+        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={handleExportXlsx} disabled={filteredProducts.length === 0} title="Exportar catálogo a Microsoft Excel">
+            <FileSpreadsheet size={18} /> Exportar Excel (.xlsx)
+          </button>
+          <button className="btn btn-outline" onClick={handleExportCsv} disabled={filteredProducts.length === 0} title="Exportar catálogo a CSV estructurado">
             <Download size={18} /> Exportar CSV
           </button>
           {(allowCreate || allowEdit) && (

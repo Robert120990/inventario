@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { FileText, Download, FileOutput } from 'lucide-react';
-import { exportToCsv } from '../../utils/exportCsv';
+import { FileText, Download, FileSpreadsheet, FileOutput } from 'lucide-react';
+import { exportResumenCompleto } from '../../utils/exportManager';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils';
+import { CONTRACT_INFO } from '../../utils/contractRates';
 
 const Summary = () => {
   const { products, movements, categoryUnits } = useInventory();
@@ -14,6 +15,7 @@ const Summary = () => {
     return d.toISOString().split('T')[0];
   });
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [clientName, setClientName] = useState(CONTRACT_INFO.clientName);
 
   const summaryData = useMemo(() => {
     if (!startDate || !endDate || products.length === 0) return [];
@@ -123,38 +125,45 @@ const Summary = () => {
   const totalServices = servicesData.reduce((acc, curr) => acc + curr.value, 0);
   const invTotal = summaryData.reduce((acc, curr) => acc + curr.total, 0);
   const reportSubtotal = invTotal + totalServices;
-  const reportIva = reportSubtotal * 0.13;
+  const reportIva = reportSubtotal * CONTRACT_INFO.ivaRate;
   const reportGrandTotal = reportSubtotal + reportIva;
 
-  const handleExport = () => {
-    const exportData = summaryData.map(d => ({
-      Producto: d.producto,
-      Categoría: d.categoria,
-      Unidad: d.unidad,
-      'Stock Inicial': d.stockInicial,
-      Entradas: d.entradas,
-      Salidas: d.salidas,
-      'Stock Final': d.stockFinal,
-      'Precio ($)': formatPrice(d.precio),
-      'Total ($)': formatCurrency(d.total)
-    }));
+  const handleExportXLSX = () => {
+    exportResumenCompleto({
+      clientName,
+      startDate,
+      endDate,
+      summaryData,
+      groupedData,
+      extraServices: servicesData,
+      totals: {
+        invTotal,
+        totalServicios,
+        subtotal: reportSubtotal,
+        iva: reportIva,
+        totalGeneral: reportGrandTotal
+      },
+      format: 'xlsx'
+    });
+  };
 
-    const servicesExport = servicesData.map(s => ({
-      Fecha: formatDate(s.date),
-      Referencia: s.ref,
-      Descripción: s.description,
-      'Valor ($)': formatCurrency(s.value)
-    }));
-
-    const totalsExport = [
-      {},
-      { Producto: 'FIN DEL REPORTE' },
-      { Producto: 'SUBTOTAL (INV + SERV)', 'Total ($)': formatCurrency(reportSubtotal) },
-      { Producto: 'IVA (13%)', 'Total ($)': formatCurrency(reportIva) },
-      { Producto: 'TOTAL CON IMPUESTOS', 'Total ($)': formatCurrency(reportGrandTotal) }
-    ];
-
-    exportToCsv([...exportData, {}, { Producto: 'SERVICIOS EXTRAORDINARIOS' }, ...servicesExport, ...totalsExport], `resumen_completo_${startDate}_al_${endDate}.csv`);
+  const handleExportCSV = () => {
+    exportResumenCompleto({
+      clientName,
+      startDate,
+      endDate,
+      summaryData,
+      groupedData,
+      extraServices: servicesData,
+      totals: {
+        invTotal,
+        totalServicios,
+        subtotal: reportSubtotal,
+        iva: reportIva,
+        totalGeneral: reportGrandTotal
+      },
+      format: 'csv'
+    });
   };
 
   const handleExportPDF = () => {
@@ -246,11 +255,14 @@ const Summary = () => {
     <div>
       <div className="topbar">
         <h1 className="page-title">Resumen de Actividad</h1>
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <button className="btn btn-outline" onClick={handleExport}>
+        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={handleExportXLSX}>
+            <FileSpreadsheet size={18} /> Exportar Excel (.xlsx)
+          </button>
+          <button className="btn btn-outline" onClick={handleExportCSV}>
             <Download size={18} /> Exportar CSV
           </button>
-          <button className="btn btn-primary" style={{ backgroundColor: '#e74c3c', borderColor: '#e74c3c' }} onClick={handleExportPDF}>
+          <button className="btn btn-outline" onClick={handleExportPDF}>
             <FileOutput size={18} /> Exportar PDF
           </button>
         </div>

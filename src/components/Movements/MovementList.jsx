@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { Plus, Download, Search } from 'lucide-react';
-import { exportToCsv } from '../../utils/exportCsv';
+import { Plus, Download, Search, FileSpreadsheet } from 'lucide-react';
+import { exportMovimientos } from '../../utils/exportManager';
 import MovementForm from './MovementForm';
 import { formatDate } from '../../utils/formatUtils';
 
@@ -80,36 +80,20 @@ const MovementList = () => {
     );
   };
 
-  const handleExport = () => {
-    const exportData = [];
-    movements.forEach(mov => {
-      const baseRow = {
-        Fecha: new Date(mov.createdAt).toLocaleString(),
-        Tipo: mov.type === 'in' ? 'Entrada' : 'Salida',
-        'Doc Tipo': mov.refType,
-        'Doc Número': mov.refNumber,
-        Transportista: mov.carrier,
-        Equipo: mov.equipment,
-        Marchamo: mov.seal,
-        Usuario: mov.auditUser
-      };
-      
-      if (mov.items && mov.items.length > 0) {
-        mov.items.forEach(item => {
-          exportData.push({
-            ...baseRow,
-            Producto: getProductName(item.productId),
-            Temperatura: item.temperature,
-            'Cant. Unidades': item.qtyUnits,
-            'Cant. Libras': item.qtyPounds,
-            'Cant. Cestas': item.qtyBaskets
-          });
-        });
-      } else {
-        exportData.push(baseRow);
-      }
+  const handleExportXlsx = () => {
+    exportMovimientos({
+      movements: filteredMovements,
+      products,
+      format: 'xlsx'
     });
-    exportToCsv(exportData, `movimientos_${new Date().toISOString().split('T')[0]}.csv`);
+  };
+
+  const handleExportCsv = () => {
+    exportMovimientos({
+      movements: filteredMovements,
+      products,
+      format: 'csv'
+    });
   };
 
   if (isAdding) {
@@ -120,8 +104,11 @@ const MovementList = () => {
     <div>
       <div className="topbar">
         <h1 className="page-title">Movimientos</h1>
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <button className="btn btn-outline" onClick={handleExport}>
+        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={handleExportXlsx} title="Descargar en formato Excel (.xlsx)">
+            <FileSpreadsheet size={18} /> Exportar Excel (.xlsx)
+          </button>
+          <button className="btn btn-outline" onClick={handleExportCsv} title="Descargar en formato CSV estructurado">
             <Download size={18} /> Exportar CSV
           </button>
           {allowCreate && (
