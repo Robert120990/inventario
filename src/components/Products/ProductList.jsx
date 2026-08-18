@@ -93,21 +93,31 @@ const ProductList = () => {
   };
 
   const handleExportXlsx = () => {
-    exportProductos({
-      products: filteredProducts,
-      categoryUnits,
-      format: 'xlsx'
-    });
-    toast.success(`${filteredProducts.length} producto(s) exportado(s) a Excel`);
+    try {
+      exportProductos({
+        products: filteredProducts,
+        categoryUnits,
+        format: 'xlsx'
+      });
+      toast.success(`${filteredProducts.length} producto(s) exportado(s) a Excel (.xlsx)`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al exportar a Excel: ' + err.message);
+    }
   };
 
   const handleExportCsv = () => {
-    exportProductos({
-      products: filteredProducts,
-      categoryUnits,
-      format: 'csv'
-    });
-    toast.success(`${filteredProducts.length} producto(s) exportado(s) a CSV`);
+    try {
+      exportProductos({
+        products: filteredProducts,
+        categoryUnits,
+        format: 'csv'
+      });
+      toast.success(`${filteredProducts.length} producto(s) exportado(s) a CSV`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al exportar a CSV: ' + err.message);
+    }
   };
 
   return (

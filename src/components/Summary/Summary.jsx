@@ -123,9 +123,10 @@ const Summary = () => {
     return services;
   }, [movements, startDate, endDate]);
 
-  const totalServices = servicesData.reduce((acc, curr) => acc + curr.value, 0);
+  const totalServicios = servicesData.reduce((acc, curr) => acc + curr.value, 0);
+  const totalServices = totalServicios;
   const invTotal = summaryData.reduce((acc, curr) => acc + curr.total, 0);
-  const reportSubtotal = invTotal + totalServices;
+  const reportSubtotal = invTotal + totalServicios;
   const reportIva = reportSubtotal * CONTRACT_INFO.ivaRate;
   const reportGrandTotal = reportSubtotal + reportIva;
 

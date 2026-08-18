@@ -64,11 +64,16 @@ const SystemLog = () => {
       toast.error('No hay registros para exportar');
       return;
     }
-    exportBitacora({
-      systemLogs,
-      format: 'xlsx'
-    });
-    toast.success('Bitácora exportada a Excel');
+    try {
+      exportBitacora({
+        systemLogs,
+        format: 'xlsx'
+      });
+      toast.success('Bitácora exportada a Excel (.xlsx)');
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al exportar a Excel: ' + err.message);
+    }
   };
 
   const handleExportCsv = () => {
@@ -76,11 +81,16 @@ const SystemLog = () => {
       toast.error('No hay registros para exportar');
       return;
     }
-    exportBitacora({
-      systemLogs,
-      format: 'csv'
-    });
-    toast.success('Bitácora exportada a CSV');
+    try {
+      exportBitacora({
+        systemLogs,
+        format: 'csv'
+      });
+      toast.success('Bitácora exportada a CSV');
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al exportar a CSV: ' + err.message);
+    }
   };
 
   return (
