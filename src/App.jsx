@@ -30,12 +30,12 @@ function AppContent() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Refresh data whenever the view changes to ensure sync between devices
+  // Refresh data whenever the view changes to ensure sync between devices without infinite loops
   React.useEffect(() => {
-    if (currentUser) {
+    if (currentUser?.id) {
       refreshData();
     }
-  }, [currentView, currentUser]);
+  }, [currentView]);
 
   if (loading) {
     return (

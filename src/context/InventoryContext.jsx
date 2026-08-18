@@ -101,9 +101,9 @@ export const InventoryProvider = ({ children }) => {
     fetchData();
   }, []);
 
-  // Heartbeat for active session tracking
+  // Heartbeat for active session tracking (every 20 seconds)
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser?.id) return;
 
     const sendHeartbeat = async () => {
       try {
@@ -129,7 +129,7 @@ export const InventoryProvider = ({ children }) => {
     sendHeartbeat();
     const interval = setInterval(sendHeartbeat, 20000); // Every 20 seconds
     return () => clearInterval(interval);
-  }, [currentUser, sessionId]);
+  }, [currentUser?.id, sessionId]);
 
   const refreshData = async () => {
     try {
@@ -148,16 +148,24 @@ export const InventoryProvider = ({ children }) => {
       if (Array.isArray(movRes)) setMovements(movRes);
       if (Array.isArray(userRes)) {
         setUsers(userRes);
-        if (currentUser) {
+        if (currentUser?.id) {
           const freshSelf = userRes.find(u => Number(u.id) === Number(currentUser.id));
           if (freshSelf && freshSelf.permissions !== undefined) {
-            setCurrentUser(prev => ({
-              ...prev,
-              permissions: freshSelf.permissions,
-              role: freshSelf.role,
-              role_id: freshSelf.role_id,
-              roleName: freshSelf.roleName
-            }));
+            const hasChanged = 
+              currentUser.role !== freshSelf.role ||
+              currentUser.role_id !== freshSelf.role_id ||
+              currentUser.roleName !== freshSelf.roleName ||
+              JSON.stringify(currentUser.permissions) !== JSON.stringify(freshSelf.permissions);
+
+            if (hasChanged) {
+              setCurrentUser(prev => ({
+                ...prev,
+                permissions: freshSelf.permissions,
+                role: freshSelf.role,
+                role_id: freshSelf.role_id,
+                roleName: freshSelf.roleName
+              }));
+            }
           }
         }
       }
