@@ -28,5 +28,28 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:3001'
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('xlsx')) {
+              return 'vendor-excel';
+            }
+            if (id.includes('jspdf') || id.includes('html2canvas')) {
+              return 'vendor-pdf';
+            }
+            if (id.includes('jsbarcode')) {
+              return 'vendor-barcode';
+            }
+            if (id.includes('react') || id.includes('lucide-react') || id.includes('react-hot-toast')) {
+              return 'vendor-react';
+            }
+          }
+        }
+      }
+    },
+    chunkSizeWarningLimit: 700
   }
 })

@@ -183,6 +183,13 @@ export const ensureSchema = async () => {
             await pool.query("ALTER TABLE versions ADD COLUMN author VARCHAR(50) DEFAULT 'Sistema' AFTER changes");
         } catch (e) {}
 
+        // Índices de alto rendimiento para acelerar consultas y paginación
+        try { await pool.query("CREATE INDEX idx_movements_date ON movements (date)"); } catch (e) {}
+        try { await pool.query("CREATE INDEX idx_movements_type ON movements (type)"); } catch (e) {}
+        try { await pool.query("CREATE INDEX idx_products_sku ON products (sku)"); } catch (e) {}
+        try { await pool.query("CREATE INDEX idx_products_category ON products (category)"); } catch (e) {}
+        try { await pool.query("CREATE INDEX idx_system_logs_created ON system_logs (created_at)"); } catch (e) {}
+
         // Roles por defecto
         const [roleRows] = await pool.query('SELECT COUNT(*) as count FROM roles');
         if (roleRows[0].count === 0) {

@@ -1,27 +1,38 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { Menu, ShieldAlert } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import { Toaster } from 'react-hot-toast';
 import Dashboard from './components/Dashboard';
 import { InventoryProvider, useInventory } from './context/InventoryContext';
-import ProductList from './components/Products/ProductList';
-import MovementList from './components/Movements/MovementList';
-import Summary from './components/Summary/Summary';
-import Summary2 from './components/Summary/Summary2';
-import InsuranceReport from './components/Insurance/InsuranceReport';
-import InventoryCount from './components/Inventory/InventoryCount';
-import Settings from './components/Settings/Settings';
 import Login from './components/Login/Login';
-import UserList from './components/Users/UserList';
-import UserAccess from './components/Security/UserAccess/UserAccess';
-import RoleList from './components/Security/Roles/RoleList';
-import SystemLog from './components/Security/Audit/SystemLog';
-import ConnectedUsers from './components/Security/Sessions/ConnectedUsers';
-import ChangeHistory from './components/Security/Changelog/ChangeHistory';
-import NotificationCenter from './components/Security/Notifications/NotificationCenter';
-import UserManual from './components/Security/Manual/UserManual';
 import { ThemeToggle } from './components/Theme/ThemeToggle';
 import './App.css';
+
+// Lazy loading de módulos para optimización de bundle y carga ultra-rápida (Code-Splitting)
+const ProductList = lazy(() => import('./components/Products/ProductList'));
+const MovementList = lazy(() => import('./components/Movements/MovementList'));
+const Summary = lazy(() => import('./components/Summary/Summary'));
+const Summary2 = lazy(() => import('./components/Summary/Summary2'));
+const InsuranceReport = lazy(() => import('./components/Insurance/InsuranceReport'));
+const InventoryCount = lazy(() => import('./components/Inventory/InventoryCount'));
+const Settings = lazy(() => import('./components/Settings/Settings'));
+const UserList = lazy(() => import('./components/Users/UserList'));
+const UserAccess = lazy(() => import('./components/Security/UserAccess/UserAccess'));
+const RoleList = lazy(() => import('./components/Security/Roles/RoleList'));
+const SystemLog = lazy(() => import('./components/Security/Audit/SystemLog'));
+const ConnectedUsers = lazy(() => import('./components/Security/Sessions/ConnectedUsers'));
+const ChangeHistory = lazy(() => import('./components/Security/Changelog/ChangeHistory'));
+const NotificationCenter = lazy(() => import('./components/Security/Notifications/NotificationCenter'));
+const UserManual = lazy(() => import('./components/Security/Manual/UserManual'));
+
+function ViewLoader() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '360px', gap: '1rem' }}>
+      <div style={{ width: '38px', height: '38px', border: '3px solid rgba(59, 130, 246, 0.15)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
+      <span style={{ fontSize: '0.875rem', color: 'var(--color-text-light)', fontWeight: '500' }}>Cargando módulo...</span>
+    </div>
+  );
+}
 
 function AppContent() {
   const { currentUser, loading, refreshData, canView } = useInventory();
@@ -152,7 +163,9 @@ function AppContent() {
           </div>
           <ThemeToggle />
         </div>
-        {renderView()}
+        <Suspense fallback={<ViewLoader />}>
+          {renderView()}
+        </Suspense>
       </div>
     </div>
   );

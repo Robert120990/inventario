@@ -57,10 +57,62 @@ router.get('/health', async (req, res) => {
     });
 });
 
-// Products
+// Products con soporte de paginación y búsqueda server-side
 router.get('/products', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM products ORDER BY created_at DESC');
+        const { page, limit, category, search, sortBy } = req.query;
+        const isPaginated = limit !== undefined && limit !== '';
+
+        let query = 'SELECT * FROM products WHERE 1=1';
+        let countQuery = 'SELECT COUNT(*) as total FROM products WHERE 1=1';
+        const params = [];
+        const countParams = [];
+
+        if (category && category !== 'all') {
+            query += ' AND category = ?';
+            countQuery += ' AND category = ?';
+            params.push(category);
+            countParams.push(category);
+        }
+
+        if (search && search.trim()) {
+            const searchTerm = `%${search.trim()}%`;
+            query += ' AND (sku LIKE ? OR description LIKE ?)';
+            countQuery += ' AND (sku LIKE ? OR description LIKE ?)';
+            params.push(searchTerm, searchTerm);
+            countParams.push(searchTerm, searchTerm);
+        }
+
+        // Ordenamiento
+        if (sortBy === 'sku-asc') query += ' ORDER BY sku ASC';
+        else if (sortBy === 'sku-desc') query += ' ORDER BY sku DESC';
+        else if (sortBy === 'price-asc') query += ' ORDER BY price ASC';
+        else if (sortBy === 'price-desc') query += ' ORDER BY price DESC';
+        else if (sortBy === 'description-asc') query += ' ORDER BY description ASC';
+        else query += ' ORDER BY created_at DESC';
+
+        if (isPaginated) {
+            const numLimit = Math.max(1, parseInt(limit, 10) || 50);
+            const numPage = Math.max(1, parseInt(page, 10) || 1);
+            const offset = (numPage - 1) * numLimit;
+
+            query += ' LIMIT ? OFFSET ?';
+            params.push(numLimit, offset);
+
+            const [rows] = await pool.query(query, params);
+            const [countResult] = await pool.query(countQuery, countParams);
+            const total = countResult[0].total;
+
+            return res.json({
+                data: rows,
+                total,
+                page: numPage,
+                limit: numLimit,
+                totalPages: Math.ceil(total / numLimit)
+            });
+        }
+
+        const [rows] = await pool.query(query, params);
         res.json(rows);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -276,12 +328,71 @@ router.post('/products/bulk-sync', async (req, res) => {
     }
 });
 
-// Movements
+// Movements con soporte de paginación, filtros por fecha y búsqueda server-side
 router.get('/movements', async (req, res) => {
     try {
-        const [rows] = await pool.query("SELECT id, type, equipment, carrier, seal, refType, refNumber, DATE_FORMAT(date, '%Y-%m-%d') as date, timeStart, timeEnd, auditUser, created_at FROM movements ORDER BY created_at DESC");
+        const { page, limit, startDate, endDate, type, search } = req.query;
+        const isPaginated = limit !== undefined && limit !== '';
+
+        let query = "SELECT id, type, equipment, carrier, seal, refType, refNumber, DATE_FORMAT(date, '%Y-%m-%d') as date, timeStart, timeEnd, auditUser, created_at FROM movements WHERE 1=1";
+        let countQuery = "SELECT COUNT(*) as total FROM movements WHERE 1=1";
+        const params = [];
+        const countParams = [];
+
+        if (type && type !== 'all') {
+            query += " AND type = ?";
+            countQuery += " AND type = ?";
+            params.push(type);
+            countParams.push(type);
+        }
+
+        if (startDate) {
+            query += " AND date >= ?";
+            countQuery += " AND date >= ?";
+            params.push(startDate);
+            countParams.push(startDate);
+        }
+
+        if (endDate) {
+            query += " AND date <= ?";
+            countQuery += " AND date <= ?";
+            params.push(endDate);
+            countParams.push(endDate);
+        }
+
+        if (search && search.trim()) {
+            const searchTerm = `%${search.trim()}%`;
+            query += " AND (refNumber LIKE ? OR carrier LIKE ? OR equipment LIKE ? OR seal LIKE ?)";
+            countQuery += " AND (refNumber LIKE ? OR carrier LIKE ? OR equipment LIKE ? OR seal LIKE ?)";
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+            countParams.push(searchTerm, searchTerm, searchTerm, searchTerm);
+        }
+
+        query += " ORDER BY created_at DESC";
+
+        let total = 0;
+        let numLimit = 50;
+        let numPage = 1;
+
+        if (isPaginated) {
+            numLimit = Math.max(1, parseInt(limit, 10) || 50);
+            numPage = Math.max(1, parseInt(page, 10) || 1);
+            const offset = (numPage - 1) * numLimit;
+
+            const [countResult] = await pool.query(countQuery, countParams);
+            total = countResult[0].total;
+
+            query += " LIMIT ? OFFSET ?";
+            params.push(numLimit, offset);
+        }
+
+        const [rows] = await pool.query(query, params);
         
-        if (rows.length === 0) return res.json([]);
+        if (rows.length === 0) {
+            return isPaginated
+                ? res.json({ data: [], total, page: numPage, limit: numLimit, totalPages: 0 })
+                : res.json([]);
+        }
 
         const movIds = rows.map(m => m.id);
         const [allItems] = await pool.query('SELECT * FROM movement_items WHERE movementId IN (?)', [movIds]);
@@ -304,6 +415,16 @@ router.get('/movements', async (req, res) => {
             items: itemsMap[mov.id] || [],
             services: servicesMap[mov.id] || []
         }));
+
+        if (isPaginated) {
+            return res.json({
+                data: results,
+                total,
+                page: numPage,
+                limit: numLimit,
+                totalPages: Math.ceil(total / numLimit)
+            });
+        }
 
         res.json(results);
     } catch (error) {
