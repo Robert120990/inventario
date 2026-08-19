@@ -195,49 +195,61 @@ export const ensureSchema = async () => {
         if (roleRows[0].count === 0) {
             const adminPermissions = JSON.stringify({
                 dashboard: { view: true },
-                products: { view: true, create: true, edit: true, delete: true },
-                'inventory-count': { view: true, create: true, edit: true, delete: true },
-                movements: { view: true, create: true, edit: true, delete: true },
-                insurance: { view: true },
-                summary: { view: true },
-                summary2: { view: true },
+                products: { view: true, create: true, edit: true, delete: true, export: true },
+                'inventory-count': { view: true, create: true, edit: true, delete: true, export: true },
+                movements: { view: true, create: true, edit: true, delete: true, export: true },
+                insurance: { view: true, export: true },
+                summary: { view: true, export: true },
+                summary2: { view: true, export: true },
                 security: { view: true, create: true, edit: true, delete: true },
+                'security-users': { view: true, create: true, edit: true, delete: true, export: true },
+                'security-access': { view: true, edit: true },
+                'security-roles': { view: true, create: true, edit: true, delete: true },
+                'security-logs': { view: true, export: true },
+                'security-sessions': { view: true, delete: true },
+                'security-changelog': { view: true, create: true, delete: true },
+                'security-notifications': { view: true, create: true, delete: true },
+                'security-manual': { view: true },
                 settings: { view: true, edit: true }
             });
 
             const supervisorPermissions = JSON.stringify({
                 dashboard: { view: true },
-                products: { view: true, create: true, edit: true, delete: false },
-                'inventory-count': { view: true, create: true, edit: true, delete: false },
-                movements: { view: true, create: true, edit: true, delete: false },
-                insurance: { view: true },
-                summary: { view: true },
-                summary2: { view: true },
+                products: { view: true, create: true, edit: true, delete: false, export: true },
+                'inventory-count': { view: true, create: true, edit: true, delete: false, export: true },
+                movements: { view: true, create: true, edit: true, delete: false, export: true },
+                insurance: { view: true, export: true },
+                summary: { view: true, export: true },
+                summary2: { view: true, export: true },
                 security: { view: false, create: false, edit: false, delete: false },
                 settings: { view: false, edit: false }
             });
 
             const warehousePermissions = JSON.stringify({
                 dashboard: { view: true },
-                products: { view: true, create: false, edit: false, delete: false },
-                'inventory-count': { view: true, create: true, edit: true, delete: false },
-                movements: { view: true, create: true, edit: false, delete: false },
-                insurance: { view: false },
-                summary: { view: false },
-                summary2: { view: false },
+                products: { view: true, create: false, edit: false, delete: false, export: false },
+                'inventory-count': { view: true, create: true, edit: true, delete: false, export: false },
+                movements: { view: true, create: true, edit: false, delete: false, export: false },
+                insurance: { view: false, export: false },
+                summary: { view: false, export: false },
+                summary2: { view: false, export: false },
                 security: { view: false, create: false, edit: false, delete: false },
                 settings: { view: false, edit: false }
             });
 
             const auditorPermissions = JSON.stringify({
                 dashboard: { view: true },
-                products: { view: true, create: false, edit: false, delete: false },
-                'inventory-count': { view: true, create: false, edit: false, delete: false },
-                movements: { view: true, create: false, edit: false, delete: false },
-                insurance: { view: true },
-                summary: { view: true },
-                summary2: { view: true },
+                products: { view: true, create: false, edit: false, delete: false, export: true },
+                'inventory-count': { view: true, create: false, edit: false, delete: false, export: true },
+                movements: { view: true, create: false, edit: false, delete: false, export: true },
+                insurance: { view: true, export: true },
+                summary: { view: true, export: true },
+                summary2: { view: true, export: true },
                 security: { view: true, create: false, edit: false, delete: false },
+                'security-logs': { view: true, export: true },
+                'security-sessions': { view: true, delete: false },
+                'security-changelog': { view: true, create: false, delete: false },
+                'security-manual': { view: true },
                 settings: { view: false, edit: false }
             });
 

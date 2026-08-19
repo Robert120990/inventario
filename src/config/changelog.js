@@ -1,6 +1,33 @@
 // Registro cronológico maestro y automático de versiones del sistema
 export const SYSTEM_CHANGELOG = [
   {
+    id: 'v2.7.0',
+    version: 'v2.7.0',
+    description: 'Optimización de Grid de Movimientos, Layout Responsivo y Menú de Seguridad Administrador',
+    author: 'Ing. Raúl Sosa',
+    date: '2026-08-19',
+    time: '15:35',
+    isOfficial: true,
+    changes: [
+      {
+        type: 'feature',
+        text: 'Optimización de Movimientos: La cuadrícula de movimientos ahora carga por defecto únicamente los últimos 10 registros en orden cronológico descendente con controles completos de paginación dinámica, selector de filas (10, 25, 50, 100, Todos) y filtros rápidos por tipo (Entradas/Salidas/Todos).'
+      },
+      {
+        type: 'fix',
+        text: 'Layout Responsivo: Corrección en pantallas <= 1024px, laptops y displays con escala/zoom de Windows al 125%/150% donde el menú lateral empujaba hacia abajo las pantallas y el cuadro de movimientos.'
+      },
+      {
+        type: 'fix',
+        text: 'Menú de Seguridad Administrador: Reactivación y visibilidad garantizada de las 8 opciones de seguridad para cuentas con rol Administrador, con soporte de claves modulares granulares y claves heredadas.'
+      },
+      {
+        type: 'security',
+        text: 'Matriz de Permisos y Roles: Protección contra desmarcación accidental de permisos al guardar la matriz de accesos para usuarios administradores.'
+      }
+    ]
+  },
+  {
     id: 'v2.6.0',
     version: 'v2.6.0',
     description: 'Sistema de Diseño Stitch ("The Luminous Engine") y Auto-Actualizador en Tiempo Real',

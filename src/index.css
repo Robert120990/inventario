@@ -231,14 +231,14 @@ html, body, #root {
   width: 100%;
 }
 
-@media (min-width: 1025px) {
+@media (min-width: 769px) {
   html, body, #root {
     height: 100%;
     overflow: hidden;
   }
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 768px) {
   html, body {
     height: auto !important;
     min-height: 100% !important;
@@ -1049,65 +1049,23 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 }
 
 /* Responsive Media Queries (Mobile & Tablet Scrolling Fix) */
-@media (max-width: 1024px) {
-  html, body {
-    height: auto !important;
-    min-height: 100% !important;
-    min-height: 100dvh !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    position: static !important;
-  }
-
-  #root {
-    height: auto !important;
-    min-height: 100% !important;
-    min-height: 100dvh !important;
-    overflow: visible !important;
-    display: flex !important;
-    flex-direction: column !important;
-    position: static !important;
-  }
-
-  .app-container {
-    display: flex !important;
-    flex-direction: column !important;
-    height: auto !important;
-    min-height: 100% !important;
-    min-height: 100dvh !important;
-    max-height: none !important;
-    overflow: visible !important;
-    position: static !important;
-    width: 100% !important;
-  }
-
+@media (min-width: 769px) and (max-width: 1024px) {
   .main-content {
-    display: block !important;
-    flex: 1 1 auto !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    height: auto !important;
-    min-height: auto !important;
-    max-height: none !important;
-    overflow-y: visible !important;
-    overflow-x: hidden !important;
-    padding: 1rem 1rem 4rem 1rem !important;
+    padding: 1.25rem 1.5rem !important;
   }
 
   .bento-grid {
-    grid-template-columns: 1fr !important;
-    gap: 1.25rem !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 1rem !important;
   }
 
   .col-span-12, .col-span-8, .col-span-6, .col-span-4, .col-span-3 {
     grid-column: span 1 !important;
   }
 
-  .grid-cols-2, .grid-cols-3, .grid-cols-4 {
-    grid-template-columns: 1fr !important;
-    gap: 1.25rem !important;
+  .grid-cols-3, .grid-cols-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 1rem !important;
   }
 }
 

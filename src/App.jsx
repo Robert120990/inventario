@@ -37,7 +37,7 @@ function ViewLoader() {
 }
 
 function AppContent() {
-  const { currentUser, loading, refreshData, canView } = useInventory();
+  const { currentUser, loading, refreshData, canView, isAdmin } = useInventory();
   const [currentView, setCurrentView] = useState('dashboard');
   const [targetAccessUserId, setTargetAccessUserId] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -77,57 +77,57 @@ function AppContent() {
   const renderView = () => {
     switch (currentView) {
       case 'dashboard':
-        return canView('dashboard') ? <Dashboard onNavigate={(v) => setCurrentView(v)} /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+        return (isAdmin || canView('dashboard')) ? <Dashboard onNavigate={(v) => setCurrentView(v)} /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'products':
-        return canView('products') ? <ProductList /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+        return (isAdmin || canView('products')) ? <ProductList /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'movements':
-        return canView('movements') ? <MovementList /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+        return (isAdmin || canView('movements')) ? <MovementList /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'inventory-count':
-        return canView('inventory-count') ? <InventoryCount /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+        return (isAdmin || canView('inventory-count')) ? <InventoryCount /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'summary':
-        return canView('summary') ? <Summary /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+        return (isAdmin || canView('summary')) ? <Summary /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'summary2':
-        return canView('summary2') ? <Summary2 /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+        return (isAdmin || canView('summary2')) ? <Summary2 /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'insurance':
-        return canView('insurance') ? <InsuranceReport /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+        return (isAdmin || canView('insurance')) ? <InsuranceReport /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       
       // Granular Security Module Routes
       case 'security-users':
       case 'users':
-        return (currentUser.role === 'admin' || canView('security-users')) 
+        return (isAdmin || canView('security-users')) 
           ? <UserList onConfigureAccess={(u) => { setTargetAccessUserId(u.id); setCurrentView('security-access'); }} /> 
           : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'security-access':
-        return (currentUser.role === 'admin' || canView('security-access')) 
+        return (isAdmin || canView('security-access')) 
           ? <UserAccess initialSelectedUserId={targetAccessUserId} /> 
           : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'security-roles':
-        return (currentUser.role === 'admin' || canView('security-roles')) 
+        return (isAdmin || canView('security-roles')) 
           ? <RoleList /> 
           : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'security-logs':
-        return (currentUser.role === 'admin' || canView('security-logs')) 
+        return (isAdmin || canView('security-logs')) 
           ? <SystemLog /> 
           : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'security-sessions':
-        return (currentUser.role === 'admin' || canView('security-sessions')) 
+        return (isAdmin || canView('security-sessions')) 
           ? <ConnectedUsers /> 
           : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'security-changelog':
-        return (currentUser.role === 'admin' || canView('security-changelog'))
+        return (isAdmin || canView('security-changelog'))
           ? <ChangeHistory />
           : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'security-notifications':
-        return (currentUser.role === 'admin' || canView('security-notifications'))
+        return (isAdmin || canView('security-notifications'))
           ? <NotificationCenter />
           : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'security-manual':
-        return (currentUser.role === 'admin' || canView('security-manual'))
+        return (isAdmin || canView('security-manual'))
           ? <UserManual />
           : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
 
       case 'settings':
-        return (currentUser.role === 'admin' || canView('settings')) 
+        return (isAdmin || canView('settings')) 
           ? <Settings /> 
           : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       default:

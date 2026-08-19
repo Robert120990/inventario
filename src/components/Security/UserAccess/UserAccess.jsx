@@ -26,21 +26,36 @@ const UserAccess = ({ initialSelectedUserId }) => {
 
   useEffect(() => {
     if (selectedUser) {
-      const userRole = roles.find(r => r.id === selectedUser.role_id || r.name.toLowerCase() === (selectedUser.role || '').toLowerCase());
+      const userRole = roles.find(r => 
+        (selectedUser.role_id && r.id === selectedUser.role_id) || 
+        (r.name && (
+          r.name.toLowerCase() === String(selectedUser.role || '').toLowerCase() || 
+          r.name.toLowerCase() === String(selectedUser.roleName || '').toLowerCase()
+        ))
+      );
       const basePerms = selectedUser.permissions || userRole?.permissions || {};
-      
+      const isAdminUser = 
+        selectedUser.role === 'admin' || 
+        String(selectedUser.role || '').toLowerCase() === 'administrador' || 
+        String(selectedUser.roleName || '').toLowerCase() === 'administrador' || 
+        String(userRole?.name || '').toLowerCase() === 'administrador' ||
+        String(selectedUser.username || '').toLowerCase() === 'admin' ||
+        selectedUser.role_id === 1;
+
       const formatted = {};
       SYSTEM_MODULES.forEach(m => {
         const modPerm = basePerms[m.id];
-        const hasExplicit = modPerm !== undefined && typeof modPerm === 'object';
-        const isLegacyAdmin = selectedUser.role === 'admin' && !selectedUser.permissions;
+        const legacySecPerm = (m.id.startsWith('security-') && basePerms['security']) ? basePerms['security'] : null;
+        const activePerm = modPerm || legacySecPerm;
+        const hasExplicit = activePerm !== undefined && activePerm !== null && typeof activePerm === 'object';
+        const isDefaultAdmin = isAdminUser && !selectedUser.permissions;
 
         formatted[m.id] = {
-          view: hasExplicit ? Boolean(modPerm.view) : isLegacyAdmin,
-          create: hasExplicit ? Boolean(modPerm.create) : (isLegacyAdmin && m.actions.includes('create')),
-          edit: hasExplicit ? Boolean(modPerm.edit) : (isLegacyAdmin && m.actions.includes('edit')),
-          delete: hasExplicit ? Boolean(modPerm.delete) : (isLegacyAdmin && m.actions.includes('delete')),
-          export: hasExplicit ? Boolean(modPerm.export) : (isLegacyAdmin && m.actions.includes('export'))
+          view: hasExplicit ? Boolean(activePerm.view) : isDefaultAdmin,
+          create: hasExplicit ? Boolean(activePerm.create) : (isDefaultAdmin && m.actions.includes('create')),
+          edit: hasExplicit ? Boolean(activePerm.edit) : (isDefaultAdmin && m.actions.includes('edit')),
+          delete: hasExplicit ? Boolean(activePerm.delete) : (isDefaultAdmin && m.actions.includes('delete')),
+          export: hasExplicit ? Boolean(activePerm.export) : (isDefaultAdmin && m.actions.includes('export'))
         };
       });
       setPermissions(formatted);

@@ -222,23 +222,96 @@ export const InventoryProvider = ({ children }) => {
     }
   }, [sessionId]);
 
-  // Permissions helper: Custom user permissions ALWAYS take absolute priority!
+  // Helper to determine if a user has Administrator privileges
+  const isUserAdmin = (user) => {
+    if (!user) return false;
+    const role = String(user.role || '').toLowerCase();
+    const roleName = String(user.roleName || '').toLowerCase();
+    const username = String(user.username || '').toLowerCase();
+    return (
+      role === 'admin' ||
+      role === 'administrador' ||
+      roleName === 'admin' ||
+      roleName === 'administrador' ||
+      username === 'admin' ||
+      user.role_id === 1
+    );
+  };
+
+  // Permissions helper: Granular RBAC with Admin override and legacy parent compatibility
   const hasPermission = (module, action = 'view') => {
     if (!currentUser) return false;
 
-    // 1. If currentUser has explicit custom permissions for this module, ALWAYS respect them strictly!
-    if (currentUser.permissions && typeof currentUser.permissions === 'object' && currentUser.permissions[module] !== undefined) {
-      return Boolean(currentUser.permissions[module]?.[action]);
+    const isAdmin = isUserAdmin(currentUser);
+
+    // 1. If currentUser has explicit custom permissions for this module, check them
+    if (currentUser.permissions && typeof currentUser.permissions === 'object') {
+      const userMod = currentUser.permissions[module];
+      if (userMod !== undefined && userMod !== null) {
+        if (typeof userMod === 'object' && userMod[action] !== undefined) {
+          return Boolean(userMod[action]);
+        }
+        if (typeof userMod === 'boolean') {
+          return userMod;
+        }
+      }
+
+      // Check legacy parent 'security' key for any security sub-module
+      if (module.startsWith('security-')) {
+        const secMod = currentUser.permissions['security'];
+        if (secMod !== undefined && secMod !== null) {
+          if (typeof secMod === 'object' && secMod[action] !== undefined) {
+            return Boolean(secMod[action]);
+          }
+          if (typeof secMod === 'boolean') {
+            return secMod;
+          }
+        }
+      }
     }
 
-    // 2. If user is admin and has NO explicit custom override on this module, allow by default
-    if (currentUser.role === 'admin') return true;
+    // 2. Administrator users have full access to all modules and actions by default
+    if (isAdmin) return true;
 
     // 3. Fallback to assigned role permissions
-    if (currentUser.role_id && roles && roles.length > 0) {
-      const userRole = roles.find(r => r.id === currentUser.role_id);
-      if (userRole?.permissions && userRole.permissions[module] !== undefined) {
-        return Boolean(userRole.permissions[module]?.[action]);
+    if (roles && roles.length > 0) {
+      const userRole = roles.find(r => 
+        (currentUser.role_id && r.id === currentUser.role_id) || 
+        (r.name && (
+          r.name.toLowerCase() === String(currentUser.role || '').toLowerCase() || 
+          r.name.toLowerCase() === String(currentUser.roleName || '').toLowerCase()
+        ))
+      );
+
+      if (userRole) {
+        const roleName = String(userRole.name || '').toLowerCase();
+        if (roleName === 'administrador' || roleName === 'admin') {
+          return true;
+        }
+
+        if (userRole.permissions && typeof userRole.permissions === 'object') {
+          const roleMod = userRole.permissions[module];
+          if (roleMod !== undefined && roleMod !== null) {
+            if (typeof roleMod === 'object' && roleMod[action] !== undefined) {
+              return Boolean(roleMod[action]);
+            }
+            if (typeof roleMod === 'boolean') {
+              return roleMod;
+            }
+          }
+
+          if (module.startsWith('security-')) {
+            const roleSecMod = userRole.permissions['security'];
+            if (roleSecMod !== undefined && roleSecMod !== null) {
+              if (typeof roleSecMod === 'object' && roleSecMod[action] !== undefined) {
+                return Boolean(roleSecMod[action]);
+              }
+              if (typeof roleSecMod === 'boolean') {
+                return roleSecMod;
+              }
+            }
+          }
+        }
       }
     }
 
@@ -858,6 +931,8 @@ export const InventoryProvider = ({ children }) => {
       users,
       roles,
       currentUser,
+      isAdmin: isUserAdmin(currentUser),
+      isUserAdmin,
       settings,
       categoryUnits,
       versions,

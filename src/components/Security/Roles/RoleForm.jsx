@@ -12,14 +12,20 @@ const RoleForm = ({ onCancel, initialData }) => {
 
   const [permissions, setPermissions] = useState(() => {
     const base = initialData?.permissions || {};
+    const isAdminRole = String(initialData?.name || '').toLowerCase() === 'administrador' || String(initialData?.name || '').toLowerCase() === 'admin';
     const formatted = {};
     SYSTEM_MODULES.forEach(m => {
+      const modPerm = base[m.id];
+      const legacySecPerm = (m.id.startsWith('security-') && base['security']) ? base['security'] : null;
+      const activePerm = modPerm || legacySecPerm;
+      const hasExplicit = activePerm !== undefined && activePerm !== null && typeof activePerm === 'object';
+
       formatted[m.id] = {
-        view: Boolean(base[m.id]?.view),
-        create: Boolean(base[m.id]?.create),
-        edit: Boolean(base[m.id]?.edit),
-        delete: Boolean(base[m.id]?.delete),
-        export: Boolean(base[m.id]?.export)
+        view: hasExplicit ? Boolean(activePerm.view) : isAdminRole,
+        create: hasExplicit ? Boolean(activePerm.create) : (isAdminRole && m.actions.includes('create')),
+        edit: hasExplicit ? Boolean(activePerm.edit) : (isAdminRole && m.actions.includes('edit')),
+        delete: hasExplicit ? Boolean(activePerm.delete) : (isAdminRole && m.actions.includes('delete')),
+        export: hasExplicit ? Boolean(activePerm.export) : (isAdminRole && m.actions.includes('export'))
       };
     });
     return formatted;
