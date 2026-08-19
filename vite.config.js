@@ -22,9 +22,39 @@ const appCommit = (
 
 const numericVersion = `v2.5.${gitCommitCount}`
 
+function versionJsonPlugin() {
+  return {
+    name: 'generate-version-json',
+    configureServer(server) {
+      server.middlewares.use('/version.json', (req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        res.end(JSON.stringify({
+          commit: appCommit,
+          build: gitCommitCount,
+          numeric: numericVersion,
+          timestamp: Date.now()
+        }))
+      })
+    },
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: JSON.stringify({
+          commit: appCommit,
+          build: gitCommitCount,
+          numeric: numericVersion,
+          timestamp: Date.now()
+        })
+      })
+    }
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), versionJsonPlugin()],
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(appCommit),
     'import.meta.env.VITE_APP_BUILD_NUMBER': JSON.stringify(gitCommitCount),

@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard';
 import { InventoryProvider, useInventory } from './context/InventoryContext';
 import Login from './components/Login/Login';
 import { ThemeToggle } from './components/Theme/ThemeToggle';
+import UpdateNotifier from './components/Common/UpdateNotifier';
 import './App.css';
 
 // Lazy loading de módulos para optimización de bundle y carga ultra-rápida (Code-Splitting)
@@ -135,6 +136,7 @@ function AppContent() {
 
   return (
     <div className="app-container">
+      <UpdateNotifier />
       <Toaster position="bottom-right" toastOptions={{ duration: 3000, style: { background: 'var(--color-card)', color: 'var(--color-text)', border: '1px solid var(--color-border)' } }} />
       <Sidebar 
         currentView={currentView} 
