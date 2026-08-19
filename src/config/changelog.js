@@ -1,6 +1,33 @@
 // Registro cronológico maestro y automático de versiones del sistema
 export const SYSTEM_CHANGELOG = [
   {
+    id: 'v2.6.0',
+    version: 'v2.6.0',
+    description: 'Sistema de Diseño Stitch ("The Luminous Engine") y Auto-Actualizador en Tiempo Real',
+    author: 'Ing. Raúl Sosa',
+    date: '2026-08-18',
+    time: '22:30',
+    isOfficial: true,
+    changes: [
+      {
+        type: 'feature',
+        text: 'Sistema de Diseño Stitch: Renovación visual completa con tipografía Space Grotesk, arquitectura tonal sin líneas duras y centro de control con dial circular luminoso.'
+      },
+      {
+        type: 'feature',
+        text: 'Cápsula de Versión en Footer: Nuevo badge interactivo con numeración auto-incrementable por commit y enlace directo a novedades.'
+      },
+      {
+        type: 'feature',
+        text: 'Auto-Actualizador en Tiempo Real: Detección inteligente de nuevos commits en segundo plano con notificación Toast para actualizar con un solo clic.'
+      },
+      {
+        type: 'fix',
+        text: 'Desplazamiento en Móviles: Corrección de scroll vertical fluido en pantallas pequeñas y dispositivos móviles.'
+      }
+    ]
+  },
+  {
     id: 'v2.5.1',
     version: 'v2.5.1',
     description: 'Selector de Calendario Visual y Atajos de Fecha en Resumen Diario',
