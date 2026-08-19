@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   LayoutDashboard, Package, ArrowRightLeft, Settings, LogOut, FileText,
   Menu, ChevronLeft, ChevronDown, ChevronUp, Users, UserCircle, ShieldCheck,
-  ClipboardCheck, Shield, GitBranch, History, Bell, BookOpen, UserCheck, Sparkles
+  ClipboardCheck, Shield, GitBranch, History, Bell, BookOpen, UserCheck, Sparkles, X
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { formatDate } from '../utils/formatUtils';
@@ -65,7 +65,9 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
         >
           {isCollapsed ? <Menu size={18} /> : <ChevronLeft size={18} />}
         </button>
-        <button className="mobile-close-button" onClick={closeMobileMenu} aria-label="Cerrar menú">×</button>
+        <button className="mobile-close-button" onClick={closeMobileMenu} aria-label="Cerrar menú">
+          <X size={18} />
+        </button>
       </div>
 
       {/* Nav Items List (Independently Scrollable with Stitch Pills) */}
