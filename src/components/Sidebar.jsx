@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   LayoutDashboard, Package, ArrowRightLeft, Settings, LogOut, FileText,
   Menu, ChevronLeft, ChevronDown, ChevronUp, Users, UserCircle, ShieldCheck,
-  ClipboardCheck, Shield, GitBranch, History, Bell, BookOpen, UserCheck
+  ClipboardCheck, Shield, GitBranch, History, Bell, BookOpen, UserCheck, Sparkles
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 import { formatDate } from '../utils/formatUtils';
@@ -26,31 +26,49 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
 
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''} ${isMobileOpen ? 'mobile-open' : ''}`} aria-label="Navegación principal">
-      {/* Header Logo */}
+      {/* Header Logo with Stitch Space Grotesk Typography */}
       <div className="sidebar-logo">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden' }}>
-          {settings.logo ? (
-            <img src={settings.logo} alt="Logo" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
-          ) : (
-            <Package size={26} />
-          )}
+          <div style={{
+            width: '34px',
+            height: '34px',
+            borderRadius: 'var(--radius)',
+            background: 'linear-gradient(135deg, rgba(0, 209, 102, 0.2) 0%, rgba(0, 109, 50, 0.4) 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '1px solid rgba(100, 255, 146, 0.3)',
+            flexShrink: 0
+          }}>
+            {settings.logo ? (
+              <img src={settings.logo} alt="Logo" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+            ) : (
+              <Package size={20} style={{ color: 'var(--color-primary-fixed)' }} />
+            )}
+          </div>
           {!isCollapsed && (
-            <span style={{ whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', fontWeight: '700', letterSpacing: '-0.02em' }}>
-              {settings.name}
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span className="font-headline" style={{ whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', fontWeight: '700', fontSize: '1.05rem', letterSpacing: '-0.02em', color: '#ffffff' }}>
+                {settings.name || 'Inventario'}
+              </span>
+              <span style={{ fontSize: '0.65rem', color: 'rgba(255, 255, 255, 0.5)', fontWeight: '600', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                Command Center
+              </span>
+            </div>
           )}
         </div>
+        
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer', padding: '0.25rem', display: 'flex' }}
+          style={{ background: 'rgba(255, 255, 255, 0.08)', border: 'none', color: 'white', cursor: 'pointer', padding: '0.35rem', display: 'flex', borderRadius: '6px', transition: 'var(--transition)' }}
           title={isCollapsed ? "Expandir menú" : "Contraer menú"}
         >
-          {isCollapsed ? <Menu size={20} /> : <ChevronLeft size={20} />}
+          {isCollapsed ? <Menu size={18} /> : <ChevronLeft size={18} />}
         </button>
         <button className="mobile-close-button" onClick={closeMobileMenu} aria-label="Cerrar menú">×</button>
       </div>
 
-      {/* Nav Items List (Independently Scrollable) */}
+      {/* Nav Items List (Independently Scrollable with Stitch Pills) */}
       <nav className="sidebar-nav">
         {canView('dashboard') && (
           <button
@@ -58,7 +76,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
             onClick={() => setCurrentView('dashboard')}
             title={isCollapsed ? "Dashboard" : ""}
           >
-            <LayoutDashboard size={19} />
+            <LayoutDashboard size={18} />
             {!isCollapsed && <span>Dashboard</span>}
           </button>
         )}
@@ -69,7 +87,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
             onClick={() => setCurrentView('products')}
             title={isCollapsed ? "Productos" : ""}
           >
-            <Package size={19} />
+            <Package size={18} />
             {!isCollapsed && <span>Productos</span>}
           </button>
         )}
@@ -80,7 +98,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
             onClick={() => setCurrentView('inventory-count')}
             title={isCollapsed ? "Toma de Inventario" : ""}
           >
-            <ClipboardCheck size={19} />
+            <ClipboardCheck size={18} />
             {!isCollapsed && <span>Toma de Inventario</span>}
           </button>
         )}
@@ -91,7 +109,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
             onClick={() => setCurrentView('movements')}
             title={isCollapsed ? "Movimientos" : ""}
           >
-            <ArrowRightLeft size={19} />
+            <ArrowRightLeft size={18} />
             {!isCollapsed && <span>Movimientos</span>}
           </button>
         )}
@@ -102,7 +120,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
             onClick={() => setCurrentView('insurance')}
             title={isCollapsed ? "Corte de Seguro" : ""}
           >
-            <ShieldCheck size={19} />
+            <ShieldCheck size={18} />
             {!isCollapsed && <span>Corte de Seguro</span>}
           </button>
         )}
@@ -113,7 +131,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
             onClick={() => setCurrentView('summary')}
             title={isCollapsed ? "Resumen Detallado" : ""}
           >
-            <FileText size={19} />
+            <FileText size={18} />
             {!isCollapsed && <span>Resumen Detallado</span>}
           </button>
         )}
@@ -124,14 +142,14 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
             onClick={() => setCurrentView('summary2')}
             title={isCollapsed ? "Resumen Diario" : ""}
           >
-            <FileText size={19} style={{ opacity: 0.7 }} />
+            <FileText size={18} style={{ opacity: 0.75 }} />
             {!isCollapsed && <span>Resumen Diario</span>}
           </button>
         )}
 
         {/* Security Module Accordion */}
         {hasAnySecurityAccess && (
-          <div style={{ marginTop: '0.4rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.4rem' }}>
+          <div style={{ marginTop: '0.6rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.6rem' }}>
             <button
               onClick={() => {
                 if (isCollapsed) setIsCollapsed(false);
@@ -142,14 +160,15 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: isCollapsed ? 'center' : 'space-between',
-                padding: '0.5rem 0.75rem',
-                background: isSecurityView ? 'rgba(99, 102, 241, 0.16)' : 'transparent',
+                padding: '0.55rem 0.75rem',
+                background: isSecurityView ? 'rgba(0, 209, 102, 0.12)' : 'transparent',
                 border: 'none',
                 borderRadius: 'var(--radius)',
-                color: '#a5b4fc',
+                color: isSecurityView ? '#64ff92' : 'rgba(255, 255, 255, 0.65)',
                 cursor: 'pointer',
                 fontWeight: '700',
                 fontSize: '0.75rem',
+                fontFamily: 'var(--font-headline)',
                 letterSpacing: '0.06em',
                 textTransform: 'uppercase',
                 transition: 'var(--transition)'
@@ -157,23 +176,23 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
               title={isCollapsed ? "Seguridad" : ""}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Shield size={17} style={{ color: '#a5b4fc' }} />
+                <Shield size={16} style={{ color: isSecurityView ? '#64ff92' : 'inherit' }} />
                 {!isCollapsed && <span>SEGURIDAD</span>}
               </div>
               {!isCollapsed && (
-                isSecurityOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />
+                isSecurityOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />
               )}
             </button>
 
             {(!isCollapsed && isSecurityOpen) && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', paddingLeft: '0.5rem', marginTop: '0.2rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', paddingLeft: '0.5rem', marginTop: '0.25rem', borderLeft: '2px solid rgba(255, 255, 255, 0.08)', marginLeft: '0.5rem' }}>
                 {canView('security-users') && (
                   <button
                     className={`nav-link ${currentView === 'security-users' || currentView === 'users' ? 'active' : ''}`}
                     onClick={() => setCurrentView('security-users')}
                     style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
                   >
-                    <UserCheck size={16} />
+                    <UserCheck size={15} />
                     <span>Usuarios</span>
                   </button>
                 )}
@@ -184,7 +203,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
                     onClick={() => setCurrentView('security-access')}
                     style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
                   >
-                    <GitBranch size={16} />
+                    <GitBranch size={15} />
                     <span>Accesos y Permisos</span>
                   </button>
                 )}
@@ -195,7 +214,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
                     onClick={() => setCurrentView('security-roles')}
                     style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
                   >
-                    <Shield size={16} />
+                    <Shield size={15} />
                     <span>Roles</span>
                   </button>
                 )}
@@ -206,7 +225,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
                     onClick={() => setCurrentView('security-logs')}
                     style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
                   >
-                    <FileText size={16} />
+                    <FileText size={15} />
                     <span>Bitácora del Sistema</span>
                   </button>
                 )}
@@ -217,7 +236,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
                     onClick={() => setCurrentView('security-sessions')}
                     style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
                   >
-                    <Users size={16} />
+                    <Users size={15} />
                     <span>Usuarios Conectados</span>
                   </button>
                 )}
@@ -228,7 +247,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
                     onClick={() => setCurrentView('security-changelog')}
                     style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
                   >
-                    <History size={16} />
+                    <History size={15} />
                     <span>Historial de Cambios</span>
                   </button>
                 )}
@@ -240,11 +259,11 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
                     style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem', justifyContent: 'space-between' }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                      <Bell size={16} />
+                      <Bell size={15} />
                       <span>Notificaciones</span>
                     </div>
                     {unreadNotificationsCount > 0 && (
-                      <span style={{ backgroundColor: '#ef4444', color: 'white', fontSize: '0.65rem', padding: '1px 6px', borderRadius: '10px', fontWeight: 'bold' }}>
+                      <span style={{ backgroundColor: 'var(--color-danger)', color: 'white', fontSize: '0.65rem', padding: '1px 6px', borderRadius: '10px', fontWeight: 'bold' }}>
                         {unreadNotificationsCount}
                       </span>
                     )}
@@ -257,7 +276,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
                     onClick={() => setCurrentView('security-manual')}
                     style={{ padding: '0.45rem 0.65rem', fontSize: '0.8rem' }}
                   >
-                    <BookOpen size={16} />
+                    <BookOpen size={15} />
                     <span>Manual de Usuario</span>
                   </button>
                 )}
@@ -271,62 +290,64 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
             className={`nav-link ${currentView === 'settings' ? 'active' : ''}`}
             onClick={() => setCurrentView('settings')}
             title={isCollapsed ? "Configuración" : ""}
-            style={{ marginTop: '0.35rem' }}
+            style={{ marginTop: '0.4rem' }}
           >
-            <Settings size={19} />
+            <Settings size={18} />
             {!isCollapsed && <span>Configuración</span>}
           </button>
         )}
       </nav>
 
-      {/* Footer Anchored at Bottom (Never Disappears) */}
+      {/* Footer Anchored at Bottom */}
       <div className="sidebar-footer">
         {!isCollapsed && (
-          <div style={{ marginBottom: '0.5rem' }}>
+          <div style={{ marginBottom: '0.4rem' }}>
             <ThemeToggle variant="sidebar" />
           </div>
         )}
 
+        {/* User Card with Live Pill Dot */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '0.6rem',
-          padding: isCollapsed ? '0.35rem' : '0.5rem 0.65rem',
+          gap: '0.65rem',
+          padding: isCollapsed ? '0.4rem' : '0.55rem 0.75rem',
           borderRadius: 'var(--radius)',
           backgroundColor: 'rgba(255,255,255,0.06)',
-          marginBottom: '0.5rem'
+          border: '1px solid rgba(255, 255, 255, 0.06)'
         }}>
           <div style={{
-            width: '30px',
-            height: '30px',
+            width: '32px',
+            height: '32px',
             borderRadius: '50%',
-            backgroundColor: 'rgba(255, 255, 255, 0.15)',
+            backgroundColor: 'rgba(0, 209, 102, 0.2)',
+            border: '1px solid rgba(0, 209, 102, 0.4)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: 'white',
+            color: 'var(--color-primary-fixed)',
+            fontWeight: '700',
+            fontSize: '0.8rem',
             flexShrink: 0
           }}>
-            <UserCircle size={18} />
+            {(currentUser?.username || 'U').charAt(0).toUpperCase()}
           </div>
           {!isCollapsed && (
             <div style={{ overflow: 'hidden', flex: 1 }}>
-              <div style={{ fontWeight: '600', fontSize: '0.85rem', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', lineHeight: 1.2 }}>
+              <div style={{ fontWeight: '600', fontSize: '0.85rem', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', lineHeight: 1.2, color: '#ffffff' }}>
                 {currentUser?.username}
               </div>
-              <span style={{
-                fontSize: '0.65rem',
-                padding: '1px 5px',
-                borderRadius: '8px',
-                backgroundColor: currentUser?.role === 'admin' ? '#f1c40f' : 'rgba(255,255,255,0.2)',
-                color: currentUser?.role === 'admin' ? '#000' : '#fff',
-                textTransform: 'uppercase',
-                fontWeight: 'bold',
-                marginTop: '2px',
-                display: 'inline-block'
-              }}>
-                {currentUser?.roleName || currentUser?.role}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '2px' }}>
+                <span className="status-dot" style={{ backgroundColor: '#00d166', width: '6px', height: '6px' }}></span>
+                <span style={{
+                  fontSize: '0.65rem',
+                  color: 'rgba(255, 255, 255, 0.65)',
+                  textTransform: 'uppercase',
+                  fontWeight: '600'
+                }}>
+                  {currentUser?.roleName || currentUser?.role}
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -336,12 +357,13 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
           onClick={logout}
           title={isCollapsed ? "Cerrar Sesión" : ""}
           style={{
-            color: '#fca5a5',
-            padding: isCollapsed ? '0.5rem' : '0.5rem 0.65rem',
-            fontSize: '0.8rem'
+            color: '#fda4af',
+            padding: isCollapsed ? '0.5rem' : '0.5rem 0.75rem',
+            fontSize: '0.8rem',
+            borderRadius: 'var(--radius)'
           }}
         >
-          <LogOut size={17} />
+          <LogOut size={16} />
           {!isCollapsed && <span>Cerrar Sesión</span>}
         </button>
 
@@ -350,7 +372,8 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
             textAlign: 'center',
             fontSize: '0.65rem',
             color: 'rgba(255,255,255,0.4)',
-            marginTop: '0.35rem'
+            marginTop: '0.2rem',
+            fontFamily: 'var(--font-headline)'
           }}>
             {currentVersion.version}{currentVersion.date ? ` · ${formatDate(currentVersion.date)}` : ''}
           </div>

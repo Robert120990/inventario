@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Sun, Moon, Palette, Check } from 'lucide-react';
+import { Sun, Moon, Palette, Check, Sparkles } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 
 const THEMES = [
-  { id: 'light', name: 'Modo Claro', icon: <Sun size={16} />, color: '#1e3a8a', bg: '#f8fafc' },
-  { id: 'dark', name: 'Modo Oscuro', icon: <Moon size={16} />, color: '#3b82f6', bg: '#0b0f19' },
-  { id: 'navy', name: 'Azul Noche', icon: <Palette size={16} />, color: '#38bdf8', bg: '#08122d' },
-  { id: 'emerald', name: 'Esmeralda', icon: <Palette size={16} />, color: '#10b981', bg: '#051c19' }
+  { id: 'light', name: 'Luminous Claro', icon: <Sun size={15} />, color: '#006d32', glow: '#00d166', bg: '#f8f9ff' },
+  { id: 'dark', name: 'Luminous Oscuro', icon: <Moon size={15} />, color: '#30e375', glow: '#64ff92', bg: '#090f1d' },
+  { id: 'navy', name: 'Deep Ocean', icon: <Palette size={15} />, color: '#38bdf8', glow: '#7dd3fc', bg: '#071329' },
+  { id: 'emerald', name: 'Bio Forest', icon: <Palette size={15} />, color: '#10b981', glow: '#34d399', bg: '#051c19' }
 ];
 
 export const ThemeToggle = ({ variant = 'button' }) => {
@@ -26,12 +26,6 @@ export const ThemeToggle = ({ variant = 'button' }) => {
 
   const currentThemeObj = THEMES.find(t => t.id === theme) || THEMES[0];
 
-  const handleQuickToggle = () => {
-    // Toggle between light and dark
-    const next = theme === 'light' ? 'dark' : 'light';
-    setTheme(next);
-  };
-
   if (variant === 'sidebar') {
     return (
       <div style={{ position: 'relative' }} ref={dropdownRef}>
@@ -39,11 +33,11 @@ export const ThemeToggle = ({ variant = 'button' }) => {
           type="button"
           onClick={() => setIsOpen(!isOpen)}
           style={{
-            background: 'rgba(255, 255, 255, 0.1)',
-            border: 'none',
+            background: 'rgba(255, 255, 255, 0.08)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
             color: 'white',
             borderRadius: 'var(--radius)',
-            padding: '0.4rem 0.6rem',
+            padding: '0.45rem 0.65rem',
             display: 'flex',
             alignItems: 'center',
             gap: '0.5rem',
@@ -55,8 +49,8 @@ export const ThemeToggle = ({ variant = 'button' }) => {
           }}
           title="Cambiar tema visual"
         >
-          <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            {currentThemeObj.icon}
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: currentThemeObj.color, display: 'inline-block', boxShadow: `0 0 6px ${currentThemeObj.color}` }}></span>
             <span>{currentThemeObj.name}</span>
           </span>
           <Palette size={13} style={{ opacity: 0.7 }} />
@@ -69,7 +63,7 @@ export const ThemeToggle = ({ variant = 'button' }) => {
             left: 0,
             width: '100%',
             marginBottom: '0.5rem',
-            backgroundColor: 'var(--color-surface)',
+            backgroundColor: 'var(--color-card)',
             border: '1px solid var(--color-border)',
             borderRadius: 'var(--radius)',
             boxShadow: 'var(--shadow-lg)',
@@ -88,7 +82,7 @@ export const ThemeToggle = ({ variant = 'button' }) => {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '0.5rem 0.6rem',
+                  padding: '0.5rem 0.65rem',
                   border: 'none',
                   borderRadius: 'calc(var(--radius) - 2px)',
                   backgroundColor: theme === t.id ? 'var(--color-primary)' : 'transparent',
@@ -96,7 +90,8 @@ export const ThemeToggle = ({ variant = 'button' }) => {
                   cursor: 'pointer',
                   fontSize: '0.75rem',
                   fontWeight: theme === t.id ? '600' : 'normal',
-                  textAlign: 'left'
+                  textAlign: 'left',
+                  transition: 'var(--transition)'
                 }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -119,15 +114,16 @@ export const ThemeToggle = ({ variant = 'button' }) => {
         className="btn btn-outline"
         onClick={() => setIsOpen(!isOpen)}
         style={{
-          padding: '0.45rem 0.75rem',
+          padding: '0.45rem 0.8rem',
           fontSize: '0.8rem',
           display: 'inline-flex',
           alignItems: 'center',
-          gap: '0.4rem'
+          gap: '0.45rem',
+          borderRadius: 'var(--radius)'
         }}
         title="Cambiar tema visual"
       >
-        {currentThemeObj.icon}
+        <span style={{ width: '9px', height: '9px', borderRadius: '50%', backgroundColor: currentThemeObj.color, display: 'inline-block', boxShadow: `0 0 6px ${currentThemeObj.color}` }}></span>
         <span>{currentThemeObj.name}</span>
       </button>
 
@@ -136,13 +132,13 @@ export const ThemeToggle = ({ variant = 'button' }) => {
           position: 'absolute',
           top: '100%',
           right: 0,
-          marginTop: '0.4rem',
-          backgroundColor: 'var(--color-surface)',
+          marginTop: '0.5rem',
+          backgroundColor: 'var(--color-card)',
           border: '1px solid var(--color-border)',
           borderRadius: 'var(--radius)',
           boxShadow: 'var(--shadow-lg)',
           padding: '0.4rem',
-          minWidth: '160px',
+          minWidth: '170px',
           zIndex: 100,
           display: 'flex',
           flexDirection: 'column',
@@ -165,11 +161,12 @@ export const ThemeToggle = ({ variant = 'button' }) => {
                 cursor: 'pointer',
                 fontSize: '0.8rem',
                 fontWeight: theme === t.id ? '600' : 'normal',
-                textAlign: 'left'
+                textAlign: 'left',
+                transition: 'var(--transition)'
               }}
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: t.color, display: 'inline-block' }}></span>
+                <span style={{ width: '11px', height: '11px', borderRadius: '50%', backgroundColor: t.color, display: 'inline-block' }}></span>
                 {t.name}
               </span>
               {theme === t.id && <Check size={14} />}

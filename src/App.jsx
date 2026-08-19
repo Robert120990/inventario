@@ -75,7 +75,7 @@ function AppContent() {
   const renderView = () => {
     switch (currentView) {
       case 'dashboard':
-        return canView('dashboard') ? <Dashboard /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+        return canView('dashboard') ? <Dashboard onNavigate={(v) => setCurrentView(v)} /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'products':
         return canView('products') ? <ProductList /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'movements':

@@ -7,6 +7,7 @@ import autoTable from 'jspdf-autotable';
 import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils';
 import { CONTRACT_INFO } from '../../utils/contractRates';
 import { toast } from 'react-hot-toast';
+import { DatePicker, DateQuickPresets, getLocalDateStr } from '../Common/DatePicker';
 
 const Summary = () => {
   const { products, movements, categoryUnits, canExport } = useInventory();
@@ -14,10 +15,29 @@ const Summary = () => {
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(1); // First day of the current month
-    return d.toISOString().split('T')[0];
+    return getLocalDateStr(d);
   });
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(() => getLocalDateStr(new Date()));
   const [clientName, setClientName] = useState(CONTRACT_INFO.clientName);
+
+  const handleStartDateChange = (newStart) => {
+    setStartDate(newStart);
+    if (endDate && newStart > endDate) {
+      setEndDate(newStart);
+    }
+  };
+
+  const handleEndDateChange = (newEnd) => {
+    setEndDate(newEnd);
+    if (startDate && newEnd < startDate) {
+      setStartDate(newEnd);
+    }
+  };
+
+  const handlePresetSelect = (start, end) => {
+    setStartDate(start);
+    setEndDate(end);
+  };
 
   const summaryData = useMemo(() => {
     if (!startDate || !endDate || products.length === 0) return [];
@@ -285,18 +305,36 @@ const Summary = () => {
         )}
       </div>
 
-      <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <div className="form-group" style={{ marginBottom: 0 }}>
-          <label className="form-label">Fecha Inicio</label>
-          <input type="date" className="form-input" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+      <div className="card" style={{ marginBottom: '1.5rem', padding: '1.25rem' }}>
+        <div style={{ marginBottom: '1rem', paddingBottom: '0.85rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <DateQuickPresets
+            startDate={startDate}
+            endDate={endDate}
+            onSelectRange={handlePresetSelect}
+          />
         </div>
-        <div className="form-group" style={{ marginBottom: 0 }}>
-          <label className="form-label">Fecha Fin</label>
-          <input type="date" className="form-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-        </div>
-        <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-          <h3 style={{ fontSize: '0.875rem', color: 'var(--color-text-light)' }}>Valoración Total (C/Impuestos)</h3>
-          <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--color-primary)' }}>${reportGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+
+        <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div className="form-group" style={{ marginBottom: 0, minWidth: '180px', flex: '1 1 200px' }}>
+            <DatePicker
+              label="Fecha Inicio"
+              value={startDate}
+              onChange={handleStartDateChange}
+              max={endDate}
+            />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0, minWidth: '180px', flex: '1 1 200px' }}>
+            <DatePicker
+              label="Fecha Fin"
+              value={endDate}
+              onChange={handleEndDateChange}
+              min={startDate}
+            />
+          </div>
+          <div style={{ marginLeft: 'auto', textAlign: 'right', minWidth: '220px' }}>
+            <h3 style={{ fontSize: '0.875rem', color: 'var(--color-text-light)' }}>Valoración Total (C/Impuestos)</h3>
+            <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--color-primary)' }}>${reportGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+          </div>
         </div>
       </div>
 

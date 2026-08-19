@@ -6,6 +6,7 @@ import { formatCurrency, formatDate, formatPrice } from '../../utils/formatUtils
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'react-hot-toast';
+import { DatePicker } from '../Common/DatePicker';
 
 const getLocalDate = () => {
   const now = new Date();
@@ -250,12 +251,10 @@ const InsuranceReport = () => {
       <div className="card" style={{ marginBottom: '1.5rem' }}>
         <div className="grid grid-cols-3" style={{ alignItems: 'end' }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Fecha de corte</label>
-            <input
-              type="date"
-              className="form-input"
+            <DatePicker
+              label="Fecha de corte"
               value={cutoffDate}
-              onChange={(event) => setCutoffDate(event.target.value)}
+              onChange={(val) => setCutoffDate(val)}
             />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>

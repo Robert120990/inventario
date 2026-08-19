@@ -7,6 +7,7 @@ import autoTable from 'jspdf-autotable';
 import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils';
 import { CONTRACT_INFO } from '../../utils/contractRates';
 import { toast } from 'react-hot-toast';
+import { DatePicker, DateQuickPresets, getLocalDateStr } from '../Common/DatePicker';
 
 const Summary2 = () => {
   const { products, movements, categories, categoryUnits, settings, canExport } = useInventory();
@@ -16,11 +17,41 @@ const Summary2 = () => {
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(1);
-    return d.toISOString().split('T')[0];
+    return getLocalDateStr(d);
   });
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(() => getLocalDateStr(new Date()));
   const [clientName, setClientName] = useState(CONTRACT_INFO.clientName);
   const [selectedCategory, setSelectedCategory] = useState('all');
+
+  // Controladores de fecha sincronizados
+  const handleStartDateChange = (newStart) => {
+    setStartDate(newStart);
+    if (endDate && newStart > endDate) {
+      setEndDate(newStart);
+    }
+  };
+
+  const handleEndDateChange = (newEnd) => {
+    setEndDate(newEnd);
+    if (startDate && newEnd < startDate) {
+      setStartDate(newEnd);
+    }
+  };
+
+  const handlePresetSelect = (start, end) => {
+    setStartDate(start);
+    setEndDate(end);
+  };
+
+  // Cantidad de días en el rango
+  const daysCount = useMemo(() => {
+    if (!startDate || !endDate) return 0;
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T00:00:00');
+    const diffTime = end.getTime() - start.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    return diffDays > 0 ? diffDays : 0;
+  }, [startDate, endDate]);
 
   // Movimientos diarios consolidados
   const dailyRows = useMemo(() => {
@@ -321,16 +352,38 @@ const Summary2 = () => {
         )}
       </div>
 
-      {/* Panel de Filtros y Configuración del Corte */}
+      {/* Panel de Filtros y Configuración del Corte con Calendarios Interactivos */}
       <div className="card" style={{ marginBottom: '1.5rem', padding: '1.25rem' }}>
+        {/* Atajos Rápidos de Rango */}
+        <div style={{ marginBottom: '1rem', paddingBottom: '0.85rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <DateQuickPresets
+            startDate={startDate}
+            endDate={endDate}
+            onSelectRange={handlePresetSelect}
+          />
+          {daysCount > 0 && (
+            <span className="badge badge-primary" style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+              {daysCount} {daysCount === 1 ? 'día seleccionado' : 'días en período'}
+            </span>
+          )}
+        </div>
+
         <div className="grid grid-cols-4" style={{ alignItems: 'end', gap: '1rem' }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Fecha Inicio</label>
-            <input type="date" className="form-input" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <DatePicker
+              label="Fecha Inicio"
+              value={startDate}
+              onChange={handleStartDateChange}
+              max={endDate}
+            />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Fecha Fin</label>
-            <input type="date" className="form-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            <DatePicker
+              label="Fecha Fin"
+              value={endDate}
+              onChange={handleEndDateChange}
+              min={startDate}
+            />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Cliente / Depositante</label>

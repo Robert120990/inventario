@@ -1,6 +1,29 @@
 // Registro cronológico maestro y automático de versiones del sistema
 export const SYSTEM_CHANGELOG = [
   {
+    id: 'v2.5.1',
+    version: 'v2.5.1',
+    description: 'Selector de Calendario Visual y Atajos de Fecha en Resumen Diario',
+    author: 'Ing. Raúl Sosa',
+    date: '2026-08-18',
+    time: '20:10',
+    isOfficial: true,
+    changes: [
+      {
+        type: 'feature',
+        text: 'Resumen Diario y Reportes: Incorporación de calendario visual interactivo desplegable para seleccionar Fecha Inicio y Fecha Fin con un solo clic.'
+      },
+      {
+        type: 'feature',
+        text: 'Atajos Rápidos de Rango: Botones directos para seleccionar automáticamente Mes Actual, Mes Anterior, Últimos 7 Días, Últimos 30 Días, Esta Semana y Hoy.'
+      },
+      {
+        type: 'improvement',
+        text: 'Sincronización automática de rangos de fecha y contador visual de días seleccionados para evitar errores de digitación.'
+      }
+    ]
+  },
+  {
     id: 'v2.5.0',
     version: 'v2.5.0',
     description: 'Control Granular de Exportación y Optimización de Rendimiento',

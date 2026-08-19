@@ -3,6 +3,7 @@ import { useInventory } from '../../context/InventoryContext';
 import { Save, X, Plus, Trash2, Zap, ThermometerSnowflake } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { EXTRA_SERVICE_PRESETS, calculateTemperatureService, getTemperatureRate } from '../../utils/contractRates';
+import { DatePicker } from '../Common/DatePicker';
 
 const MovementForm = ({ onCancel, initialData }) => {
   const { products, addMovement, updateMovement, documentTypes, currentUser } = useInventory();
@@ -225,8 +226,15 @@ const MovementForm = ({ onCancel, initialData }) => {
               </div>
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Fecha del Movimiento</label>
-              <input type="date" name="date" className="form-input" value={formData.date} onChange={handleChange} required />
+              <DatePicker
+                label="Fecha del Movimiento"
+                value={formData.date}
+                onChange={(val) => {
+                  setFormData(prev => ({ ...prev, date: val }));
+                  if (error) setError('');
+                }}
+                required
+              />
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">Usuario Auditor</label>
