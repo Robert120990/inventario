@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { LogIn, Package, ShieldCheck, Lock, User, Sparkles } from 'lucide-react';
+import { APP_DISPLAY_VERSION, APP_COMMIT_HASH } from '../../config/version';
 
 const Login = () => {
   const { login, settings, currentVersion } = useInventory();
@@ -162,8 +163,8 @@ const Login = () => {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
           <div className="version-pill-badge" style={{ padding: '0.2rem 0.65rem 0.2rem 0.3rem' }}>
             <span className="version-pill-tag">NUEVA</span>
-            <span className="version-pill-number">{import.meta.env.VITE_APP_NUMERIC_VERSION || 'v2.5'}</span>
-            <span className="version-pill-commit">· {import.meta.env.VITE_APP_VERSION}</span>
+            <span className="version-pill-number">{APP_DISPLAY_VERSION}</span>
+            <span className="version-pill-commit">· {APP_COMMIT_HASH}</span>
           </div>
           <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
             © 2026 Sistema de Control de Inventario

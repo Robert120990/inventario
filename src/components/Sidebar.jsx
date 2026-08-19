@@ -7,6 +7,7 @@ import {
 import { useInventory } from '../context/InventoryContext';
 import { formatDate } from '../utils/formatUtils';
 import { ThemeToggle } from './Theme/ThemeToggle';
+import { APP_DISPLAY_VERSION } from '../config/version';
 
 const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isMobileOpen, closeMobileMenu }) => {
   const { currentUser, settings, logout, currentVersion, unreadNotificationsCount, canView } = useInventory();
@@ -379,7 +380,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
               type="button"
             >
               <span className="version-pill-tag" style={{ fontSize: '0.55rem', padding: '0.1rem 0.45rem' }}>NUEVA</span>
-              <span className="version-pill-number" style={{ fontSize: '0.725rem' }}>{import.meta.env.VITE_APP_NUMERIC_VERSION || 'v2.5'}</span>
+              <span className="version-pill-number" style={{ fontSize: '0.725rem' }}>{APP_DISPLAY_VERSION}</span>
             </button>
           </div>
         )}

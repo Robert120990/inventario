@@ -1,9 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { RefreshCw, Sparkles, X, ArrowUpCircle } from 'lucide-react';
+import { APP_COMMIT_HASH, APP_BUILD_NUMBER } from '../../config/version';
 
-const CURRENT_COMMIT = import.meta.env.VITE_APP_VERSION;
-const CURRENT_BUILD = Number(import.meta.env.VITE_APP_BUILD_NUMBER) || 0;
+const CURRENT_COMMIT = APP_COMMIT_HASH;
+const CURRENT_BUILD = Number(APP_BUILD_NUMBER) || 0;
 
 export const UpdateNotifier = () => {
   const isToastActiveRef = useRef(false);

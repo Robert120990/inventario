@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "concurrently \"npm run server\" \"vite\"",
     "server": "node api/index.js",
-    "build": "vite build",
+    "version:update": "node scripts/update-version.js",
+    "build": "node scripts/update-version.js && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },

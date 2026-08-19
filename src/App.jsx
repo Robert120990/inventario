@@ -7,6 +7,7 @@ import { InventoryProvider, useInventory } from './context/InventoryContext';
 import Login from './components/Login/Login';
 import { ThemeToggle } from './components/Theme/ThemeToggle';
 import UpdateNotifier from './components/Common/UpdateNotifier';
+import { APP_DISPLAY_VERSION, APP_BUILD_NUMBER, APP_COMMIT_HASH } from './config/version';
 import './App.css';
 
 // Lazy loading de módulos para optimización de bundle y carga ultra-rápida (Code-Splitting)
@@ -176,8 +177,8 @@ function AppContent() {
               type="button"
             >
               <span className="version-pill-tag">NUEVA</span>
-              <span className="version-pill-number">{import.meta.env.VITE_APP_NUMERIC_VERSION || 'v2.5'}</span>
-              <span className="version-pill-commit">#{import.meta.env.VITE_APP_BUILD_NUMBER || '1'} · {import.meta.env.VITE_APP_VERSION}</span>
+              <span className="version-pill-number">{APP_DISPLAY_VERSION}</span>
+              <span className="version-pill-commit">#{APP_BUILD_NUMBER} · {APP_COMMIT_HASH}</span>
             </button>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
               Actualización automática de versión por commit
