@@ -4,25 +4,31 @@ import { execSync } from 'node:child_process'
 
 const env = globalThis.process?.env || {}
 let gitCommit = ''
+let gitCommitCount = 1
 try {
   gitCommit = execSync('git rev-parse --short HEAD').toString().trim()
+  gitCommitCount = parseInt(execSync('git rev-list --count HEAD').toString().trim(), 10) || 1
 } catch {
   // fallback if git command fails
 }
 
-const appVersion = (
+const appCommit = (
   env.VERCEL_GIT_COMMIT_SHA ||
   env.GITHUB_SHA ||
   env.VITE_APP_VERSION ||
   gitCommit ||
-  '1.0.0'
+  'local'
 ).slice(0, 7)
+
+const numericVersion = `v2.5.${gitCommitCount}`
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   define: {
-    'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(appCommit),
+    'import.meta.env.VITE_APP_BUILD_NUMBER': JSON.stringify(gitCommitCount),
+    'import.meta.env.VITE_APP_NUMERIC_VERSION': JSON.stringify(numericVersion),
   },
   server: {
     proxy: {

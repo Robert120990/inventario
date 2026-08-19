@@ -45,12 +45,6 @@ const Login = () => {
       <div className="luminous-glow" style={{ top: '-15%', left: '10%', width: '450px', height: '450px', background: 'radial-gradient(circle, rgba(0, 209, 102, 0.15) 0%, transparent 70%)' }}></div>
       <div className="luminous-glow" style={{ bottom: '-15%', right: '10%', width: '500px', height: '500px', background: 'radial-gradient(circle, rgba(0, 89, 187, 0.12) 0%, transparent 70%)' }}></div>
 
-      {versionDisplay && (
-        <div className="app-version-badge" title="Versión de la aplicación">
-          {versionDisplay}
-        </div>
-      )}
-
       {/* Frosted Glass Login Center Card */}
       <div className="glass-card" style={{
         width: '100%',
@@ -164,12 +158,17 @@ const Login = () => {
           </button>
         </form>
 
-        {/* Footer info */}
-        {versionDisplay && (
-          <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--color-text-muted)', fontFamily: 'var(--font-headline)' }}>
-            Versión {versionDisplay}
+        {/* Footer info with Version Pill Badge */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+          <div className="version-pill-badge" style={{ padding: '0.2rem 0.65rem 0.2rem 0.3rem' }}>
+            <span className="version-pill-tag">NUEVA</span>
+            <span className="version-pill-number">{import.meta.env.VITE_APP_NUMERIC_VERSION || 'v2.5'}</span>
+            <span className="version-pill-commit">· {import.meta.env.VITE_APP_VERSION}</span>
           </div>
-        )}
+          <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+            © 2026 Sistema de Control de Inventario
+          </span>
+        </div>
       </div>
     </div>
   );

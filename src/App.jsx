@@ -136,9 +136,6 @@ function AppContent() {
   return (
     <div className="app-container">
       <Toaster position="bottom-right" toastOptions={{ duration: 3000, style: { background: 'var(--color-card)', color: 'var(--color-text)', border: '1px solid var(--color-border)' } }} />
-      <div className="app-version-badge" title="Versión basada en el commit de GitHub">
-        v{import.meta.env.VITE_APP_VERSION}
-      </div>
       <Sidebar 
         currentView={currentView} 
         setCurrentView={(view) => {
@@ -166,6 +163,28 @@ function AppContent() {
         <Suspense fallback={<ViewLoader />}>
           {renderView()}
         </Suspense>
+        
+        {/* Stitch App Page Footer with Version Pill Badge */}
+        <footer className="app-page-footer">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setCurrentView('security-changelog')}
+              className="version-pill-badge"
+              title="Ver Historial de Cambios y Novedades"
+              type="button"
+            >
+              <span className="version-pill-tag">NUEVA</span>
+              <span className="version-pill-number">{import.meta.env.VITE_APP_NUMERIC_VERSION || 'v2.5'}</span>
+              <span className="version-pill-commit">#{import.meta.env.VITE_APP_BUILD_NUMBER || '1'} · {import.meta.env.VITE_APP_VERSION}</span>
+            </button>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+              Actualización automática de versión por commit
+            </span>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+            © 2026 Sistema de Inventario · Todos los derechos reservados
+          </div>
+        </footer>
       </div>
     </div>
   );

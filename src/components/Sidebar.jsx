@@ -367,15 +367,18 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
           {!isCollapsed && <span>Cerrar Sesión</span>}
         </button>
 
-        {currentVersion && !isCollapsed && (
-          <div style={{
-            textAlign: 'center',
-            fontSize: '0.65rem',
-            color: 'rgba(255,255,255,0.4)',
-            marginTop: '0.2rem',
-            fontFamily: 'var(--font-headline)'
-          }}>
-            {currentVersion.version}{currentVersion.date ? ` · ${formatDate(currentVersion.date)}` : ''}
+        {!isCollapsed && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: '0.35rem' }}>
+            <button
+              onClick={() => setCurrentView('security-changelog')}
+              className="version-pill-badge"
+              style={{ padding: '0.15rem 0.6rem 0.15rem 0.25rem', border: '1px solid rgba(255, 255, 255, 0.12)' }}
+              title="Ver Historial de Cambios y Novedades"
+              type="button"
+            >
+              <span className="version-pill-tag" style={{ fontSize: '0.55rem', padding: '0.1rem 0.45rem' }}>NUEVA</span>
+              <span className="version-pill-number" style={{ fontSize: '0.725rem' }}>{import.meta.env.VITE_APP_NUMERIC_VERSION || 'v2.5'}</span>
+            </button>
           </div>
         )}
       </div>
