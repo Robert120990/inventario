@@ -3,6 +3,8 @@ import express from 'express';
 import cors from 'cors';
 import pool, { ensureSchema } from './db.js';
 import { randomUUID } from 'node:crypto';
+import bcrypt from 'bcrypt';
+import { verifyToken, generateToken } from './middleware/auth.js';
 
 const app = express();
 const router = express.Router();
@@ -599,7 +601,13 @@ router.post('/auth/login', async (req, res) => {
             [cleanUser]
         );
 
-        if (rows.length === 0 || rows[0].password !== cleanPass) {
+        const user = rows[0];
+        
+        // Verificar si la contraseña es correcta usando bcrypt
+        // Si el usuario existe pero la contraseña aún no ha sido migrada (empieza sin $2b$), permitiremos comparar texto plano (opcional) pero como ya corrimos migración, exigimos bcrypt.
+        const isMatch = await bcrypt.compare(cleanPass, user.password);
+
+        if (!user || !isMatch) {
             await logSystemEvent({
                 username: cleanUser,
                 action: 'LOGIN_FAILED',
@@ -610,7 +618,6 @@ router.post('/auth/login', async (req, res) => {
             return res.status(401).json({ error: 'Credenciales incorrectas.' });
         }
 
-        const user = rows[0];
         if (user.isActive === 0 || user.isActive === false) {
             return res.status(403).json({ error: 'Cuenta desactivada por el administrador.' });
         }
@@ -657,7 +664,10 @@ router.post('/auth/login', async (req, res) => {
             last_login: new Date().toISOString()
         };
 
-        res.json({ success: true, user: safeUser, sessionId });
+        // Generar JWT
+        const token = generateToken({ id: user.id, username: user.username, role: user.role });
+
+        res.json({ success: true, user: safeUser, sessionId, token });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -729,10 +739,11 @@ router.post('/users', async (req, res) => {
         return res.status(400).json({ error: 'Usuario y contraseña requeridos.' });
     }
     try {
+        const hashedPassword = await bcrypt.hash(password.trim(), 10);
         const permJson = permissions ? JSON.stringify(permissions) : null;
         const [result] = await pool.query(
             'INSERT INTO users (username, password, role, role_id, isActive, permissions) VALUES (?, ?, ?, ?, 1, ?)',
-            [username.trim(), password.trim(), role || 'user', role_id || null, permJson]
+            [username.trim(), hashedPassword, role || 'user', role_id || null, permJson]
         );
         await logSystemEvent({
             username: auditUser || 'admin',
@@ -752,9 +763,10 @@ router.put('/users/:id', async (req, res) => {
     try {
         const permJson = permissions ? JSON.stringify(permissions) : null;
         if (password && password.trim() !== '') {
+            const hashedPassword = await bcrypt.hash(password.trim(), 10);
             await pool.query(
                 'UPDATE users SET username=?, password=?, role=?, role_id=?, isActive=?, permissions=? WHERE id=?',
-                [username.trim(), password.trim(), role || 'user', role_id || null, isActive !== false ? 1 : 0, permJson, id]
+                [username.trim(), hashedPassword, role || 'user', role_id || null, isActive !== false ? 1 : 0, permJson, id]
             );
         } else {
             await pool.query(
@@ -1177,7 +1189,15 @@ router.delete('/versions/:id', async (req, res) => {
 });
 
 // Mount router under /api
-app.use('/api', router);
+app.use('/api', (req, res, next) => {
+    // Rutas públicas que no requieren token
+    const publicRoutes = ['/health', '/auth/login'];
+    if (publicRoutes.includes(req.path)) {
+        return next();
+    }
+    // Proteger todas las demás rutas
+    verifyToken(req, res, next);
+}, router);
 
 // Export for Vercel
 export default app;

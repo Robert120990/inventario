@@ -8,6 +8,22 @@ export const useInventory = () => useContext(InventoryContext);
 // Base API URL from environment variable or empty for local proxy
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
+export const apiFetch = async (url, options = {}) => {
+  const token = localStorage.getItem('inv_token');
+  const headers = { ...options.headers };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const response = await window.fetch(url, { ...options, headers });
+  if (response.status === 401 && !url.includes('/auth/login')) {
+    localStorage.removeItem('inv_token');
+    localStorage.removeItem('inv_current_user');
+    localStorage.removeItem('inv_session_id');
+    window.location.reload();
+  }
+  return response;
+};
+
 // Fusionador seguro de versiones oficiales y creadas dinámicamente en BD
 const mergeChangelog = (dbVersions = []) => {
   const map = new Map();
@@ -73,14 +89,14 @@ export const InventoryProvider = ({ children }) => {
       try {
         setLoading(true);
         const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes, rolesRes, notifRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/products`).then(res => res.json()).catch(() => []),
-          fetch(`${API_BASE_URL}/api/movements`).then(res => res.json()).catch(() => []),
-          fetch(`${API_BASE_URL}/api/users`).then(res => res.json()).catch(() => []),
-          fetch(`${API_BASE_URL}/api/config`).then(res => res.json()).catch(() => ({})),
-          fetch(`${API_BASE_URL}/api/settings`).then(res => res.json()).catch(() => ({})),
-          fetch(`${API_BASE_URL}/api/versions`).then(res => res.json()).catch(() => []),
-          fetch(`${API_BASE_URL}/api/roles`).then(res => res.json()).catch(() => []),
-          fetch(`${API_BASE_URL}/api/notifications`).then(res => res.json()).catch(() => [])
+          apiFetch(`${API_BASE_URL}/api/products`).then(res => res.json()).catch(() => []),
+          apiFetch(`${API_BASE_URL}/api/movements`).then(res => res.json()).catch(() => []),
+          apiFetch(`${API_BASE_URL}/api/users`).then(res => res.json()).catch(() => []),
+          apiFetch(`${API_BASE_URL}/api/config`).then(res => res.json()).catch(() => ({})),
+          apiFetch(`${API_BASE_URL}/api/settings`).then(res => res.json()).catch(() => ({})),
+          apiFetch(`${API_BASE_URL}/api/versions`).then(res => res.json()).catch(() => []),
+          apiFetch(`${API_BASE_URL}/api/roles`).then(res => res.json()).catch(() => []),
+          apiFetch(`${API_BASE_URL}/api/notifications`).then(res => res.json()).catch(() => [])
         ]);
         
         clearTimeout(timeoutId);
@@ -126,7 +142,7 @@ export const InventoryProvider = ({ children }) => {
     const sendHeartbeat = async () => {
       try {
         const storedSessionId = sessionId || localStorage.getItem('inv_session_id');
-        const res = await fetch(`${API_BASE_URL}/api/active-sessions/heartbeat`, {
+        const res = await apiFetch(`${API_BASE_URL}/api/active-sessions/heartbeat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -152,14 +168,14 @@ export const InventoryProvider = ({ children }) => {
   const refreshData = async () => {
     try {
       const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes, rolesRes, notifRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/products`).then(res => res.json()).catch(() => []),
-        fetch(`${API_BASE_URL}/api/movements`).then(res => res.json()).catch(() => []),
-        fetch(`${API_BASE_URL}/api/users`).then(res => res.json()).catch(() => []),
-        fetch(`${API_BASE_URL}/api/config`).then(res => res.json()).catch(() => ({})),
-        fetch(`${API_BASE_URL}/api/settings`).then(res => res.json()).catch(() => ({})),
-        fetch(`${API_BASE_URL}/api/versions`).then(res => res.json()).catch(() => []),
-        fetch(`${API_BASE_URL}/api/roles`).then(res => res.json()).catch(() => []),
-        fetch(`${API_BASE_URL}/api/notifications`).then(res => res.json()).catch(() => [])
+        apiFetch(`${API_BASE_URL}/api/products`).then(res => res.json()).catch(() => []),
+        apiFetch(`${API_BASE_URL}/api/movements`).then(res => res.json()).catch(() => []),
+        apiFetch(`${API_BASE_URL}/api/users`).then(res => res.json()).catch(() => []),
+        apiFetch(`${API_BASE_URL}/api/config`).then(res => res.json()).catch(() => ({})),
+        apiFetch(`${API_BASE_URL}/api/settings`).then(res => res.json()).catch(() => ({})),
+        apiFetch(`${API_BASE_URL}/api/versions`).then(res => res.json()).catch(() => []),
+        apiFetch(`${API_BASE_URL}/api/roles`).then(res => res.json()).catch(() => []),
+        apiFetch(`${API_BASE_URL}/api/notifications`).then(res => res.json()).catch(() => [])
       ]);
 
       if (Array.isArray(prodRes)) setProducts(prodRes);
@@ -326,7 +342,7 @@ export const InventoryProvider = ({ children }) => {
 
   const logAuditEvent = async (action, module, details) => {
     try {
-      await fetch(`${API_BASE_URL}/api/system-logs`, {
+      await apiFetch(`${API_BASE_URL}/api/system-logs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -345,7 +361,7 @@ export const InventoryProvider = ({ children }) => {
   const addProduct = async (product) => {
     const newProduct = { ...product, id: crypto.randomUUID() };
     try {
-      const res = await fetch(`${API_BASE_URL}/api/products`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/products`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newProduct)
@@ -361,7 +377,7 @@ export const InventoryProvider = ({ children }) => {
 
   const updateProduct = async (id, updatedProduct) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/products/${id}`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/products/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedProduct)
@@ -378,7 +394,7 @@ export const InventoryProvider = ({ children }) => {
   const deleteProduct = async (id) => {
     try {
       const prod = products.find(p => p.id === id);
-      const res = await fetch(`${API_BASE_URL}/api/products/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`${API_BASE_URL}/api/products/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setProducts(prev => prev.filter(p => p.id !== id));
         logAuditEvent('DELETE_PRODUCT', 'products', `Eliminación de producto '${prod?.sku || id}'`);
@@ -390,7 +406,7 @@ export const InventoryProvider = ({ children }) => {
 
   const bulkSyncProducts = async (items, createIfNotExists = true) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/products/bulk-sync`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/products/bulk-sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -414,15 +430,15 @@ export const InventoryProvider = ({ children }) => {
   const addMovement = async (movement) => {
     const newMovement = { ...movement, id: crypto.randomUUID(), auditUser: currentUser?.username || 'Sistema' };
     try {
-      const res = await fetch(`${API_BASE_URL}/api/movements`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/movements`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newMovement)
       });
       if (res.ok) {
         const [prodRes, movRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/products`).then(res => res.json()),
-          fetch(`${API_BASE_URL}/api/movements`).then(res => res.json())
+          apiFetch(`${API_BASE_URL}/api/products`).then(res => res.json()),
+          apiFetch(`${API_BASE_URL}/api/movements`).then(res => res.json())
         ]);
         setProducts(prodRes);
         setMovements(movRes);
@@ -434,11 +450,11 @@ export const InventoryProvider = ({ children }) => {
 
   const deleteMovement = async (id) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/movements/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`${API_BASE_URL}/api/movements/${id}`, { method: 'DELETE' });
       if (res.ok) {
         const [prodRes, movRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/products`).then(res => res.json()),
-          fetch(`${API_BASE_URL}/api/movements`).then(res => res.json())
+          apiFetch(`${API_BASE_URL}/api/products`).then(res => res.json()),
+          apiFetch(`${API_BASE_URL}/api/movements`).then(res => res.json())
         ]);
         setProducts(prodRes);
         setMovements(movRes);
@@ -451,7 +467,7 @@ export const InventoryProvider = ({ children }) => {
 
   const updateMovement = async (id, updatedMovement) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/movements/${id}`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/movements/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...updatedMovement, auditUser: currentUser?.username || 'Sistema' })
@@ -459,8 +475,8 @@ export const InventoryProvider = ({ children }) => {
 
       if (res.ok) {
         const [prodRes, movRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/products`).then(response => response.json()),
-          fetch(`${API_BASE_URL}/api/movements`).then(response => response.json())
+          apiFetch(`${API_BASE_URL}/api/products`).then(response => response.json()),
+          apiFetch(`${API_BASE_URL}/api/movements`).then(response => response.json())
         ]);
         setProducts(prodRes);
         setMovements(movRes);
@@ -473,7 +489,7 @@ export const InventoryProvider = ({ children }) => {
 
   const adjustProductStock = async (productId, adjustment) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/inventory-adjustments`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/inventory-adjustments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productId, ...adjustment, auditUser: currentUser?.username || 'Sistema' })
@@ -496,13 +512,13 @@ export const InventoryProvider = ({ children }) => {
 
   const addCategory = async (category, unit_type = 'units') => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/config/categories`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/config/categories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: category, unit_type })
       });
       if (res.ok) {
-        const configRes = await fetch(`${API_BASE_URL}/api/config`).then(r => r.json());
+        const configRes = await apiFetch(`${API_BASE_URL}/api/config`).then(r => r.json());
         setCategories(configRes.categories.map(c => c.name));
         const units = {};
         configRes.categories.forEach(c => { units[c.name] = c.unit_type; });
@@ -515,7 +531,7 @@ export const InventoryProvider = ({ children }) => {
 
   const deleteCategory = async (category) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/config/categories/${encodeURIComponent(category)}`, { method: 'DELETE' });
+      const res = await apiFetch(`${API_BASE_URL}/api/config/categories/${encodeURIComponent(category)}`, { method: 'DELETE' });
       if (res.ok) {
         setCategories(prev => prev.filter(c => c !== category));
         setCategoryUnits(prev => { const u = { ...prev }; delete u[category]; return u; });
@@ -527,13 +543,13 @@ export const InventoryProvider = ({ children }) => {
 
   const addDocumentType = async (docType) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/config/document-types`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/config/document-types`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: docType })
       });
       if (res.ok) {
-        const configRes = await fetch(`${API_BASE_URL}/api/config`).then(r => r.json());
+        const configRes = await apiFetch(`${API_BASE_URL}/api/config`).then(r => r.json());
         setDocumentTypes(configRes.docTypes.map(d => d.name));
       }
     } catch (error) {
@@ -543,7 +559,7 @@ export const InventoryProvider = ({ children }) => {
 
   const deleteDocumentType = async (docType) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/config/document-types/${encodeURIComponent(docType)}`, { method: 'DELETE' });
+      const res = await apiFetch(`${API_BASE_URL}/api/config/document-types/${encodeURIComponent(docType)}`, { method: 'DELETE' });
       if (res.ok) {
         setDocumentTypes(prev => prev.filter(d => d !== docType));
       }
@@ -555,7 +571,7 @@ export const InventoryProvider = ({ children }) => {
   // Roles Management
   const fetchRoles = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/roles`);
+      const res = await apiFetch(`${API_BASE_URL}/api/roles`);
       const data = await res.json();
       if (Array.isArray(data)) setRoles(data);
       return data;
@@ -567,7 +583,7 @@ export const InventoryProvider = ({ children }) => {
 
   const addRole = async (roleData) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/roles`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/roles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...roleData, auditUser: currentUser?.username })
@@ -585,7 +601,7 @@ export const InventoryProvider = ({ children }) => {
 
   const updateRole = async (id, roleData) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/roles/${id}`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/roles/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...roleData, auditUser: currentUser?.username })
@@ -602,7 +618,7 @@ export const InventoryProvider = ({ children }) => {
 
   const deleteRole = async (id) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/roles/${id}?auditUser=${encodeURIComponent(currentUser?.username || '')}`, { method: 'DELETE' });
+      const res = await apiFetch(`${API_BASE_URL}/api/roles/${id}?auditUser=${encodeURIComponent(currentUser?.username || '')}`, { method: 'DELETE' });
       if (res.ok) {
         setRoles(prev => prev.filter(r => r.id !== id));
         return { success: true };
@@ -616,13 +632,13 @@ export const InventoryProvider = ({ children }) => {
   // Versions Management
   const addVersion = async (description, changes = [], author = 'Admin') => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/versions`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/versions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description, changes, author: currentUser?.username || author })
       });
       if (res.ok) {
-        const versionsRes = await fetch(`${API_BASE_URL}/api/versions`).then(r => r.json());
+        const versionsRes = await apiFetch(`${API_BASE_URL}/api/versions`).then(r => r.json());
         setVersions(mergeChangelog(versionsRes));
         logAuditEvent('REGISTER_VERSION', 'security', `Registro de versión con descripción: ${description}`);
         return { success: true };
@@ -636,7 +652,7 @@ export const InventoryProvider = ({ children }) => {
 
   const deleteVersion = async (id) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/versions/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`${API_BASE_URL}/api/versions/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setVersions(prev => prev.filter(v => v.id !== id));
       }
@@ -648,7 +664,7 @@ export const InventoryProvider = ({ children }) => {
   // User Management
   const fetchUsers = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/users`);
+      const res = await apiFetch(`${API_BASE_URL}/api/users`);
       const data = await res.json();
       if (Array.isArray(data)) setUsers(data);
       return data;
@@ -659,7 +675,7 @@ export const InventoryProvider = ({ children }) => {
 
   const addUser = async (user) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/users`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...user, auditUser: currentUser?.username })
@@ -677,7 +693,7 @@ export const InventoryProvider = ({ children }) => {
 
   const updateUser = async (id, updatedUser) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/users/${id}`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/users/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...updatedUser, auditUser: currentUser?.username })
@@ -695,7 +711,7 @@ export const InventoryProvider = ({ children }) => {
 
   const updateUserPermissions = async (id, permissions) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/users/${id}/permissions`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/users/${id}/permissions`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ permissions, auditUser: currentUser?.username })
@@ -718,7 +734,7 @@ export const InventoryProvider = ({ children }) => {
 
   const deleteUser = async (id) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/users/${id}?auditUser=${encodeURIComponent(currentUser?.username || '')}`, { method: 'DELETE' });
+      const res = await apiFetch(`${API_BASE_URL}/api/users/${id}?auditUser=${encodeURIComponent(currentUser?.username || '')}`, { method: 'DELETE' });
       if (res.ok) {
         setUsers(prev => prev.filter(u => u.id !== id));
         return { success: true };
@@ -733,7 +749,7 @@ export const InventoryProvider = ({ children }) => {
   const fetchSystemLogs = async (filters = {}) => {
     try {
       const params = new URLSearchParams(filters);
-      const res = await fetch(`${API_BASE_URL}/api/system-logs?${params.toString()}`);
+      const res = await apiFetch(`${API_BASE_URL}/api/system-logs?${params.toString()}`);
       const data = await res.json();
       if (Array.isArray(data)) setSystemLogs(data);
       return data;
@@ -747,7 +763,7 @@ export const InventoryProvider = ({ children }) => {
       if (currentUser) {
         const storedSessionId = sessionId || localStorage.getItem('inv_session_id');
         try {
-          const hbRes = await fetch(`${API_BASE_URL}/api/active-sessions/heartbeat`, {
+          const hbRes = await apiFetch(`${API_BASE_URL}/api/active-sessions/heartbeat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -765,7 +781,7 @@ export const InventoryProvider = ({ children }) => {
         } catch (err) {}
       }
 
-      const res = await fetch(`${API_BASE_URL}/api/active-sessions`);
+      const res = await apiFetch(`${API_BASE_URL}/api/active-sessions`);
       const data = await res.json();
       if (Array.isArray(data)) setActiveSessions(data);
       return data;
@@ -776,7 +792,7 @@ export const InventoryProvider = ({ children }) => {
 
   const disconnectSession = async (id) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/active-sessions/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`${API_BASE_URL}/api/active-sessions/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setActiveSessions(prev => prev.filter(s => s.id !== id));
         return { success: true };
@@ -790,7 +806,7 @@ export const InventoryProvider = ({ children }) => {
   // Notifications
   const fetchNotifications = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/notifications?userId=${currentUser?.id || ''}`);
+      const res = await apiFetch(`${API_BASE_URL}/api/notifications?userId=${currentUser?.id || ''}`);
       const data = await res.json();
       if (Array.isArray(data)) setNotifications(data);
       return data;
@@ -801,7 +817,7 @@ export const InventoryProvider = ({ children }) => {
 
   const addNotification = async (notif) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/notifications`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/notifications`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(notif)
@@ -818,14 +834,14 @@ export const InventoryProvider = ({ children }) => {
 
   const markNotificationAsRead = async (id) => {
     try {
-      await fetch(`${API_BASE_URL}/api/notifications/${id}/read`, { method: 'PUT' });
+      await apiFetch(`${API_BASE_URL}/api/notifications/${id}/read`, { method: 'PUT' });
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: 1 } : n));
     } catch (e) {}
   };
 
   const markAllNotificationsAsRead = async () => {
     try {
-      await fetch(`${API_BASE_URL}/api/notifications/read-all`, {
+      await apiFetch(`${API_BASE_URL}/api/notifications/read-all`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser?.id })
@@ -837,7 +853,7 @@ export const InventoryProvider = ({ children }) => {
   const updateSettings = async (newSettings) => {
     const updated = { ...settings, ...newSettings };
     try {
-      const res = await fetch(`${API_BASE_URL}/api/settings`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
@@ -854,7 +870,7 @@ export const InventoryProvider = ({ children }) => {
   const updateCategoryUnit = async (category, unit) => {
     setCategoryUnits(prev => ({ ...prev, [category]: unit }));
     try {
-      await fetch(`${API_BASE_URL}/api/config/categories/${encodeURIComponent(category)}`, {
+      await apiFetch(`${API_BASE_URL}/api/config/categories/${encodeURIComponent(category)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ unit_type: unit })
@@ -874,7 +890,7 @@ export const InventoryProvider = ({ children }) => {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: cleanUser, password: cleanPass })
@@ -885,6 +901,7 @@ export const InventoryProvider = ({ children }) => {
       if (res.ok && data.success) {
         setCurrentUser(data.user);
         setSessionId(data.sessionId);
+        localStorage.setItem('inv_token', data.token);
         return { success: true };
       }
 
@@ -898,7 +915,7 @@ export const InventoryProvider = ({ children }) => {
   const logout = async () => {
     try {
       if (currentUser) {
-        await fetch(`${API_BASE_URL}/api/auth/logout`, {
+        await apiFetch(`${API_BASE_URL}/api/auth/logout`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -915,6 +932,7 @@ export const InventoryProvider = ({ children }) => {
       setSessionId(null);
       localStorage.removeItem('inv_current_user');
       localStorage.removeItem('inv_session_id');
+      localStorage.removeItem('inv_token');
     }
   };
 
