@@ -71,12 +71,15 @@ export const escapeCsvCell = (val) => {
 /**
  * EXPORTADOR ESPECIALIZADO: CUADRO CLIENTE CUARTO FRÍO (Resumen Diario)
  * Reproduce fielmente la estructura del archivo de referencia "Cuadro cliente cuarto frio .xlsx"
+ * con tablas separadas para Congelados ($0.001/lb) y Preparados ($0.038/cesta) más Servicios Extraordinarios.
  */
 export const exportCuadroClienteCuartoFrio = ({
   clientName = 'Avícola Salvadoreña S.A. DE C.V.',
   startDate,
   endDate,
   dailyRows = [],
+  congeladosRows = [],
+  preparadosRows = [],
   extraServices = [],
   totals = {},
   format = 'xlsx' // 'xlsx' | 'csv'
@@ -87,18 +90,38 @@ export const exportCuadroClienteCuartoFrio = ({
   const formattedEnd = formatDate(safeEnd);
   const title = 'PROCESO DE FACTURACION POR ALMACENAMIENTO CONGELADO(-18°) Y SERVICIOS EXTRA-ORDINARIOS';
 
-  // Totales de almacenamiento
-  const totalInvInicial = dailyRows.reduce((acc, r) => acc + Number(r.stockInicial || 0), 0);
-  const totalEntradas = dailyRows.reduce((acc, r) => acc + Number(r.entradas || 0), 0);
-  const totalSalidas = dailyRows.reduce((acc, r) => acc + Number(r.salidas || 0), 0);
-  const totalLibrasAcum = dailyRows.reduce((acc, r) => acc + Number(r.stockFinal || 0), 0);
-  const totalAlmacenaje = dailyRows.reduce((acc, r) => acc + Number(r.totalMonto || 0), 0);
+  // Si no se pasaron arrays específicos, usar dailyRows como fallback
+  const congRows = congeladosRows.length > 0 ? congeladosRows : (dailyRows.filter(r => r.unitType === 'pounds' || r.categoria === 'Congelados'));
+  const prepRows = preparadosRows.length > 0 ? preparadosRows : (dailyRows.filter(r => r.unitType === 'baskets' || r.categoria === 'Preparados'));
+  const fallbackRows = (congRows.length === 0 && prepRows.length === 0) ? dailyRows : [];
+
+  // Totales Congelados (Libras)
+  const congInvInicial = congRows.reduce((acc, r) => acc + Number(r.stockInicial || 0), 0);
+  const congEntradas = congRows.reduce((acc, r) => acc + Number(r.entradas || 0), 0);
+  const congSalidas = congRows.reduce((acc, r) => acc + Number(r.salidas || 0), 0);
+  const congLibrasAcum = congRows.reduce((acc, r) => acc + Number(r.stockFinal || 0), 0);
+  const congAlmacenaje = congRows.reduce((acc, r) => acc + Number(r.totalMonto || 0), 0);
+
+  // Totales Preparados (Cestas)
+  const prepInvInicial = prepRows.reduce((acc, r) => acc + Number(r.stockInicial || 0), 0);
+  const prepEntradas = prepRows.reduce((acc, r) => acc + Number(r.entradas || 0), 0);
+  const prepSalidas = prepRows.reduce((acc, r) => acc + Number(r.salidas || 0), 0);
+  const prepCestasAcum = prepRows.reduce((acc, r) => acc + Number(r.stockFinal || 0), 0);
+  const prepAlmacenaje = prepRows.reduce((acc, r) => acc + Number(r.totalMonto || 0), 0);
+
+  // Fallback Totales
+  const fbInvInicial = fallbackRows.reduce((acc, r) => acc + Number(r.stockInicial || 0), 0);
+  const fbEntradas = fallbackRows.reduce((acc, r) => acc + Number(r.entradas || 0), 0);
+  const fbSalidas = fallbackRows.reduce((acc, r) => acc + Number(r.salidas || 0), 0);
+  const fbStockAcum = fallbackRows.reduce((acc, r) => acc + Number(r.stockFinal || 0), 0);
+  const fbAlmacenaje = fallbackRows.reduce((acc, r) => acc + Number(r.totalMonto || 0), 0);
 
   // Totales de servicios
   const totalServiciosQty = extraServices.reduce((acc, s) => acc + Number(s.quantity || (s.value > 0 ? 1 : 0)), 0);
   const totalServiciosValor = extraServices.reduce((acc, s) => acc + Number(s.value || 0), 0);
 
-  const subtotal = totals.subtotal ?? (totalAlmacenaje + totalServiciosValor);
+  const totalAlmacenajeGeneral = totals.totalAlmacenaje ?? (congAlmacenaje + prepAlmacenaje + fbAlmacenaje);
+  const subtotal = totals.subtotal ?? (totalAlmacenajeGeneral + totalServiciosValor);
   const iva = totals.iva ?? (subtotal * 0.13);
   const totalGeneral = totals.totalGeneral ?? (subtotal + iva);
 
@@ -115,18 +138,84 @@ export const exportCuadroClienteCuartoFrio = ({
     wsData.push([]);
     // Fila 5: Rango de fechas
     wsData.push(['', 'Movimientos diarios entre:', formattedStart, 'Hasta', formattedEnd]);
-    // Fila 6: Espacio
     wsData.push([]);
-    // Fila 7: Encabezados de tabla de almacenamiento
-    wsData.push(['', 'FECHA', 'DESCRIPCION', 'INV-INICIAL', 'ENTRADA', 'SALIDA', 'TOTAL LIBRAS', 'PRECIO', 'Total $']);
 
-    // Filas de datos diarios
-    if (dailyRows.length > 0) {
-      dailyRows.forEach(row => {
+    // 1. TABLA CONGELADOS (LIBRAS - $0.001)
+    if (congRows.length > 0 || fallbackRows.length === 0) {
+      wsData.push(['', 'FECHA', 'DESCRIPCION', 'INV-INICIAL', 'ENTRADA LB', 'SALIDA LB', 'TOTAL LIBRAS', 'PRECIO', 'Total $']);
+      if (congRows.length > 0) {
+        congRows.forEach(row => {
+          wsData.push([
+            '',
+            formatDate(row.fecha),
+            row.descripcion || 'Mantenimiento congelado',
+            Number(row.stockInicial || 0),
+            Number(row.entradas || 0),
+            Number(row.salidas || 0),
+            Number(row.stockFinal || 0),
+            Number(row.precio || 0.001),
+            Number(row.totalMonto || 0)
+          ]);
+        });
+      } else {
+        wsData.push(['', 'Sin movimientos de congelados en este período', '', 0, 0, 0, 0, 0.001, 0]);
+      }
+      wsData.push([
+        '',
+        '',
+        'Totales',
+        congInvInicial,
+        congEntradas,
+        congSalidas,
+        congLibrasAcum,
+        '',
+        congAlmacenaje
+      ]);
+      wsData.push([]);
+    }
+
+    // 2. TABLA PREPARADOS (CESTAS - $0.038)
+    if (prepRows.length > 0 || fallbackRows.length === 0) {
+      wsData.push(['', 'FECHA', 'DESCRIPCION', 'INV CESTAS', 'ENTRADA CESTAS', 'SALIDA CESTAS', 'TOTAL CESTA', 'PRECIO CESTA', 'Total $']);
+      if (prepRows.length > 0) {
+        prepRows.forEach(row => {
+          wsData.push([
+            '',
+            formatDate(row.fecha),
+            row.descripcion || 'Mantenimiento congelado (Preparados)',
+            Number(row.stockInicial || 0),
+            Number(row.entradas || 0),
+            Number(row.salidas || 0),
+            Number(row.stockFinal || 0),
+            Number(row.precio || 0.038),
+            Number(row.totalMonto || 0)
+          ]);
+        });
+      } else {
+        wsData.push(['', 'Sin movimientos de preparados en este período', '', 0, 0, 0, 0, 0.038, 0]);
+      }
+      wsData.push([
+        '',
+        '',
+        'Totales',
+        prepInvInicial,
+        prepEntradas,
+        prepSalidas,
+        prepCestasAcum,
+        '',
+        prepAlmacenaje
+      ]);
+      wsData.push([]);
+    }
+
+    // Fallback si no hubo separación
+    if (fallbackRows.length > 0) {
+      wsData.push(['', 'FECHA', 'DESCRIPCION', 'INV-INICIAL', 'ENTRADA', 'SALIDA', 'TOTAL', 'PRECIO', 'Total $']);
+      fallbackRows.forEach(row => {
         wsData.push([
           '',
           formatDate(row.fecha),
-          row.descripcion || `Mantenimiento congelado (${row.categoria || 'General'})`,
+          row.descripcion || 'Mantenimiento congelado',
           Number(row.stockInicial || 0),
           Number(row.entradas || 0),
           Number(row.salidas || 0),
@@ -135,36 +224,20 @@ export const exportCuadroClienteCuartoFrio = ({
           Number(row.totalMonto || 0)
         ]);
       });
-    } else {
-      wsData.push(['', 'Sin movimientos registrados en este período', '', 0, 0, 0, 0, 0.001, 0]);
+      wsData.push(['', '', 'Totales', fbInvInicial, fbEntradas, fbSalidas, fbStockAcum, '', fbAlmacenaje]);
+      wsData.push([]);
     }
 
-    // Fila de Totales de Almacenamiento
-    wsData.push([
-      '',
-      '',
-      'Totales',
-      totalInvInicial,
-      totalEntradas,
-      totalSalidas,
-      totalLibrasAcum,
-      '',
-      totalAlmacenaje
-    ]);
-
-    // Fila separadora
-    wsData.push([]);
-    // Encabezado de Servicios Extraordinarios
+    // 3. TABLA SERVICIOS EXTRAORDINARIOS
     wsData.push(['', 'SERVICIOS EXTRA-ORDINARIOS']);
     wsData.push(['', 'FECHA', 'DESCRIPCION', '', '', '', 'TOTAL', 'PRECIO', 'VALOR']);
 
-    // Filas de Servicios Extraordinarios
     if (extraServices.length > 0) {
       extraServices.forEach(s => {
         wsData.push([
           '',
           formatDate(s.date),
-          s.description,
+          s.description + (s.ref ? ` (${s.ref})` : ''),
           '',
           '',
           '',
@@ -177,7 +250,6 @@ export const exportCuadroClienteCuartoFrio = ({
       wsData.push(['', 'Sin servicios extraordinarios en el período', '', '', '', '', 0, 0, 0]);
     }
 
-    // Fila Totales Servicios
     wsData.push([
       '',
       '',
@@ -189,11 +261,12 @@ export const exportCuadroClienteCuartoFrio = ({
       '',
       totalServiciosValor
     ]);
+    wsData.push([]);
 
-    // Resumen y Liquidación Final
+    // 4. RESUMEN Y LIQUIDACIÓN FINAL
     wsData.push(['', '', 'Sub Total', '', '', '', '', '', subtotal]);
-    wsData.push(['', '', '', '', '', '', 'Iva 13%', '', iva]);
-    wsData.push(['', '', '', '', '', '', 'Total General', '', totalGeneral]);
+    wsData.push(['', '', 'IVA 13%', '', '', '', '', '', iva]);
+    wsData.push(['', '', 'TOTAL GENERAL', '', '', '', '', '', totalGeneral]);
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
@@ -205,7 +278,7 @@ export const exportCuadroClienteCuartoFrio = ({
       { wch: 15 }, // D: Inv-Inicial
       { wch: 14 }, // E: Entrada
       { wch: 14 }, // F: Salida
-      { wch: 16 }, // G: Total Libras
+      { wch: 16 }, // G: Total Libras / Cestas
       { wch: 12 }, // H: Precio
       { wch: 15 }  // I: Total $
     ];
@@ -216,22 +289,21 @@ export const exportCuadroClienteCuartoFrio = ({
 
     downloadXLSX(wb, `Cuadro_cliente_cuarto_frio_${safeStart}_al_${safeEnd}.xlsx`);
   } else {
-    // Exportación a CSV formateado con enunciados
+    // Exportación a CSV formateado
     const lines = [];
     lines.push(escapeCsvCell(title));
     lines.push(`${escapeCsvCell('Cliente:')},${escapeCsvCell(clientName)}`);
     lines.push(`${escapeCsvCell('Movimientos diarios entre:')},${escapeCsvCell(formattedStart)},${escapeCsvCell('Hasta')},${escapeCsvCell(formattedEnd)}`);
     lines.push('');
     
-    // Encabezados almacenamiento
-    lines.push(['FECHA', 'DESCRIPCION', 'INV-INICIAL', 'ENTRADA', 'SALIDA', 'TOTAL LIBRAS', 'PRECIO', 'Total $'].map(escapeCsvCell).join(','));
-
-    // Filas
-    if (dailyRows.length > 0) {
-      dailyRows.forEach(row => {
+    // 1. Tabla Congelados (Libras)
+    if (congRows.length > 0 || fallbackRows.length === 0) {
+      lines.push(escapeCsvCell('ALMACENAMIENTO CONGELADOS ($0.001 / LB / DIA)'));
+      lines.push(['FECHA', 'DESCRIPCION', 'INV-INICIAL', 'ENTRADA LB', 'SALIDA LB', 'TOTAL LIBRAS', 'PRECIO', 'Total $'].map(escapeCsvCell).join(','));
+      congRows.forEach(row => {
         lines.push([
           formatDate(row.fecha),
-          row.descripcion || `Mantenimiento congelado (${row.categoria || 'General'})`,
+          row.descripcion || 'Mantenimiento congelado',
           row.stockInicial || 0,
           row.entradas || 0,
           row.salidas || 0,
@@ -240,33 +312,51 @@ export const exportCuadroClienteCuartoFrio = ({
           row.totalMonto ? Number(row.totalMonto).toFixed(2) : '0.00'
         ].map(escapeCsvCell).join(','));
       });
+      lines.push(['', 'Totales', congInvInicial, congEntradas, congSalidas, congLibrasAcum, '', Number(congAlmacenaje).toFixed(2)].map(escapeCsvCell).join(','));
+      lines.push('');
     }
 
-    // Totales Almacenamiento
-    lines.push(['', 'Totales', totalInvInicial, totalEntradas, totalSalidas, totalLibrasAcum, '', Number(totalAlmacenaje).toFixed(2)].map(escapeCsvCell).join(','));
-    lines.push('');
+    // 2. Tabla Preparados (Cestas)
+    if (prepRows.length > 0 || fallbackRows.length === 0) {
+      lines.push(escapeCsvCell('ALMACENAMIENTO PREPARADOS ($0.038 / CESTA / DIA)'));
+      lines.push(['FECHA', 'DESCRIPCION', 'INV CESTAS', 'ENTRADA CESTAS', 'SALIDA CESTAS', 'TOTAL CESTA', 'PRECIO CESTA', 'Total $'].map(escapeCsvCell).join(','));
+      prepRows.forEach(row => {
+        lines.push([
+          formatDate(row.fecha),
+          row.descripcion || 'Mantenimiento congelado (Preparados)',
+          row.stockInicial || 0,
+          row.entradas || 0,
+          row.salidas || 0,
+          row.stockFinal || 0,
+          row.precio || 0.038,
+          row.totalMonto ? Number(row.totalMonto).toFixed(2) : '0.00'
+        ].map(escapeCsvCell).join(','));
+      });
+      lines.push(['', 'Totales', prepInvInicial, prepEntradas, prepSalidas, prepCestasAcum, '', Number(prepAlmacenaje).toFixed(2)].map(escapeCsvCell).join(','));
+      lines.push('');
+    }
 
-    // Servicios Extraordinarios
+    // 3. Servicios Extraordinarios
     lines.push(escapeCsvCell('SERVICIOS EXTRA-ORDINARIOS'));
     lines.push(['FECHA', 'DESCRIPCION', 'TOTAL', 'PRECIO', 'VALOR'].map(escapeCsvCell).join(','));
-    
     if (extraServices.length > 0) {
       extraServices.forEach(s => {
         lines.push([
           formatDate(s.date),
-          s.description,
+          s.description + (s.ref ? ` (${s.ref})` : ''),
           s.quantity !== undefined ? s.quantity : 1,
           s.unitPrice !== undefined ? s.unitPrice : s.value,
           Number(s.value || 0).toFixed(2)
         ].map(escapeCsvCell).join(','));
       });
     }
-
     lines.push(['', 'TOTALES', totalServiciosQty, '', Number(totalServiciosValor).toFixed(2)].map(escapeCsvCell).join(','));
     lines.push('');
+
+    // 4. Resumen
     lines.push(['', 'Sub Total', '', '', Number(subtotal).toFixed(2)].map(escapeCsvCell).join(','));
-    lines.push(['', 'Iva 13%', '', '', Number(iva).toFixed(2)].map(escapeCsvCell).join(','));
-    lines.push(['', 'Total General', '', '', Number(totalGeneral).toFixed(2)].map(escapeCsvCell).join(','));
+    lines.push(['', 'IVA 13%', '', '', Number(iva).toFixed(2)].map(escapeCsvCell).join(','));
+    lines.push(['', 'TOTAL GENERAL', '', '', Number(totalGeneral).toFixed(2)].map(escapeCsvCell).join(','));
 
     downloadCSV(lines, `Cuadro_cliente_cuarto_frio_${safeStart}_al_${safeEnd}.csv`);
   }

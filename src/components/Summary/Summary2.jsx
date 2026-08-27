@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { FileText, Download, FileSpreadsheet, FileOutput, ShieldCheck } from 'lucide-react';
+import { FileText, Download, FileSpreadsheet, FileOutput, ShieldCheck, Layers, Package } from 'lucide-react';
 import { exportCuadroClienteCuartoFrio } from '../../utils/exportManager';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -21,7 +21,7 @@ const Summary2 = () => {
   });
   const [endDate, setEndDate] = useState(() => getLocalDateStr(new Date()));
   const [clientName, setClientName] = useState(CONTRACT_INFO.clientName);
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedCategory, setSelectedCategory] = useState('all'); // 'all' | 'Preparados' | 'Congelados'
 
   // Controladores de fecha sincronizados
   const handleStartDateChange = (newStart) => {
@@ -53,120 +53,124 @@ const Summary2 = () => {
     return diffDays > 0 ? diffDays : 0;
   }, [startDate, endDate]);
 
-  // Movimientos diarios consolidados
-  const dailyRows = useMemo(() => {
-    if (!startDate || !endDate || products.length === 0) return [];
-    
-    const start = new Date(startDate + 'T00:00:00');
-    const end = new Date(endDate + 'T23:59:59');
-    
+  // Lista de fechas ordenadas en el período
+  const dateList = useMemo(() => {
+    if (!startDate || !endDate) return [];
     const dates = [];
-    let d = new Date(start);
-    while (d <= end) {
-      dates.push(d.toISOString().split('T')[0]);
-      d.setDate(d.getDate() + 1);
+    const curr = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T00:00:00');
+    while (curr <= end) {
+      dates.push(curr.toISOString().split('T')[0]);
+      curr.setDate(curr.getDate() + 1);
     }
+    return dates;
+  }, [startDate, endDate]);
 
-    const filteredProducts = selectedCategory === 'all' 
-      ? products 
-      : products.filter(p => p.category === selectedCategory);
+  // Helper para calcular inventario diario para un grupo de productos y tipo de unidad
+  const calculateDailySeries = (targetProducts, unitField, stockField, rate, unitLabel, descText) => {
+    if (targetProducts.length === 0 || dateList.length === 0) return [];
 
-    if (filteredProducts.length === 0) return [];
+    return dateList.map(dateStr => {
+      let dayInitial = 0;
+      let dayIn = 0;
+      let dayOut = 0;
+      let dayFinal = 0;
 
-    const result = [];
-
-    // Calcular el stock diario para cada fecha
-    dates.forEach(dateStr => {
-      const currentDateEnd = new Date(dateStr + 'T23:59:59');
-
-      let dayInitialPounds = 0;
-      let dayInPounds = 0;
-      let dayOutPounds = 0;
-      let dayFinalPounds = 0;
-
-      filteredProducts.forEach(p => {
-        const unitType = categoryUnits[p.category] || 'units';
-        const qtyField = unitType === 'units' ? 'qtyUnits' : 
-                        unitType === 'pounds' ? 'qtyPounds' : 'qtyBaskets';
-        const stockField = unitType === 'units' ? 'stockUnits' : 
-                          unitType === 'pounds' ? 'stockPounds' : 'stockBaskets';
-
+      targetProducts.forEach(p => {
         const pMovs = movements.filter(m => m.items && m.items.some(it => it.productId === p.id));
         let currentStock = Number(p[stockField] || 0);
 
-        // Movimientos después de dateStr
-        const afterDate = pMovs.filter(m => {
-          const mDate = new Date(m.date + 'T23:59:59');
-          return mDate > currentDateEnd;
-        });
-
+        // Movimientos estrictamente posteriores a esta fecha
+        const afterDate = pMovs.filter(m => String(m.date) > dateStr);
         let stockAtEnd = currentStock;
         afterDate.forEach(m => {
           const item = m.items.find(it => it.productId === p.id);
           if (item) {
-            if (m.type === 'in') stockAtEnd -= Number(item[qtyField] || 0);
-            if (m.type === 'out') stockAtEnd += Number(item[qtyField] || 0);
+            if (m.type === 'in') stockAtEnd -= Number(item[unitField] || 0);
+            if (m.type === 'out') stockAtEnd += Number(item[unitField] || 0);
           }
         });
 
-        // Movimientos EN dateStr
-        const onDate = pMovs.filter(m => m.date === dateStr);
+        // Movimientos en la fecha exacta
+        const onDate = pMovs.filter(m => String(m.date) === dateStr);
         let inOnDate = 0;
         let outOnDate = 0;
         onDate.forEach(m => {
           const item = m.items.find(it => it.productId === p.id);
           if (item) {
-            if (m.type === 'in') inOnDate += Number(item[qtyField] || 0);
-            if (m.type === 'out') outOnDate += Number(item[qtyField] || 0);
+            if (m.type === 'in') inOnDate += Number(item[unitField] || 0);
+            if (m.type === 'out') outOnDate += Number(item[unitField] || 0);
           }
         });
 
         const initialOnDate = stockAtEnd - inOnDate + outOnDate;
-        
-        dayInitialPounds += initialOnDate;
-        dayInPounds += inOnDate;
-        dayOutPounds += outOnDate;
-        dayFinalPounds += stockAtEnd;
+
+        dayInitial += initialOnDate;
+        dayIn += inOnDate;
+        dayOut += outOnDate;
+        dayFinal += stockAtEnd;
       });
 
-      // Tarifa diaria por libra según contrato 2025-2026 ($0.001 / lb / día para producto crudo)
-      const dailyRate = CONTRACT_INFO.defaultStorageRatePounds;
-      const dayTotalCost = dayFinalPounds * dailyRate;
+      const dayTotalCost = dayFinal * rate;
 
-      result.push({
+      return {
         fecha: dateStr,
-        descripcion: 'Mantenimiento congelado (-18°)',
-        categoria: selectedCategory === 'all' ? 'General' : selectedCategory,
-        stockInicial: dayInitialPounds,
-        entradas: dayInPounds,
-        salidas: dayOutPounds,
-        stockFinal: dayFinalPounds,
-        precio: dailyRate,
+        descripcion: descText,
+        unitLabel,
+        unitType: unitField === 'qtyPounds' ? 'pounds' : 'baskets',
+        stockInicial: dayInitial,
+        entradas: dayIn,
+        salidas: dayOut,
+        stockFinal: dayFinal,
+        precio: rate,
         totalMonto: dayTotalCost
-      });
+      };
     });
+  };
 
-    return result;
-  }, [products, movements, startDate, endDate, selectedCategory, categoryUnits]);
+  // 1. PRODUCTOS CONGELADOS (LIBRAS - $0.001 / lb / día)
+  const congeladosRows = useMemo(() => {
+    if (products.length === 0 || dateList.length === 0) return [];
+    const congProducts = products.filter(p => p.category === 'Congelados' || categoryUnits[p.category] === 'pounds');
+    return calculateDailySeries(
+      congProducts,
+      'qtyPounds',
+      'stockPounds',
+      CONTRACT_INFO.defaultStorageRatePounds || 0.001,
+      'Lbs',
+      'Mantenimiento congelado (-18°)'
+    );
+  }, [products, movements, dateList, categoryUnits]);
 
-  // Servicios extraordinarios registrados en el período
+  // 2. PRODUCTOS PREPARADOS (CESTAS - $0.038 / cesta / día)
+  const preparadosRows = useMemo(() => {
+    if (products.length === 0 || dateList.length === 0) return [];
+    const prepProducts = products.filter(p => p.category === 'Preparados' || categoryUnits[p.category] === 'baskets');
+    return calculateDailySeries(
+      prepProducts,
+      'qtyBaskets',
+      'stockBaskets',
+      CONTRACT_INFO.defaultStorageRateBaskets || 0.038,
+      'Cst',
+      'Mantenimiento congelado (Preparados)'
+    );
+  }, [products, movements, dateList, categoryUnits]);
+
+  // 3. SERVICIOS EXTRAORDINARIOS REGISTRADOS EN EL PERÍODO
   const servicesData = useMemo(() => {
     if (!startDate || !endDate) return [];
-    const start = new Date(startDate + 'T00:00:00');
-    const end = new Date(endDate + 'T23:59:59');
-
     const services = [];
     movements.forEach(m => {
-      const mDate = new Date(m.date + 'T12:00:00');
-      if (mDate >= start && mDate <= end && m.services) {
+      const mDateStr = String(m.date || '').split('T')[0];
+      if (mDateStr >= startDate && mDateStr <= endDate && m.services && m.services.length > 0) {
         m.services.forEach(s => {
           services.push({
-            date: m.date,
+            date: mDateStr,
             description: s.description,
             quantity: s.quantity !== undefined ? Number(s.quantity) : 1,
             unitPrice: s.unitPrice !== undefined ? Number(s.unitPrice) : Number(s.value || 0),
             value: Number(s.value || 0),
-            ref: m.refNumber
+            ref: m.refNumber ? `${m.refType || 'Doc'} #${m.refNumber}` : ''
           });
         });
       }
@@ -174,18 +178,37 @@ const Summary2 = () => {
     return services;
   }, [movements, startDate, endDate]);
 
-  // Totales de almacenamiento
-  const totalInvInicial = dailyRows.reduce((acc, curr) => acc + curr.stockInicial, 0);
-  const totalEntradas = dailyRows.reduce((acc, curr) => acc + curr.entradas, 0);
-  const totalSalidas = dailyRows.reduce((acc, curr) => acc + curr.salidas, 0);
-  const totalLibrasAcum = dailyRows.reduce((acc, curr) => acc + curr.stockFinal, 0);
-  const totalAlmacenaje = dailyRows.reduce((acc, curr) => acc + curr.totalMonto, 0);
+  // Totales Congelados (Libras)
+  const congTotals = useMemo(() => {
+    const invInicial = congeladosRows.reduce((acc, r) => acc + r.stockInicial, 0);
+    const entradas = congeladosRows.reduce((acc, r) => acc + r.entradas, 0);
+    const salidas = congeladosRows.reduce((acc, r) => acc + r.salidas, 0);
+    const stockFinal = congeladosRows.reduce((acc, r) => acc + r.stockFinal, 0);
+    const totalMonto = congeladosRows.reduce((acc, r) => acc + r.totalMonto, 0);
+    return { invInicial, entradas, salidas, stockFinal, totalMonto };
+  }, [congeladosRows]);
 
-  // Totales de servicios
-  const totalServicios = servicesData.reduce((acc, curr) => acc + curr.value, 0);
+  // Totales Preparados (Cestas)
+  const prepTotals = useMemo(() => {
+    const invInicial = preparadosRows.reduce((acc, r) => acc + r.stockInicial, 0);
+    const entradas = preparadosRows.reduce((acc, r) => acc + r.entradas, 0);
+    const salidas = preparadosRows.reduce((acc, r) => acc + r.salidas, 0);
+    const stockFinal = preparadosRows.reduce((acc, r) => acc + r.stockFinal, 0);
+    const totalMonto = preparadosRows.reduce((acc, r) => acc + r.totalMonto, 0);
+    return { invInicial, entradas, salidas, stockFinal, totalMonto };
+  }, [preparadosRows]);
 
-  // Subtotal, IVA y Gran Total
-  const reportSubtotal = totalAlmacenaje + totalServicios;
+  // Totales Servicios Extraordinarios
+  const totalServicios = useMemo(() => {
+    return servicesData.reduce((acc, s) => acc + s.value, 0);
+  }, [servicesData]);
+
+  // Totales de Facturación Consolidada según filtro activo
+  const showCongelados = selectedCategory === 'all' || selectedCategory === 'Congelados';
+  const showPreparados = selectedCategory === 'all' || selectedCategory === 'Preparados';
+
+  const reportTotalAlmacenaje = (showCongelados ? congTotals.totalMonto : 0) + (showPreparados ? prepTotals.totalMonto : 0);
+  const reportSubtotal = reportTotalAlmacenaje + totalServicios;
   const reportIva = reportSubtotal * CONTRACT_INFO.ivaRate;
   const reportGrandTotal = reportSubtotal + reportIva;
 
@@ -196,9 +219,11 @@ const Summary2 = () => {
         clientName,
         startDate,
         endDate,
-        dailyRows,
+        congeladosRows: showCongelados ? congeladosRows : [],
+        preparadosRows: showPreparados ? preparadosRows : [],
         extraServices: servicesData,
         totals: {
+          totalAlmacenaje: reportTotalAlmacenaje,
           subtotal: reportSubtotal,
           iva: reportIva,
           totalGeneral: reportGrandTotal
@@ -219,9 +244,11 @@ const Summary2 = () => {
         clientName,
         startDate,
         endDate,
-        dailyRows,
+        congeladosRows: showCongelados ? congeladosRows : [],
+        preparadosRows: showPreparados ? preparadosRows : [],
         extraServices: servicesData,
         totals: {
+          totalAlmacenaje: reportTotalAlmacenaje,
           subtotal: reportSubtotal,
           iva: reportIva,
           totalGeneral: reportGrandTotal
@@ -239,60 +266,110 @@ const Summary2 = () => {
   const handleExportPDF = () => {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
     
-    // Encabezado
+    // Encabezado principal
     doc.setFontSize(10);
     doc.setFont(undefined, 'bold');
-    doc.text("PROCESO DE FACTURACION POR ALMACENAMIENTO CONGELADO(-18°) Y SERVICIOS EXTRA-ORDINARIOS", 14, 15);
-    doc.setFontSize(9);
+    doc.text("PROCESO DE FACTURACION POR ALMACENAMIENTO CONGELADO(-18°) Y SERVICIOS EXTRA-ORDINARIOS", 14, 14);
+    doc.setFontSize(8.5);
     doc.setFont(undefined, 'normal');
-    doc.text(`Cliente: ${clientName}`, 14, 21);
-    doc.text(`Movimientos diarios entre: ${formatDate(startDate)} Hasta ${formatDate(endDate)}`, 14, 26);
+    doc.text(`Cliente: ${clientName}`, 14, 19);
+    doc.text(`Movimientos diarios entre: ${formatDate(startDate)} Hasta ${formatDate(endDate)}`, 14, 24);
     
-    // Tabla 1: Almacenamiento
-    const tableColumn = ["FECHA", "DESCRIPCION", "INV-INICIAL", "ENTRADA", "SALIDA", "TOTAL LBS", "PRECIO", "TOTAL $"];
-    const tableRows = dailyRows.map(r => [
-      formatDate(r.fecha),
-      r.descripcion,
-      r.stockInicial.toLocaleString('en-US', { maximumFractionDigits: 2 }),
-      r.entradas.toLocaleString('en-US', { maximumFractionDigits: 2 }),
-      r.salidas.toLocaleString('en-US', { maximumFractionDigits: 2 }),
-      r.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 2 }),
-      `$${formatPrice(r.precio)}`,
-      `$${formatCurrency(r.totalMonto)}`
-    ]);
+    let currentY = 28;
 
-    tableRows.push([
-      'Totales',
-      '',
-      totalInvInicial.toLocaleString('en-US', { maximumFractionDigits: 2 }),
-      totalEntradas.toLocaleString('en-US', { maximumFractionDigits: 2 }),
-      totalSalidas.toLocaleString('en-US', { maximumFractionDigits: 2 }),
-      totalLibrasAcum.toLocaleString('en-US', { maximumFractionDigits: 2 }),
-      '',
-      `$${formatCurrency(totalAlmacenaje)}`
-    ]);
-
-    autoTable(doc, {
-      head: [tableColumn],
-      body: tableRows,
-      startY: 31,
-      styles: { fontSize: 6.5, cellPadding: 1.2 },
-      headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
-      footStyles: { fillColor: [230, 230, 230], fontStyle: 'bold' }
-    });
-
-    let currentY = doc.lastAutoTable.finalY + 8;
-
-    // Tabla 2: Servicios Extraordinarios
-    if (servicesData.length > 0) {
-      if (currentY > 230) { doc.addPage(); currentY = 20; }
+    // 1. Tabla Congelados (Libras - $0.001)
+    if (showCongelados && congeladosRows.length > 0) {
       doc.setFont(undefined, 'bold');
-      doc.setFontSize(9);
+      doc.setFontSize(8.5);
+      doc.text("ALMACENAMIENTO CONGELADOS ($0.001 / LB / DIA)", 14, currentY);
+      
+      const congCol = ["FECHA", "DESCRIPCION", "INV-INICIAL", "ENTRADA LB", "SALIDA LB", "TOTAL LBS", "PRECIO", "TOTAL $"];
+      const congBody = congeladosRows.map(r => [
+        formatDate(r.fecha),
+        r.descripcion,
+        r.stockInicial.toLocaleString('en-US', { maximumFractionDigits: 2 }),
+        r.entradas.toLocaleString('en-US', { maximumFractionDigits: 2 }),
+        r.salidas.toLocaleString('en-US', { maximumFractionDigits: 2 }),
+        r.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 2 }),
+        `$${formatPrice(r.precio)}`,
+        `$${formatCurrency(r.totalMonto)}`
+      ]);
+
+      congBody.push([
+        'Totales',
+        '',
+        congTotals.invInicial.toLocaleString('en-US', { maximumFractionDigits: 2 }),
+        congTotals.entradas.toLocaleString('en-US', { maximumFractionDigits: 2 }),
+        congTotals.salidas.toLocaleString('en-US', { maximumFractionDigits: 2 }),
+        congTotals.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 2 }),
+        '',
+        `$${formatCurrency(congTotals.totalMonto)}`
+      ]);
+
+      autoTable(doc, {
+        head: [congCol],
+        body: congBody,
+        startY: currentY + 2,
+        styles: { fontSize: 6, cellPadding: 1 },
+        headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
+        footStyles: { fillColor: [235, 245, 251], fontStyle: 'bold' }
+      });
+
+      currentY = doc.lastAutoTable.finalY + 6;
+    }
+
+    // 2. Tabla Preparados (Cestas - $0.038)
+    if (showPreparados && preparadosRows.length > 0) {
+      if (currentY > 215) { doc.addPage(); currentY = 15; }
+      doc.setFont(undefined, 'bold');
+      doc.setFontSize(8.5);
+      doc.text("ALMACENAMIENTO PREPARADOS ($0.038 / CESTA / DIA)", 14, currentY);
+
+      const prepCol = ["FECHA", "DESCRIPCION", "INV CESTAS", "ENTRADA CST", "SALIDA CST", "TOTAL CST", "PRECIO", "TOTAL $"];
+      const prepBody = preparadosRows.map(r => [
+        formatDate(r.fecha),
+        r.descripcion,
+        r.stockInicial.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        r.entradas.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        r.salidas.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        r.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        `$${formatPrice(r.precio)}`,
+        `$${formatCurrency(r.totalMonto)}`
+      ]);
+
+      prepBody.push([
+        'Totales',
+        '',
+        prepTotals.invInicial.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        prepTotals.entradas.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        prepTotals.salidas.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        prepTotals.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        '',
+        `$${formatCurrency(prepTotals.totalMonto)}`
+      ]);
+
+      autoTable(doc, {
+        head: [prepCol],
+        body: prepBody,
+        startY: currentY + 2,
+        styles: { fontSize: 6, cellPadding: 1 },
+        headStyles: { fillColor: [39, 174, 96], textColor: 255, fontStyle: 'bold' },
+        footStyles: { fillColor: [234, 250, 234], fontStyle: 'bold' }
+      });
+
+      currentY = doc.lastAutoTable.finalY + 6;
+    }
+
+    // 3. Tabla Servicios Extraordinarios
+    if (servicesData.length > 0) {
+      if (currentY > 215) { doc.addPage(); currentY = 15; }
+      doc.setFont(undefined, 'bold');
+      doc.setFontSize(8.5);
       doc.text("SERVICIOS EXTRA-ORDINARIOS", 14, currentY);
       
       const servRows = servicesData.map(s => [
         formatDate(s.date),
-        s.description,
+        s.description + (s.ref ? ` (${s.ref})` : ''),
         s.quantity ? s.quantity.toLocaleString('en-US') : '1',
         s.unitPrice ? `$${formatPrice(s.unitPrice)}` : `$${formatCurrency(s.value)}`,
         `$${formatCurrency(s.value)}`
@@ -303,23 +380,26 @@ const Summary2 = () => {
       autoTable(doc, {
         head: [["FECHA", "DESCRIPCION", "TOTAL", "PRECIO", "VALOR"]],
         body: servRows,
-        startY: currentY + 3,
-        styles: { fontSize: 7, cellPadding: 1.2 },
+        startY: currentY + 2,
+        styles: { fontSize: 6.5, cellPadding: 1 },
         headStyles: { fillColor: [52, 73, 94], textColor: 255, fontStyle: 'bold' }
       });
 
-      currentY = doc.lastAutoTable.finalY + 8;
+      currentY = doc.lastAutoTable.finalY + 6;
     }
 
-    if (currentY > 240) { doc.addPage(); currentY = 20; }
+    if (currentY > 235) { doc.addPage(); currentY = 15; }
     
     // Totales Finales
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
     doc.setFont(undefined, 'normal');
-    doc.text(`Sub Total: $${formatCurrency(reportSubtotal)}`, 140, currentY);
-    doc.text(`IVA (13%): $${formatCurrency(reportIva)}`, 140, currentY + 5);
+    if (showCongelados) doc.text(`Almacenamiento Congelados: $${formatCurrency(congTotals.totalMonto)}`, 130, currentY);
+    if (showPreparados) doc.text(`Almacenamiento Preparados: $${formatCurrency(prepTotals.totalMonto)}`, 130, currentY + 4);
+    doc.text(`Servicios Extra-ordinarios: $${formatCurrency(totalServicios)}`, 130, currentY + 8);
+    doc.text(`Sub Total: $${formatCurrency(reportSubtotal)}`, 130, currentY + 12);
+    doc.text(`IVA (13%): $${formatCurrency(reportIva)}`, 130, currentY + 16);
     doc.setFont(undefined, 'bold');
-    doc.text(`TOTAL GENERAL: $${formatCurrency(reportGrandTotal)}`, 140, currentY + 11);
+    doc.text(`TOTAL GENERAL: $${formatCurrency(reportGrandTotal)}`, 130, currentY + 21);
 
     doc.save(`Cuadro_cliente_cuarto_frio_${startDate}_al_${endDate}.pdf`);
   };
@@ -333,7 +413,7 @@ const Summary2 = () => {
             Cuadro Cliente Cuarto Frío (Resumen Diario)
           </h1>
           <p style={{ color: 'var(--color-text-light)', fontSize: '0.875rem' }}>
-            Liquidación diaria por almacenamiento congelado (-18°C) y cobro de servicios extraordinarios según Contrato 2025-2026.
+            Liquidación diaria por almacenamiento congelado (-18°C) con tarifas oficiales: <strong>Preparados ($0.038 / cesta)</strong> y <strong>Congelados ($0.001 / libra)</strong> más servicios extraordinarios.
           </p>
         </div>
 
@@ -352,9 +432,8 @@ const Summary2 = () => {
         )}
       </div>
 
-      {/* Panel de Filtros y Configuración del Corte con Calendarios Interactivos */}
+      {/* Panel de Filtros y Configuración del Corte */}
       <div className="card" style={{ marginBottom: '1.5rem', padding: '1.25rem' }}>
-        {/* Atajos Rápidos de Rango */}
         <div style={{ marginBottom: '1rem', paddingBottom: '0.85rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
           <DateQuickPresets
             startDate={startDate}
@@ -390,90 +469,216 @@ const Summary2 = () => {
             <input type="text" className="form-input" value={clientName} onChange={(e) => setClientName(e.target.value)} />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Filtrar Categoría</label>
+            <label className="form-label">Mostrar Tablas</label>
             <select className="form-select" value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}>
-              <option value="all">Consolidado General (Todas)</option>
-              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              <option value="all">Consolidado (Preparados + Congelados)</option>
+              <option value="Preparados">Solo Preparados ($0.038 / cesta)</option>
+              <option value="Congelados">Solo Congelados ($0.001 / libra)</option>
             </select>
           </div>
         </div>
       </div>
 
-      {/* Header Visual estilo Cuadro Cliente */}
-      <div className="card" style={{ marginBottom: '1rem', borderLeft: '4px solid var(--color-primary)' }}>
-        <h2 style={{ fontSize: '1rem', color: 'var(--color-primary)', textTransform: 'uppercase', margin: '0 0 0.4rem 0' }}>
-          PROCESO DE FACTURACION POR ALMACENAMIENTO CONGELADO(-18°) Y SERVICIOS EXTRA-ORDINARIOS
-        </h2>
-        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', fontSize: '0.875rem', color: 'var(--color-text-light)' }}>
-          <div><strong>Cliente:</strong> {clientName}</div>
-          <div><strong>Período:</strong> {formatDate(startDate)} hasta {formatDate(endDate)}</div>
-          <div><strong>Tarifa Base:</strong> ${formatPrice(CONTRACT_INFO.defaultStorageRatePounds)} / lb / día</div>
+      {/* Tarjetas Resumen de Liquidación */}
+      <div className="grid grid-cols-4" style={{ gap: '1rem', marginBottom: '1.5rem' }}>
+        <div className="card" style={{ borderLeft: '4px solid #2980b9', padding: '1rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', textTransform: 'uppercase', fontWeight: 600 }}>
+            Congelados (Libras)
+          </div>
+          <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#2980b9', marginTop: '0.25rem' }}>
+            ${formatCurrency(congTotals.totalMonto)}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', marginTop: '0.2rem' }}>
+            Tarifa: $0.001 / lb / día
+          </div>
+        </div>
+
+        <div className="card" style={{ borderLeft: '4px solid #27ae60', padding: '1rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', textTransform: 'uppercase', fontWeight: 600 }}>
+            Preparados (Cestas)
+          </div>
+          <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#27ae60', marginTop: '0.25rem' }}>
+            ${formatCurrency(prepTotals.totalMonto)}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', marginTop: '0.2rem' }}>
+            Tarifa: $0.038 / cesta / día
+          </div>
+        </div>
+
+        <div className="card" style={{ borderLeft: '4px solid #e67e22', padding: '1rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', textTransform: 'uppercase', fontWeight: 600 }}>
+            Servicios Extraordinarios
+          </div>
+          <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#e67e22', marginTop: '0.25rem' }}>
+            ${formatCurrency(totalServicios)}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', marginTop: '0.2rem' }}>
+            {servicesData.length} actividades
+          </div>
+        </div>
+
+        <div className="card" style={{ borderLeft: '4px solid var(--color-primary)', padding: '1rem', backgroundColor: 'var(--color-surface)' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', textTransform: 'uppercase', fontWeight: 600 }}>
+            Total General (con IVA)
+          </div>
+          <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--color-primary)', marginTop: '0.25rem' }}>
+            ${formatCurrency(reportGrandTotal)}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', marginTop: '0.2rem' }}>
+            Subtotal: ${formatCurrency(reportSubtotal)} + IVA 13%
+          </div>
         </div>
       </div>
 
-      {/* Tabla 1: Movimientos diarios de Almacenamiento */}
-      <div className="card" style={{ padding: '0', marginBottom: '2rem' }}>
-        <div className="table-container" style={{ border: 'none', boxShadow: 'none' }}>
-          <table>
-            <thead>
-              <tr style={{ backgroundColor: 'var(--color-bg)' }}>
-                <th>FECHA</th>
-                <th>DESCRIPCION</th>
-                <th style={{ textAlign: 'right' }}>INV-INICIAL</th>
-                <th style={{ textAlign: 'right' }}>ENTRADA</th>
-                <th style={{ textAlign: 'right' }}>SALIDA</th>
-                <th style={{ textAlign: 'right' }}>TOTAL LIBRAS</th>
-                <th style={{ textAlign: 'right' }}>PRECIO</th>
-                <th style={{ textAlign: 'right' }}>TOTAL $</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dailyRows.length === 0 ? (
-                <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>
-                    No hay movimientos en el rango de fechas seleccionado.
-                  </td>
-                </tr>
-              ) : (
-                dailyRows.map((r, idx) => (
-                  <tr key={idx}>
-                    <td style={{ fontWeight: '500' }}>{formatDate(r.fecha)}</td>
-                    <td>{r.descripcion}</td>
-                    <td style={{ textAlign: 'right' }}>{r.stockInicial.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right', color: r.entradas > 0 ? 'var(--color-success)' : 'inherit' }}>
-                      {r.entradas > 0 ? `+${r.entradas.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '0'}
-                    </td>
-                    <td style={{ textAlign: 'right', color: r.salidas > 0 ? 'var(--color-danger)' : 'inherit' }}>
-                      {r.salidas > 0 ? `-${r.salidas.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '0'}
-                    </td>
-                    <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{r.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>${formatPrice(r.precio)}</td>
-                    <td style={{ textAlign: 'right', fontWeight: '500' }}>${formatCurrency(r.totalMonto)}</td>
+      {/* 1. TABLA CONGELADOS (LIBRAS - $0.001) */}
+      {showCongelados && (
+        <div style={{ marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <h2 style={{ fontSize: '1rem', color: '#2980b9', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}>
+              <Package size={18} /> ALMACENAMIENTO PRODUCTOS CONGELADOS (LIBRAS - $0.001 / LB / DÍA)
+            </h2>
+            <span className="badge" style={{ backgroundColor: '#ebf5fb', color: '#2980b9', fontWeight: 600 }}>
+              Tarifa: $0.001 / lb / día
+            </span>
+          </div>
+
+          <div className="card" style={{ padding: '0' }}>
+            <div className="table-container" style={{ border: 'none', boxShadow: 'none' }}>
+              <table>
+                <thead>
+                  <tr style={{ backgroundColor: 'var(--color-bg)' }}>
+                    <th>FECHA</th>
+                    <th>DESCRIPCION</th>
+                    <th style={{ textAlign: 'right' }}>INV-INICIAL</th>
+                    <th style={{ textAlign: 'right' }}>ENTRADA LB</th>
+                    <th style={{ textAlign: 'right' }}>SALIDA LB</th>
+                    <th style={{ textAlign: 'right' }}>TOTAL LIBRAS</th>
+                    <th style={{ textAlign: 'right' }}>PRECIO</th>
+                    <th style={{ textAlign: 'right' }}>TOTAL $</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-            {dailyRows.length > 0 && (
-              <tfoot>
-                <tr style={{ backgroundColor: 'var(--color-surface)', fontWeight: 'bold' }}>
-                  <td></td>
-                  <td>Totales</td>
-                  <td style={{ textAlign: 'right' }}>{totalInvInicial.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
-                  <td style={{ textAlign: 'right', color: 'var(--color-success)' }}>{totalEntradas.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
-                  <td style={{ textAlign: 'right', color: 'var(--color-danger)' }}>{totalSalidas.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
-                  <td style={{ textAlign: 'right' }}>{totalLibrasAcum.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
-                  <td></td>
-                  <td style={{ textAlign: 'right', color: 'var(--color-primary)' }}>${formatCurrency(totalAlmacenaje)}</td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
+                </thead>
+                <tbody>
+                  {congeladosRows.length === 0 ? (
+                    <tr>
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                        No hay movimientos de congelados en el rango de fechas seleccionado.
+                      </td>
+                    </tr>
+                  ) : (
+                    congeladosRows.map((r, idx) => (
+                      <tr key={idx}>
+                        <td style={{ fontWeight: '500' }}>{formatDate(r.fecha)}</td>
+                        <td>{r.descripcion}</td>
+                        <td style={{ textAlign: 'right' }}>{r.stockInicial.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                        <td style={{ textAlign: 'right', color: r.entradas > 0 ? 'var(--color-success)' : 'inherit' }}>
+                          {r.entradas > 0 ? `+${r.entradas.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '0'}
+                        </td>
+                        <td style={{ textAlign: 'right', color: r.salidas > 0 ? 'var(--color-danger)' : 'inherit' }}>
+                          {r.salidas > 0 ? `-${r.salidas.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '0'}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{r.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                        <td style={{ textAlign: 'right' }}>${formatPrice(r.precio)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: '500' }}>${formatCurrency(r.totalMonto)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {congeladosRows.length > 0 && (
+                  <tfoot>
+                    <tr style={{ backgroundColor: 'var(--color-surface)', fontWeight: 'bold' }}>
+                      <td></td>
+                      <td>Totales</td>
+                      <td style={{ textAlign: 'right' }}>{congTotals.invInicial.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--color-success)' }}>{congTotals.entradas.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--color-danger)' }}>{congTotals.salidas.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                      <td style={{ textAlign: 'right' }}>{congTotals.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                      <td></td>
+                      <td style={{ textAlign: 'right', color: '#2980b9' }}>${formatCurrency(congTotals.totalMonto)}</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Tabla 2: Servicios Extraordinarios */}
+      {/* 2. TABLA PREPARADOS (CESTAS - $0.038) */}
+      {showPreparados && (
+        <div style={{ marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <h2 style={{ fontSize: '1rem', color: '#27ae60', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}>
+              <Layers size={18} /> ALMACENAMIENTO PRODUCTOS PREPARADOS (CESTAS - $0.038 / CESTA / DÍA)
+            </h2>
+            <span className="badge" style={{ backgroundColor: '#eafaf1', color: '#27ae60', fontWeight: 600 }}>
+              Tarifa: $0.038 / cesta / día
+            </span>
+          </div>
+
+          <div className="card" style={{ padding: '0' }}>
+            <div className="table-container" style={{ border: 'none', boxShadow: 'none' }}>
+              <table>
+                <thead>
+                  <tr style={{ backgroundColor: 'var(--color-bg)' }}>
+                    <th>FECHA</th>
+                    <th>DESCRIPCION</th>
+                    <th style={{ textAlign: 'right' }}>INV CESTAS</th>
+                    <th style={{ textAlign: 'right' }}>ENTRADA CESTAS</th>
+                    <th style={{ textAlign: 'right' }}>SALIDA CESTAS</th>
+                    <th style={{ textAlign: 'right' }}>TOTAL CESTA</th>
+                    <th style={{ textAlign: 'right' }}>PRECIO CESTA</th>
+                    <th style={{ textAlign: 'right' }}>TOTAL $</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preparadosRows.length === 0 ? (
+                    <tr>
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                        No hay movimientos de preparados en el rango de fechas seleccionado.
+                      </td>
+                    </tr>
+                  ) : (
+                    preparadosRows.map((r, idx) => (
+                      <tr key={idx}>
+                        <td style={{ fontWeight: '500' }}>{formatDate(r.fecha)}</td>
+                        <td>{r.descripcion}</td>
+                        <td style={{ textAlign: 'right' }}>{r.stockInicial.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                        <td style={{ textAlign: 'right', color: r.entradas > 0 ? 'var(--color-success)' : 'inherit' }}>
+                          {r.entradas > 0 ? `+${r.entradas.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '0'}
+                        </td>
+                        <td style={{ textAlign: 'right', color: r.salidas > 0 ? 'var(--color-danger)' : 'inherit' }}>
+                          {r.salidas > 0 ? `-${r.salidas.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '0'}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{r.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                        <td style={{ textAlign: 'right' }}>${formatPrice(r.precio)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: '500' }}>${formatCurrency(r.totalMonto)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {preparadosRows.length > 0 && (
+                  <tfoot>
+                    <tr style={{ backgroundColor: 'var(--color-surface)', fontWeight: 'bold' }}>
+                      <td></td>
+                      <td>Totales</td>
+                      <td style={{ textAlign: 'right' }}>{prepTotals.invInicial.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--color-success)' }}>{prepTotals.entradas.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--color-danger)' }}>{prepTotals.salidas.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                      <td style={{ textAlign: 'right' }}>{prepTotals.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                      <td></td>
+                      <td style={{ textAlign: 'right', color: '#27ae60' }}>${formatCurrency(prepTotals.totalMonto)}</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. TABLA SERVICIOS EXTRAORDINARIOS */}
       <div style={{ marginBottom: '2rem' }}>
-        <h2 style={{ fontSize: '1.125rem', color: 'var(--color-primary)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <h2 style={{ fontSize: '1rem', color: '#e67e22', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}>
           <FileText size={18} /> SERVICIOS EXTRA-ORDINARIOS
         </h2>
 
@@ -500,7 +705,7 @@ const Summary2 = () => {
                   servicesData.map((s, idx) => (
                     <tr key={idx}>
                       <td style={{ fontWeight: '500' }}>{formatDate(s.date)}</td>
-                      <td>{s.description} {s.ref ? `(Doc #${s.ref})` : ''}</td>
+                      <td>{s.description} {s.ref ? `(${s.ref})` : ''}</td>
                       <td style={{ textAlign: 'center' }}>{s.quantity !== undefined ? s.quantity.toLocaleString('en-US') : '1'}</td>
                       <td style={{ textAlign: 'right' }}>{s.unitPrice ? `$${formatPrice(s.unitPrice)}` : `$${formatCurrency(s.value)}`}</td>
                       <td style={{ textAlign: 'right', fontWeight: 'bold' }}>${formatCurrency(s.value)}</td>
@@ -515,7 +720,7 @@ const Summary2 = () => {
                     <td>TOTALES</td>
                     <td style={{ textAlign: 'center' }}>{servicesData.reduce((a, c) => a + (c.quantity || 1), 0)}</td>
                     <td></td>
-                    <td style={{ textAlign: 'right', color: 'var(--color-primary)' }}>${formatCurrency(totalServicios)}</td>
+                    <td style={{ textAlign: 'right', color: '#e67e22' }}>${formatCurrency(totalServicios)}</td>
                   </tr>
                 </tfoot>
               )}
@@ -524,23 +729,31 @@ const Summary2 = () => {
         </div>
       </div>
 
-      {/* Resumen de Liquidación e Impuestos */}
+      {/* Resumen de Facturación Final */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-        <div className="card" style={{ minWidth: '380px', padding: '1.5rem', borderLeft: '4px solid var(--color-primary)' }}>
+        <div className="card" style={{ minWidth: '400px', padding: '1.5rem', borderLeft: '4px solid var(--color-primary)' }}>
           <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--color-primary)', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem' }}>
-            Resumen de Facturación
+            Resumen de Liquidación del Período
           </h3>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
-            <span style={{ color: 'var(--color-text-light)' }}>Almacenamiento Congelado:</span>
-            <strong>${formatCurrency(totalAlmacenaje)}</strong>
-          </div>
+          {showCongelados && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+              <span style={{ color: 'var(--color-text-light)' }}>Almacenamiento Congelados ($0.001/lb):</span>
+              <strong>${formatCurrency(congTotals.totalMonto)}</strong>
+            </div>
+          )}
+          {showPreparados && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+              <span style={{ color: 'var(--color-text-light)' }}>Almacenamiento Preparados ($0.038/cst):</span>
+              <strong>${formatCurrency(prepTotals.totalMonto)}</strong>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
             <span style={{ color: 'var(--color-text-light)' }}>Servicios Extra-ordinarios:</span>
             <strong>${formatCurrency(totalServicios)}</strong>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem', paddingTop: '0.5rem', borderTop: '1px solid var(--color-border)' }}>
             <span style={{ fontWeight: 'bold' }}>Sub Total:</span>
-            <strong style={{ color: 'var(--color-primary)' }}>${formatCurrency(reportSubtotal)}</strong>
+            <strong style={{ color: 'var(--color-primary)', fontSize: '1.1rem' }}>${formatCurrency(reportSubtotal)}</strong>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.8rem' }}>
             <span style={{ color: 'var(--color-text-light)' }}>IVA (13%):</span>
