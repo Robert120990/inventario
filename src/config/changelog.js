@@ -1,6 +1,24 @@
 // Registro cronológico maestro y automático de versiones del sistema generado desde Git
 export const SYSTEM_CHANGELOG = [
   {
+    "id": "542caf0",
+    "version": "v2.7.111",
+    "commit": "542caf0",
+    "fullCommit": "542caf026c7204291336c9e40d54e6fd0f8d818a",
+    "description": "Asegurar umbral estricto > -14.0 C sin contar -14.0 y formatear decimales con precision",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-08-28",
+    "time": "08:54",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "fix",
+        "text": "Asegurar umbral estricto > -14.0 C sin contar -14.0 y formatear decimales con precision"
+      }
+    ]
+  },
+  {
     "id": "1cd11e9",
     "version": "v2.7.110",
     "commit": "1cd11e9",
@@ -171,7 +189,7 @@ export const SYSTEM_CHANGELOG = [
     "author": "Ing. Raúl Sosa",
     "date": "2026-08-28",
     "time": "22:34",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
