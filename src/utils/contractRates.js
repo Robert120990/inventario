@@ -80,3 +80,50 @@ export const calculateTemperatureService = (tempCelsius, pounds) => {
     value: Number((pounds * rate).toFixed(2))
   };
 };
+
+/**
+ * Resuelve y normaliza los detalles de un servicio extraordinario.
+ * Si el servicio fue registrado con cantidad = 1 pero en la descripción incluye libras (ej. "(1425 lbs)"),
+ * extrae las libras reales en quantity, calcula el precio unitario por libra y conserva el valor total $.
+ */
+export const resolveServiceDetails = (s) => {
+  if (!s) return { description: '', quantity: 1, unitPrice: 0, value: 0 };
+  
+  let qty = Number(s.quantity);
+  let price = Number(s.unitPrice);
+  let val = Number(s.value || 0);
+  const desc = String(s.description || '');
+
+  // Buscar libras en la descripción: ej. "(1425 lbs)", "(4,955.50 lbs)", "1425 lbs", etc.
+  const lbsMatch = desc.match(/([0-9,]+(?:\.[0-9]+)?)\s*lbs/i);
+  if (lbsMatch) {
+    const extractedLbs = parseFloat(lbsMatch[1].replace(/,/g, ''));
+    if (!isNaN(extractedLbs) && extractedLbs > 0) {
+      // Si la cantidad guardada era 1 o diferente a las libras detectadas
+      if (isNaN(qty) || qty === 1 || qty <= 0 || qty !== extractedLbs) {
+        qty = extractedLbs;
+        // Si el precio unitario era igual al valor total (o no era la tarifa por libra)
+        if (val > 0 && (price === val || isNaN(price) || price === 0 || price >= 1)) {
+          price = Number((val / extractedLbs).toFixed(5));
+        }
+      }
+    }
+  }
+
+  if (isNaN(qty) || qty <= 0) qty = 1;
+  if (isNaN(price) || price <= 0) {
+    price = qty > 0 && val > 0 ? Number((val / qty).toFixed(5)) : val;
+  }
+  if (val === 0 && qty > 0 && price > 0) {
+    val = Number((qty * price).toFixed(2));
+  }
+
+  return {
+    ...s,
+    description: desc,
+    quantity: qty,
+    unitPrice: price,
+    value: val
+  };
+};
+

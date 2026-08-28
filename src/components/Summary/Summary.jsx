@@ -5,7 +5,8 @@ import { exportResumenCompleto } from '../../utils/exportManager';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils';
-import { CONTRACT_INFO } from '../../utils/contractRates';
+import { CONTRACT_INFO, resolveServiceDetails } from '../../utils/contractRates';
+
 import { toast } from 'react-hot-toast';
 import { DatePicker, DateQuickPresets, getLocalDateStr } from '../Common/DatePicker';
 
@@ -132,10 +133,13 @@ const Summary = () => {
       const mDate = new Date(m.date + 'T12:00:00');
       if (mDate >= start && mDate <= end && m.services) {
         m.services.forEach(s => {
+          const res = resolveServiceDetails(s);
           services.push({
             date: m.date,
-            description: s.description,
-            value: Number(s.value || 0),
+            description: res.description,
+            quantity: res.quantity,
+            unitPrice: res.unitPrice,
+            value: Number(res.value || 0),
             ref: m.refNumber
           });
         });
@@ -143,6 +147,7 @@ const Summary = () => {
     });
     return services;
   }, [movements, startDate, endDate]);
+
 
   const totalServicios = servicesData.reduce((acc, curr) => acc + curr.value, 0);
   const totalServices = totalServicios;

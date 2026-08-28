@@ -26,10 +26,16 @@ export const formatCurrency = (value) => {
 };
 
 /**
- * Formats a number to 3 decimal places (for unit prices)
+ * Formats a number to appropriate decimal places for unit prices ($0.001, $0.038, $54.00)
  * @param {number} value 
  * @returns {string}
  */
 export const formatPrice = (value) => {
-  return Number(value || 0).toFixed(3);
+  const num = Number(value || 0);
+  if (num === 0) return '0.00';
+  if (num < 1) {
+    return num.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 4 });
+  }
+  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
 };
+

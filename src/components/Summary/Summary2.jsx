@@ -9,7 +9,7 @@ import { exportCuadroClienteCuartoFrio } from '../../utils/exportManager';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils';
-import { CONTRACT_INFO } from '../../utils/contractRates';
+import { CONTRACT_INFO, resolveServiceDetails } from '../../utils/contractRates';
 import { toast } from 'react-hot-toast';
 import { DatePicker, DateQuickPresets, getLocalDateStr } from '../Common/DatePicker';
 
@@ -59,27 +59,47 @@ const Summary2 = () => {
   
   const autoSaveTimerRef = useRef(null);
 
-  // Controladores de fecha sincronizados (solo modificables en Modo En Vivo)
+  // Cargar cortes registrados al iniciar para sincronización de balances y baseline
+  useEffect(() => {
+    fetchDailyCuts().then(cuts => {
+      if (Array.isArray(cuts)) setCutsList(cuts);
+    });
+  }, []);
+
+  // Controladores de fecha sincronizados
   const handleStartDateChange = (newStart) => {
-    if (activeCut) return;
+    if (activeCut && isLocked) return;
     setStartDate(newStart);
+    let effectiveEnd = endDate;
     if (endDate && newStart > endDate) {
       setEndDate(newStart);
+      effectiveEnd = newStart;
+    }
+    if (activeCut && !isLocked) {
+      triggerAutoSave(null, null, null, newStart, effectiveEnd);
     }
   };
 
   const handleEndDateChange = (newEnd) => {
-    if (activeCut) return;
+    if (activeCut && isLocked) return;
     setEndDate(newEnd);
+    let effectiveStart = startDate;
     if (startDate && newEnd < startDate) {
       setStartDate(newEnd);
+      effectiveStart = newEnd;
+    }
+    if (activeCut && !isLocked) {
+      triggerAutoSave(null, null, null, effectiveStart, newEnd);
     }
   };
 
   const handlePresetSelect = (start, end) => {
-    if (activeCut) return;
+    if (activeCut && isLocked) return;
     setStartDate(start);
     setEndDate(end);
+    if (activeCut && !isLocked) {
+      triggerAutoSave(null, null, null, start, end);
+    }
   };
 
   // Cantidad de días en el rango
@@ -105,66 +125,122 @@ const Summary2 = () => {
     return dates;
   }, [startDate, endDate]);
 
-  // Helper para calcular inventario diario para un grupo de productos y tipo de unidad
+  // Helper para calcular inventario diario para un grupo de productos y tipo de unidad con cuadre continuo
   const calculateDailySeries = (targetProducts, unitField, stockField, rate, unitLabel, descText) => {
     if (targetProducts.length === 0 || dateList.length === 0) return [];
 
-    return dateList.map(dateStr => {
-      let dayInitial = 0;
+    const d0 = dateList[0];
+    const unitTypeKey = unitField === 'qtyPounds' ? 'congeladosData' : 'preparadosData';
+
+    // Buscar cortes congelados previos para usar como línea base y asegurar cuadre perfecto
+    const priorCuts = cutsList
+      .filter(c => c.endDate && c.endDate.split('T')[0] <= d0 && Array.isArray(c[unitTypeKey]) && c[unitTypeKey].length > 0)
+      .sort((a, b) => (b.endDate || '').localeCompare(a.endDate || ''));
+
+    let baselineDate = null;
+    let baselineFinalStock = null;
+
+    if (priorCuts.length > 0) {
+      const lastCut = priorCuts[0];
+      const cutRows = lastCut[unitTypeKey];
+      const lastRow = cutRows[cutRows.length - 1];
+      if (lastRow && lastRow.stockFinal !== undefined) {
+        baselineDate = lastCut.endDate.split('T')[0];
+        baselineFinalStock = Number(lastRow.stockFinal);
+      }
+    }
+
+    let startingStockForD0 = 0;
+
+    if (baselineDate !== null && baselineFinalStock !== null) {
+      let accumulated = baselineFinalStock;
+      if (baselineDate < d0) {
+        targetProducts.forEach(p => {
+          const pMovs = movements.filter(m => m.items && m.items.some(it => it.productId === p.id));
+          pMovs.forEach(m => {
+            const mDate = String(m.date || '').split('T')[0];
+            if (mDate > baselineDate && mDate < d0) {
+              const item = m.items.find(it => it.productId === p.id);
+              if (item) {
+                if (m.type === 'in') accumulated += Number(item[unitField] || 0);
+                if (m.type === 'out') accumulated -= Number(item[unitField] || 0);
+              }
+            }
+          });
+        });
+      }
+      startingStockForD0 = accumulated;
+    } else {
+      // Cálculo hacia atrás desde stock actual de productos
+      targetProducts.forEach(p => {
+        const pMovs = movements.filter(m => m.items && m.items.some(it => it.productId === p.id));
+        let stockAtD0End = Number(p[stockField] || 0);
+
+        const afterD0 = pMovs.filter(m => String(m.date || '').split('T')[0] > d0);
+        afterD0.forEach(m => {
+          const item = m.items.find(it => it.productId === p.id);
+          if (item) {
+            if (m.type === 'in') stockAtD0End -= Number(item[unitField] || 0);
+            if (m.type === 'out') stockAtD0End += Number(item[unitField] || 0);
+          }
+        });
+
+        const onD0 = pMovs.filter(m => String(m.date || '').split('T')[0] === d0);
+        let inOnD0 = 0;
+        let outOnD0 = 0;
+        onD0.forEach(m => {
+          const item = m.items.find(it => it.productId === p.id);
+          if (item) {
+            if (m.type === 'in') inOnD0 += Number(item[unitField] || 0);
+            if (m.type === 'out') outOnD0 += Number(item[unitField] || 0);
+          }
+        });
+
+        const initialOnD0 = stockAtD0End - inOnD0 + outOnD0;
+        startingStockForD0 += initialOnD0;
+      });
+    }
+
+    // Encadenamiento hacia adelante día a día garantizando continuidad
+    let runningInitial = startingStockForD0;
+    const resultRows = [];
+
+    dateList.forEach(dateStr => {
       let dayIn = 0;
       let dayOut = 0;
-      let dayFinal = 0;
 
       targetProducts.forEach(p => {
         const pMovs = movements.filter(m => m.items && m.items.some(it => it.productId === p.id));
-        let currentStock = Number(p[stockField] || 0);
-
-        // Movimientos estrictamente posteriores a esta fecha
-        const afterDate = pMovs.filter(m => String(m.date) > dateStr);
-        let stockAtEnd = currentStock;
-        afterDate.forEach(m => {
-          const item = m.items.find(it => it.productId === p.id);
-          if (item) {
-            if (m.type === 'in') stockAtEnd -= Number(item[unitField] || 0);
-            if (m.type === 'out') stockAtEnd += Number(item[unitField] || 0);
-          }
-        });
-
-        // Movimientos en la fecha exacta
-        const onDate = pMovs.filter(m => String(m.date) === dateStr);
-        let inOnDate = 0;
-        let outOnDate = 0;
+        const onDate = pMovs.filter(m => String(m.date || '').split('T')[0] === dateStr);
         onDate.forEach(m => {
           const item = m.items.find(it => it.productId === p.id);
           if (item) {
-            if (m.type === 'in') inOnDate += Number(item[unitField] || 0);
-            if (m.type === 'out') outOnDate += Number(item[unitField] || 0);
+            if (m.type === 'in') dayIn += Number(item[unitField] || 0);
+            if (m.type === 'out') dayOut += Number(item[unitField] || 0);
           }
         });
-
-        const initialOnDate = stockAtEnd - inOnDate + outOnDate;
-
-        dayInitial += initialOnDate;
-        dayIn += inOnDate;
-        dayOut += outOnDate;
-        dayFinal += stockAtEnd;
       });
 
+      const dayFinal = runningInitial + dayIn - dayOut;
       const dayTotalCost = dayFinal * rate;
 
-      return {
+      resultRows.push({
         fecha: dateStr,
         descripcion: descText,
         unitLabel,
         unitType: unitField === 'qtyPounds' ? 'pounds' : 'baskets',
-        stockInicial: dayInitial,
+        stockInicial: runningInitial,
         entradas: dayIn,
         salidas: dayOut,
         stockFinal: dayFinal,
         precio: rate,
         totalMonto: dayTotalCost
-      };
+      });
+
+      runningInitial = dayFinal;
     });
+
+    return resultRows;
   };
 
   // Cálculo en vivo: 1. PRODUCTOS CONGELADOS
@@ -179,7 +255,7 @@ const Summary2 = () => {
       'Lbs',
       'Mantenimiento congelado (-18°)'
     );
-  }, [products, movements, dateList, categoryUnits]);
+  }, [products, movements, dateList, categoryUnits, cutsList]);
 
   // Cálculo en vivo: 2. PRODUCTOS PREPARADOS
   const livePreparadosRows = useMemo(() => {
@@ -193,9 +269,9 @@ const Summary2 = () => {
       'Cst',
       'Mantenimiento congelado (Preparados)'
     );
-  }, [products, movements, dateList, categoryUnits]);
+  }, [products, movements, dateList, categoryUnits, cutsList]);
 
-  // Cálculo en vivo: 3. SERVICIOS EXTRAORDINARIOS
+  // Cálculo en vivo: 3. SERVICIOS EXTRAORDINARIOS (Resueltos con libras y tarifas reales)
   const liveServicesData = useMemo(() => {
     if (!startDate || !endDate) return [];
     const services = [];
@@ -203,12 +279,13 @@ const Summary2 = () => {
       const mDateStr = String(m.date || '').split('T')[0];
       if (mDateStr >= startDate && mDateStr <= endDate && m.services && m.services.length > 0) {
         m.services.forEach(s => {
+          const res = resolveServiceDetails(s);
           services.push({
             date: mDateStr,
-            description: s.description,
-            quantity: s.quantity !== undefined ? Number(s.quantity) : 1,
-            unitPrice: s.unitPrice !== undefined ? Number(s.unitPrice) : Number(s.value || 0),
-            value: Number(s.value || 0),
+            description: res.description,
+            quantity: res.quantity,
+            unitPrice: res.unitPrice,
+            value: Number(res.value || 0),
             ref: m.refNumber ? `${m.refType || 'Doc'} #${m.refNumber}` : ''
           });
         });
@@ -226,9 +303,13 @@ const Summary2 = () => {
     ? customPreparados 
     : (activeCut ? (activeCut.preparadosData || []) : livePreparadosRows);
 
-  const servicesData = customServices !== null 
+  const rawServicesData = customServices !== null 
     ? customServices 
     : (activeCut ? (activeCut.servicesData || []) : liveServicesData);
+
+  const servicesData = useMemo(() => {
+    return (rawServicesData || []).map(resolveServiceDetails);
+  }, [rawServicesData]);
 
   // Totales Congelados (Libras)
   const congTotals = useMemo(() => {
@@ -255,7 +336,10 @@ const Summary2 = () => {
     return servicesData.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
   }, [servicesData]);
 
-  // Totales de Facturación Consolidada según filtro activo
+  const totalServiciosQty = useMemo(() => {
+    return servicesData.reduce((acc, s) => acc + (Number(s.quantity) || 1), 0);
+  }, [servicesData]);
+
   const showCongelados = selectedCategory === 'all' || selectedCategory === 'Congelados';
   const showPreparados = selectedCategory === 'all' || selectedCategory === 'Preparados';
 
@@ -269,7 +353,7 @@ const Summary2 = () => {
   // =========================================================================
 
   // Disparador de autoguardado con debounce cuando se edita un corte activo
-  const triggerAutoSave = (updatedCong, updatedPrep, updatedServ) => {
+  const triggerAutoSave = (updatedCong, updatedPrep, updatedServ, customStart, customEnd) => {
     if (!activeCut) return;
 
     setSaveStatus('saving');
@@ -280,7 +364,9 @@ const Summary2 = () => {
     autoSaveTimerRef.current = setTimeout(async () => {
       const cong = updatedCong || congeladosRows;
       const prep = updatedPrep || preparadosRows;
-      const serv = updatedServ || servicesData;
+      const serv = (updatedServ || servicesData).map(resolveServiceDetails);
+      const effectiveStart = customStart || startDate;
+      const effectiveEnd = customEnd || endDate;
 
       const calcCongTotal = cong.reduce((acc, r) => acc + (Number(r.totalMonto) || 0), 0);
       const calcPrepTotal = prep.reduce((acc, r) => acc + (Number(r.totalMonto) || 0), 0);
@@ -299,7 +385,14 @@ const Summary2 = () => {
         serviciosMonto: calcServTotal
       };
 
+      const newTitle = activeCut.title?.startsWith('Corte ') 
+        ? `Corte ${formatDate(effectiveStart)} al ${formatDate(effectiveEnd)}`
+        : (activeCut.title || `Corte ${formatDate(effectiveStart)} al ${formatDate(effectiveEnd)}`);
+
       const res = await updateDailyCut(activeCut.id, {
+        title: newTitle,
+        startDate: effectiveStart,
+        endDate: effectiveEnd,
         congeladosData: cong,
         preparadosData: prep,
         servicesData: serv,
@@ -309,6 +402,19 @@ const Summary2 = () => {
 
       if (res.success) {
         setSaveStatus('saved');
+        setActiveCut(prev => ({
+          ...prev,
+          title: newTitle,
+          startDate: effectiveStart,
+          endDate: effectiveEnd,
+          congeladosData: cong,
+          preparadosData: prep,
+          servicesData: serv,
+          totalsData: totalsPayload,
+          clientName
+        }));
+        // Sincronizar lista de cortes en memoria
+        fetchDailyCuts().then(cuts => setCutsList(Array.isArray(cuts) ? cuts : []));
         setTimeout(() => setSaveStatus(null), 3000);
       } else {
         setSaveStatus(null);
@@ -331,7 +437,6 @@ const Summary2 = () => {
       const row = { ...newRows[index] };
       row[field] = numVal;
 
-      // Recalcular Total Lbs y Monto $
       if (field === 'stockInicial' || field === 'entradas' || field === 'salidas') {
         const init = Number(field === 'stockInicial' ? numVal : row.stockInicial) || 0;
         const ent = Number(field === 'entradas' ? numVal : row.entradas) || 0;
@@ -339,7 +444,7 @@ const Summary2 = () => {
         row.stockFinal = init + ent - sal;
       }
 
-      row.totalMonto = Number(row.stockFinal || 0) * Number(row.precio || 0);
+      row.totalMonto = Number(row.stockFinal || 0) * Number(row.precio || 0.001);
       newRows[index] = row;
       setCustomCongelados(newRows);
       triggerAutoSave(newRows, null, null);
@@ -348,7 +453,6 @@ const Summary2 = () => {
       const row = { ...newRows[index] };
       row[field] = numVal;
 
-      // Recalcular Total Cestas y Monto $
       if (field === 'stockInicial' || field === 'entradas' || field === 'salidas') {
         const init = Number(field === 'stockInicial' ? numVal : row.stockInicial) || 0;
         const ent = Number(field === 'entradas' ? numVal : row.entradas) || 0;
@@ -356,11 +460,44 @@ const Summary2 = () => {
         row.stockFinal = init + ent - sal;
       }
 
-      row.totalMonto = Number(row.stockFinal || 0) * Number(row.precio || 0);
+      row.totalMonto = Number(row.stockFinal || 0) * Number(row.precio || 0.038);
       newRows[index] = row;
       setCustomPreparados(newRows);
       triggerAutoSave(null, newRows, null);
     }
+  };
+
+  // Edición en línea para Servicios Extraordinarios
+  const handleServiceCellEdit = (index, field, rawValue) => {
+    if (isLocked && activeCut) {
+      toast('Desbloquea el corte para poder editar los servicios.', { icon: '🔒' });
+      return;
+    }
+
+    const newServices = [...servicesData.map(resolveServiceDetails)];
+    const item = { ...newServices[index] };
+
+    if (field === 'description') {
+      item.description = rawValue;
+    } else {
+      const numVal = rawValue === '' ? 0 : Number(rawValue);
+      item[field] = numVal;
+
+      if (field === 'quantity' || field === 'unitPrice') {
+        const q = field === 'quantity' ? numVal : Number(item.quantity || 1);
+        const p = field === 'unitPrice' ? numVal : Number(item.unitPrice || 0);
+        item.value = Number((q * p).toFixed(2));
+      } else if (field === 'value') {
+        const q = Number(item.quantity || 1);
+        if (q > 0) {
+          item.unitPrice = Number((numVal / q).toFixed(4));
+        }
+      }
+    }
+
+    newServices[index] = item;
+    setCustomServices(newServices);
+    triggerAutoSave(null, null, newServices);
   };
 
   // Abrir modal para congelar corte actual
@@ -389,6 +526,8 @@ const Summary2 = () => {
         serviciosMonto: totalServicios
       };
 
+      const resolvedServs = servicesData.map(resolveServiceDetails);
+
       const res = await createDailyCut({
         title: freezeTitle.trim(),
         clientName,
@@ -397,13 +536,17 @@ const Summary2 = () => {
         isLocked: 1,
         congeladosData: congeladosRows,
         preparadosData: preparadosRows,
-        servicesData: servicesData,
+        servicesData: resolvedServs,
         totalsData: totalsPayload
       });
 
       if (res.success) {
         toast.success('¡Corte diario congelado y guardado con éxito!');
         setFreezeModalOpen(false);
+        // Actualizar lista en historial
+        const cuts = await fetchDailyCuts();
+        if (Array.isArray(cuts)) setCutsList(cuts);
+
         // Cargar el corte recién creado como corte activo
         const fullCut = await fetchDailyCutById(res.id);
         if (fullCut) {
@@ -424,21 +567,73 @@ const Summary2 = () => {
     }
   };
 
-  // Alternar Bloqueo / Desbloqueo del corte activo
+  // Alternar Bloqueo / Desbloqueo del corte activo (Guardando fechas y datos actualizados al cerrar)
   const handleToggleLock = async () => {
     if (!activeCut) return;
 
     const newLockState = !isLocked;
     setIsLocked(newLockState);
 
+    const cong = congeladosRows;
+    const prep = preparadosRows;
+    const serv = servicesData.map(resolveServiceDetails);
+
+    const calcCongTotal = cong.reduce((acc, r) => acc + (Number(r.totalMonto) || 0), 0);
+    const calcPrepTotal = prep.reduce((acc, r) => acc + (Number(r.totalMonto) || 0), 0);
+    const calcServTotal = serv.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
+    const calcSub = calcCongTotal + calcPrepTotal + calcServTotal;
+    const calcIva = calcSub * CONTRACT_INFO.ivaRate;
+    const calcGrand = calcSub + calcIva;
+
+    const totalsPayload = {
+      totalAlmacenaje: calcCongTotal + calcPrepTotal,
+      subtotal: calcSub,
+      iva: calcIva,
+      totalGeneral: calcGrand,
+      congeladosMonto: calcCongTotal,
+      preparadosMonto: calcPrepTotal,
+      serviciosMonto: calcServTotal
+    };
+
+    const newTitle = activeCut.title?.startsWith('Corte ') 
+      ? `Corte ${formatDate(startDate)} al ${formatDate(endDate)}`
+      : (activeCut.title || `Corte ${formatDate(startDate)} al ${formatDate(endDate)}`);
+
     try {
-      const res = await updateDailyCut(activeCut.id, { isLocked: newLockState ? 1 : 0 });
+      const res = await updateDailyCut(activeCut.id, {
+        isLocked: newLockState ? 1 : 0,
+        title: newTitle,
+        startDate,
+        endDate,
+        clientName,
+        congeladosData: cong,
+        preparadosData: prep,
+        servicesData: serv,
+        totalsData: totalsPayload
+      });
+
       if (res.success) {
-        setActiveCut(prev => ({ ...prev, isLocked: newLockState }));
+        setActiveCut(prev => ({
+          ...prev,
+          isLocked: newLockState,
+          title: newTitle,
+          startDate,
+          endDate,
+          congeladosData: cong,
+          preparadosData: prep,
+          servicesData: serv,
+          totalsData: totalsPayload
+        }));
+
+        // Actualizar lista en el historial
+        fetchDailyCuts().then(cuts => {
+          if (Array.isArray(cuts)) setCutsList(cuts);
+        });
+
         if (newLockState) {
-          toast.success('Corte bloqueado (Modo Solo Lectura).');
+          toast.success('Corte cerrado y bloqueado. Fechas y datos sincronizados con éxito.');
         } else {
-          toast('Corte desbloqueado. Ahora puedes editar las lecturas directamente.', { icon: '🔓' });
+          toast('Corte desbloqueado. Ahora puedes editar fechas y lecturas.', { icon: '🔓' });
         }
       }
     } catch (e) {
@@ -519,7 +714,7 @@ const Summary2 = () => {
   // EXPORTACIONES
   // =========================================================================
 
-  // Exportar Excel
+  // Exportar Excel XLSX
   const handleExportXLSX = () => {
     try {
       exportCuadroClienteCuartoFrio({
@@ -537,10 +732,10 @@ const Summary2 = () => {
         },
         format: 'xlsx'
       });
-      toast.success('Cuadro de cliente descargado en formato Excel (.xlsx)');
+      toast.success('Reporte Excel descargado exitosamente');
     } catch (err) {
       console.error(err);
-      toast.error('Error al exportar a Excel: ' + err.message);
+      toast.error('Error al exportar Excel: ' + err.message);
     }
   };
 
@@ -562,110 +757,113 @@ const Summary2 = () => {
         },
         format: 'csv'
       });
-      toast.success('Cuadro de cliente descargado en formato CSV');
+      toast.success('Archivo CSV descargado exitosamente');
     } catch (err) {
       console.error(err);
-      toast.error('Error al exportar a CSV: ' + err.message);
+      toast.error('Error al exportar CSV: ' + err.message);
     }
   };
 
   // Exportar PDF
   const handleExportPDF = () => {
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+    const doc = new jsPDF('p', 'mm', 'letter');
     
-    // Encabezado principal
-    doc.setFontSize(10);
+    // Encabezado
+    doc.setFontSize(11);
     doc.setFont(undefined, 'bold');
-    doc.text("PROCESO DE FACTURACION POR ALMACENAMIENTO CONGELADO(-18°) Y SERVICIOS EXTRA-ORDINARIOS", 14, 14);
+    doc.text(CONTRACT_INFO.contractorName, 14, 15);
     doc.setFontSize(8.5);
     doc.setFont(undefined, 'normal');
-    doc.text(`Cliente: ${clientName}`, 14, 19);
-    doc.text(`Movimientos diarios entre: ${formatDate(startDate)} Hasta ${formatDate(endDate)}`, 14, 24);
-    if (activeCut) {
-      doc.setFont(undefined, 'italic');
-      doc.text(`[Corte Oficial Congelado: ${activeCut.title}]`, 14, 28);
-    }
+    doc.text(CONTRACT_INFO.facility, 14, 20);
+    doc.text(`Cliente: ${clientName}`, 14, 25);
+    doc.text(`Período de Facturación: ${formatDate(startDate)} al ${formatDate(endDate)} (${daysCount} días)`, 14, 30);
     
-    let currentY = activeCut ? 32 : 28;
-
-    // 1. Tabla Congelados (Libras - $0.001)
-    if (showCongelados && congeladosRows.length > 0) {
+    if (activeCut) {
       doc.setFont(undefined, 'bold');
-      doc.setFontSize(8.5);
-      doc.text("ALMACENAMIENTO CONGELADOS ($0.001 / LB / DIA)", 14, currentY);
+      doc.text(`[Corte Congelado: ${activeCut.title}]`, 14, 35);
+      doc.setFont(undefined, 'normal');
+    }
+
+    doc.setLineWidth(0.5);
+    doc.line(14, 37, 200, 37);
+
+    let currentY = 42;
+
+    // 1. Tabla Congelados
+    if (showCongelados && congeladosRows.length > 0) {
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'bold');
+      doc.text('1. ALMACENAMIENTO PRODUCTO CONGELADO (-18°C) - Tarifa: $0.001 / libra / día', 14, currentY);
       
-      const congCol = ["FECHA", "DESCRIPCION", "INV-INICIAL", "ENTRADA LB", "SALIDA LB", "TOTAL LBS", "PRECIO", "TOTAL $"];
       const congBody = congeladosRows.map(r => [
         formatDate(r.fecha),
         r.descripcion,
-        Number(r.stockInicial).toLocaleString('en-US', { maximumFractionDigits: 2 }),
-        Number(r.entradas).toLocaleString('en-US', { maximumFractionDigits: 2 }),
-        Number(r.salidas).toLocaleString('en-US', { maximumFractionDigits: 2 }),
-        Number(r.stockFinal).toLocaleString('en-US', { maximumFractionDigits: 2 }),
+        Number(r.stockInicial || 0).toLocaleString('en-US'),
+        Number(r.entradas || 0).toLocaleString('en-US'),
+        Number(r.salidas || 0).toLocaleString('en-US'),
+        Number(r.stockFinal || 0).toLocaleString('en-US'),
         `$${formatPrice(r.precio)}`,
         `$${formatCurrency(r.totalMonto)}`
       ]);
 
       congBody.push([
-        'Totales',
+        'TOTALES',
         '',
-        congTotals.invInicial.toLocaleString('en-US', { maximumFractionDigits: 2 }),
-        congTotals.entradas.toLocaleString('en-US', { maximumFractionDigits: 2 }),
-        congTotals.salidas.toLocaleString('en-US', { maximumFractionDigits: 2 }),
-        congTotals.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 2 }),
+        congTotals.invInicial.toLocaleString('en-US'),
+        congTotals.entradas.toLocaleString('en-US'),
+        congTotals.salidas.toLocaleString('en-US'),
+        congTotals.stockFinal.toLocaleString('en-US'),
         '',
         `$${formatCurrency(congTotals.totalMonto)}`
       ]);
 
       autoTable(doc, {
-        head: [congCol],
+        head: [["FECHA", "DESCRIPCION", "INV-INICIAL", "ENTRADAS", "SALIDAS", "TOTAL LBS", "PRECIO", "TOTAL $"]],
         body: congBody,
         startY: currentY + 2,
-        styles: { fontSize: 6, cellPadding: 1 },
-        headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
-        footStyles: { fillColor: [235, 245, 251], fontStyle: 'bold' }
+        styles: { fontSize: 6.5, cellPadding: 1 },
+        headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' }
       });
 
       currentY = doc.lastAutoTable.finalY + 6;
     }
 
-    // 2. Tabla Preparados (Cestas - $0.038)
+    // 2. Tabla Preparados
     if (showPreparados && preparadosRows.length > 0) {
-      if (currentY > 215) { doc.addPage(); currentY = 15; }
-      doc.setFont(undefined, 'bold');
-      doc.setFontSize(8.5);
-      doc.text("ALMACENAMIENTO PREPARADOS ($0.038 / CESTA / DIA)", 14, currentY);
+      if (currentY > 220) { doc.addPage(); currentY = 15; }
 
-      const prepCol = ["FECHA", "DESCRIPCION", "INV CESTAS", "ENTRADA CST", "SALIDA CST", "TOTAL CST", "PRECIO", "TOTAL $"];
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'bold');
+      doc.text('2. ALMACENAMIENTO PRODUCTOS PREPARADOS - Tarifa: $0.038 / cesta / día', 14, currentY);
+      
       const prepBody = preparadosRows.map(r => [
         formatDate(r.fecha),
         r.descripcion,
-        Number(r.stockInicial).toLocaleString('en-US', { maximumFractionDigits: 0 }),
-        Number(r.entradas).toLocaleString('en-US', { maximumFractionDigits: 0 }),
-        Number(r.salidas).toLocaleString('en-US', { maximumFractionDigits: 0 }),
-        Number(r.stockFinal).toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        Number(r.stockInicial || 0).toLocaleString('en-US'),
+        Number(r.entradas || 0).toLocaleString('en-US'),
+        Number(r.salidas || 0).toLocaleString('en-US'),
+        Number(r.stockFinal || 0).toLocaleString('en-US'),
         `$${formatPrice(r.precio)}`,
         `$${formatCurrency(r.totalMonto)}`
       ]);
 
       prepBody.push([
-        'Totales',
+        'TOTALES',
         '',
-        prepTotals.invInicial.toLocaleString('en-US', { maximumFractionDigits: 0 }),
-        prepTotals.entradas.toLocaleString('en-US', { maximumFractionDigits: 0 }),
-        prepTotals.salidas.toLocaleString('en-US', { maximumFractionDigits: 0 }),
-        prepTotals.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        prepTotals.invInicial.toLocaleString('en-US'),
+        prepTotals.entradas.toLocaleString('en-US'),
+        prepTotals.salidas.toLocaleString('en-US'),
+        prepTotals.stockFinal.toLocaleString('en-US'),
         '',
         `$${formatCurrency(prepTotals.totalMonto)}`
       ]);
 
       autoTable(doc, {
-        head: [prepCol],
+        head: [["FECHA", "DESCRIPCION", "INV CESTAS", "ENTRADAS", "SALIDAS", "TOTAL CESTAS", "PRECIO", "TOTAL $"]],
         body: prepBody,
         startY: currentY + 2,
-        styles: { fontSize: 6, cellPadding: 1 },
-        headStyles: { fillColor: [39, 174, 96], textColor: 255, fontStyle: 'bold' },
-        footStyles: { fillColor: [234, 250, 234], fontStyle: 'bold' }
+        styles: { fontSize: 6.5, cellPadding: 1 },
+        headStyles: { fillColor: [39, 174, 96], textColor: 255, fontStyle: 'bold' }
       });
 
       currentY = doc.lastAutoTable.finalY + 6;
@@ -673,23 +871,24 @@ const Summary2 = () => {
 
     // 3. Tabla Servicios Extraordinarios
     if (servicesData.length > 0) {
-      if (currentY > 215) { doc.addPage(); currentY = 15; }
+      if (currentY > 220) { doc.addPage(); currentY = 15; }
+
+      doc.setFontSize(9);
       doc.setFont(undefined, 'bold');
-      doc.setFontSize(8.5);
-      doc.text("SERVICIOS EXTRA-ORDINARIOS", 14, currentY);
+      doc.text('3. SERVICIOS EXTRA-ORDINARIOS (MANIOBRAS, HORAS EXTRAS, TEMPERATURA)', 14, currentY);
       
       const servRows = servicesData.map(s => [
         formatDate(s.date),
         s.description + (s.ref ? ` (${s.ref})` : ''),
-        s.quantity ? Number(s.quantity).toLocaleString('en-US') : '1',
+        s.quantity ? Number(s.quantity).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '1',
         s.unitPrice ? `$${formatPrice(s.unitPrice)}` : `$${formatCurrency(s.value)}`,
         `$${formatCurrency(s.value)}`
       ]);
 
-      servRows.push(['TOTALES', '', '', '', `$${formatCurrency(totalServicios)}`]);
+      servRows.push(['TOTALES', '', totalServiciosQty.toLocaleString('en-US'), '', `$${formatCurrency(totalServicios)}`]);
 
       autoTable(doc, {
-        head: [["FECHA", "DESCRIPCION", "TOTAL", "PRECIO", "VALOR"]],
+        head: [["FECHA", "DESCRIPCION", "TOTAL (CANT/LBS)", "PRECIO", "VALOR"]],
         body: servRows,
         startY: currentY + 2,
         styles: { fontSize: 6.5, cellPadding: 1 },
@@ -741,9 +940,8 @@ const Summary2 = () => {
           </p>
         </div>
 
-        {/* Acciones Superiores: Congelar, Historial y Exportaciones */}
-        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* Botón Congelar Período Actual */}
+        {/* Acciones de Cabecera: Congelar, Desbloquear, Historial, Exportar */}
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {!activeCut ? (
             <button 
               className="btn btn-primary" 
@@ -756,10 +954,10 @@ const Summary2 = () => {
             <button 
               className={`btn ${isLocked ? 'btn-outline' : 'btn-primary'}`}
               onClick={handleToggleLock}
-              title={isLocked ? 'Desbloquear corte para editar lecturas' : 'Bloquear corte para evitar modificaciones'}
+              title={isLocked ? 'Desbloquear corte para editar fechas o lecturas' : 'Bloquear y cerrar corte guardando fechas y datos'}
             >
               {isLocked ? <Unlock size={18} /> : <Lock size={18} />}
-              {isLocked ? 'Desbloquear Corte' : 'Bloquear Corte'}
+              {isLocked ? 'Desbloquear Corte' : 'Bloquear / Cerrar Corte'}
             </button>
           )}
 
@@ -837,7 +1035,7 @@ const Summary2 = () => {
               </strong>
               {activeCut && (
                 <span className={`badge ${isLocked ? 'badge-primary' : 'badge-warning'}`} style={{ fontSize: '0.7rem' }}>
-                  {isLocked ? '🔒 Bloqueado (Solo lectura)' : '🔓 Desbloqueado (Modo edición)'}
+                  {isLocked ? '🔒 Bloqueado (Solo lectura)' : '🔓 Desbloqueado (Modo edición y ajuste de fechas)'}
                 </span>
               )}
               {saveStatus === 'saving' && (
@@ -853,7 +1051,7 @@ const Summary2 = () => {
             </div>
             <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-text-light)', marginTop: '0.15rem' }}>
               {activeCut 
-                ? `Período oficial del ${formatDate(activeCut.startDate)} al ${formatDate(activeCut.endDate)} · Creado por ${activeCut.created_by || 'admin'}`
+                ? `Período oficial del ${formatDate(startDate)} al ${formatDate(endDate)} · Creado por ${activeCut.created_by || 'admin'}`
                 : 'Calculando lecturas y existencias dinámicamente desde los movimientos registrados en el sistema.'}
             </p>
           </div>
@@ -906,115 +1104,131 @@ const Summary2 = () => {
             />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Cliente / Depositante</label>
-            <input 
-              type="text" 
-              className="form-input" 
-              value={clientName} 
-              onChange={(e) => setClientName(e.target.value)} 
+            <label className="form-label">Cliente Facturación</label>
+            <input
+              type="text"
+              className="form-input"
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+              placeholder="Nombre del Cliente"
+              disabled={Boolean(activeCut && isLocked)}
             />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Mostrar Tablas</label>
-            <select className="form-select" value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}>
-              <option value="all">Consolidado (Preparados + Congelados)</option>
-              <option value="Preparados">Solo Preparados ($0.038 / cesta)</option>
-              <option value="Congelados">Solo Congelados ($0.001 / libra)</option>
+            <label className="form-label">Filtrar Categoría</label>
+            <select
+              className="form-select"
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+            >
+              <option value="all">Todas las Categorías</option>
+              <option value="Congelados">Solo Congelados (Libras)</option>
+              <option value="Preparados">Solo Preparados (Cestas)</option>
             </select>
           </div>
         </div>
       </div>
 
-      {/* Tarjetas Resumen de Liquidación */}
-      <div className="grid grid-cols-4" style={{ gap: '1rem', marginBottom: '1.5rem' }}>
-        <div className="card" style={{ borderLeft: '4px solid #2980b9', padding: '1rem' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', textTransform: 'uppercase', fontWeight: 600 }}>
-            Congelados (Libras)
+      {/* KPI Cards del Período */}
+      <div className="grid grid-cols-4" style={{ marginBottom: '1.5rem', gap: '1rem' }}>
+        <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid #2980b9' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', fontWeight: 600 }}>CONGELADOS (LBS)</span>
+            <Snowflake size={16} style={{ color: '#2980b9' }} />
           </div>
-          <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#2980b9', marginTop: '0.25rem' }}>
-            ${formatCurrency(congTotals.totalMonto)}
+          <div style={{ fontSize: '1.35rem', fontWeight: 'bold', color: 'var(--color-text)' }}>
+            {congTotals.stockFinal.toLocaleString('en-US')} lbs
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', marginTop: '0.2rem' }}>
-            Tarifa: $0.001 / lb / día
-          </div>
-        </div>
-
-        <div className="card" style={{ borderLeft: '4px solid #27ae60', padding: '1rem' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', textTransform: 'uppercase', fontWeight: 600 }}>
-            Preparados (Cestas)
-          </div>
-          <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#27ae60', marginTop: '0.25rem' }}>
-            ${formatCurrency(prepTotals.totalMonto)}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', marginTop: '0.2rem' }}>
-            Tarifa: $0.038 / cesta / día
+          <div style={{ fontSize: '0.8rem', color: '#2980b9', marginTop: '0.25rem', fontWeight: '600' }}>
+            ${formatCurrency(congTotals.totalMonto)} acumulado
           </div>
         </div>
 
-        <div className="card" style={{ borderLeft: '4px solid #e67e22', padding: '1rem' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', textTransform: 'uppercase', fontWeight: 600 }}>
-            Servicios Extraordinarios
+        <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid #27ae60' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', fontWeight: 600 }}>PREPARADOS (CESTAS)</span>
+            <Package size={16} style={{ color: '#27ae60' }} />
           </div>
-          <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#e67e22', marginTop: '0.25rem' }}>
+          <div style={{ fontSize: '1.35rem', fontWeight: 'bold', color: 'var(--color-text)' }}>
+            {prepTotals.stockFinal.toLocaleString('en-US')} cestas
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#27ae60', marginTop: '0.25rem', fontWeight: '600' }}>
+            ${formatCurrency(prepTotals.totalMonto)} acumulado
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid #e67e22' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', fontWeight: 600 }}>SERVICIOS EXTRA</span>
+            <Layers size={16} style={{ color: '#e67e22' }} />
+          </div>
+          <div style={{ fontSize: '1.35rem', fontWeight: 'bold', color: 'var(--color-text)' }}>
             ${formatCurrency(totalServicios)}
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', marginTop: '0.2rem' }}>
-            {servicesData.length} actividades
+          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', marginTop: '0.25rem' }}>
+            {servicesData.length} actividades ({totalServiciosQty.toLocaleString('en-US')} cant/lbs)
           </div>
         </div>
 
-        <div className="card" style={{ borderLeft: '4px solid var(--color-primary)', padding: '1rem', backgroundColor: 'var(--color-surface)' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', textTransform: 'uppercase', fontWeight: 600 }}>
-            Total General (con IVA)
+        <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid var(--color-primary)', backgroundColor: 'rgba(79, 70, 229, 0.03)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--color-primary)', fontWeight: 700 }}>TOTAL + IVA (13%)</span>
+            <CheckCircle2 size={16} style={{ color: 'var(--color-primary)' }} />
           </div>
-          <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--color-primary)', marginTop: '0.25rem' }}>
+          <div style={{ fontSize: '1.45rem', fontWeight: 'bold', color: 'var(--color-primary)' }}>
             ${formatCurrency(reportGrandTotal)}
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', marginTop: '0.2rem' }}>
-            Subtotal: ${formatCurrency(reportSubtotal)} + IVA 13%
+          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', marginTop: '0.25rem' }}>
+            Subtotal: ${formatCurrency(reportSubtotal)}
           </div>
         </div>
       </div>
 
-      {/* 1. TABLA CONGELADOS (LIBRAS - $0.001) */}
+      {/* =========================================================================
+          TABLA 1: PRODUCTOS CONGELADOS (LIBRAS - $0.001 / LB / DIA)
+          ========================================================================= */}
       {showCongelados && (
-        <div style={{ marginBottom: '2rem' }}>
+        <div style={{ marginBottom: '2.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <h2 style={{ fontSize: '1rem', color: '#2980b9', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}>
-              <Package size={18} /> ALMACENAMIENTO PRODUCTOS CONGELADOS (LIBRAS - $0.001 / LB / DÍA)
-            </h2>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              {!isLocked && activeCut && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#2980b9' }}></div>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--color-text)', margin: 0 }}>
+                ALMACENAMIENTO PRODUCTO CONGELADO (-18°C)
+              </h2>
+              <span className="badge badge-outline" style={{ fontSize: '0.75rem', borderColor: '#2980b9', color: '#2980b9' }}>
+                Tarifa: $0.001 / libra / día
+              </span>
+              {activeCut && !isLocked && (
                 <span className="badge badge-warning" style={{ fontSize: '0.7rem' }}>
-                  <Pencil size={11} /> Celdas Editables Activas
+                  ✍️ Celdas Editables (Autoguardado)
                 </span>
               )}
-              <span className="badge" style={{ backgroundColor: '#ebf5fb', color: '#2980b9', fontWeight: 600 }}>
-                Tarifa: $0.001 / lb / día
-              </span>
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--color-text-light)' }}>
+              Subtotal Congelados: <strong style={{ color: '#2980b9' }}>${formatCurrency(congTotals.totalMonto)}</strong>
             </div>
           </div>
 
-          <div className="card" style={{ padding: '0' }}>
+          <div className="card" style={{ padding: 0 }}>
             <div className="table-container" style={{ border: 'none', boxShadow: 'none' }}>
               <table>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--color-bg)' }}>
-                    <th style={{ width: '110px' }}>FECHA</th>
+                    <th>FECHA</th>
                     <th>DESCRIPCION</th>
-                    <th style={{ textAlign: 'right', width: '130px' }}>INV-INICIAL</th>
-                    <th style={{ textAlign: 'right', width: '130px' }}>ENTRADA LB</th>
-                    <th style={{ textAlign: 'right', width: '130px' }}>SALIDA LB</th>
-                    <th style={{ textAlign: 'right', width: '140px' }}>TOTAL LIBRAS</th>
-                    <th style={{ textAlign: 'right', width: '90px' }}>PRECIO</th>
-                    <th style={{ textAlign: 'right', width: '110px' }}>TOTAL $</th>
+                    <th style={{ textAlign: 'right' }}>INV-INICIAL</th>
+                    <th style={{ textAlign: 'right' }}>ENTRADA LB</th>
+                    <th style={{ textAlign: 'right' }}>SALIDA LB</th>
+                    <th style={{ textAlign: 'right' }}>TOTAL LIBRAS</th>
+                    <th style={{ textAlign: 'center' }}>PRECIO</th>
+                    <th style={{ textAlign: 'right' }}>Total $</th>
                   </tr>
                 </thead>
                 <tbody>
                   {congeladosRows.length === 0 ? (
                     <tr>
-                      <td colSpan="8" style={{ textAlign: 'center', padding: '1.5rem' }}>
-                        No hay movimientos de congelados en el rango de fechas seleccionado.
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--color-text-light)' }}>
+                        No hay movimientos de productos congelados en el período seleccionado.
                       </td>
                     </tr>
                   ) : (
@@ -1022,109 +1236,64 @@ const Summary2 = () => {
                       <tr key={idx}>
                         <td style={{ fontWeight: '500' }}>{formatDate(r.fecha)}</td>
                         <td>{r.descripcion}</td>
-                        
-                        {/* INV INICIAL (Editable si no está bloqueado) */}
                         <td style={{ textAlign: 'right' }}>
-                          {!isLocked ? (
+                          {activeCut && !isLocked ? (
                             <input
                               type="number"
-                              step="any"
-                              value={r.stockInicial}
+                              className="form-input"
+                              style={{ width: '100px', textAlign: 'right', margin: 0, padding: '0.35rem 0.5rem' }}
+                              value={r.stockInicial ?? ''}
                               onChange={(e) => handleCellEdit('congelados', idx, 'stockInicial', e.target.value)}
-                              style={{
-                                width: '100%',
-                                textAlign: 'right',
-                                padding: '0.25rem 0.4rem',
-                                fontSize: '0.85rem',
-                                border: '1px solid var(--color-primary)',
-                                borderRadius: '4px',
-                                background: 'var(--color-card)',
-                                color: 'var(--color-text)',
-                                fontWeight: '500'
-                              }}
                             />
                           ) : (
-                            Number(r.stockInicial).toLocaleString('en-US', { maximumFractionDigits: 2 })
+                            Number(r.stockInicial || 0).toLocaleString('en-US')
                           )}
                         </td>
-
-                        {/* ENTRADAS (Editable si no está bloqueado) */}
-                        <td style={{ textAlign: 'right', color: r.entradas > 0 ? 'var(--color-success)' : 'inherit' }}>
-                          {!isLocked ? (
+                        <td style={{ textAlign: 'right' }}>
+                          {activeCut && !isLocked ? (
                             <input
                               type="number"
-                              step="any"
-                              value={r.entradas}
+                              className="form-input"
+                              style={{ width: '100px', textAlign: 'right', margin: 0, padding: '0.35rem 0.5rem', color: 'var(--color-success)' }}
+                              value={r.entradas ?? ''}
                               onChange={(e) => handleCellEdit('congelados', idx, 'entradas', e.target.value)}
-                              style={{
-                                width: '100%',
-                                textAlign: 'right',
-                                padding: '0.25rem 0.4rem',
-                                fontSize: '0.85rem',
-                                border: '1px solid var(--color-primary)',
-                                borderRadius: '4px',
-                                background: 'var(--color-card)',
-                                color: 'var(--color-success)',
-                                fontWeight: '600'
-                              }}
                             />
                           ) : (
-                            r.entradas > 0 ? `+${Number(r.entradas).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '0'
+                            Number(r.entradas || 0).toLocaleString('en-US')
                           )}
                         </td>
-
-                        {/* SALIDAS (Editable si no está bloqueado) */}
-                        <td style={{ textAlign: 'right', color: r.salidas > 0 ? 'var(--color-danger)' : 'inherit' }}>
-                          {!isLocked ? (
+                        <td style={{ textAlign: 'right' }}>
+                          {activeCut && !isLocked ? (
                             <input
                               type="number"
-                              step="any"
-                              value={r.salidas}
+                              className="form-input"
+                              style={{ width: '100px', textAlign: 'right', margin: 0, padding: '0.35rem 0.5rem', color: 'var(--color-danger)' }}
+                              value={r.salidas ?? ''}
                               onChange={(e) => handleCellEdit('congelados', idx, 'salidas', e.target.value)}
-                              style={{
-                                width: '100%',
-                                textAlign: 'right',
-                                padding: '0.25rem 0.4rem',
-                                fontSize: '0.85rem',
-                                border: '1px solid var(--color-primary)',
-                                borderRadius: '4px',
-                                background: 'var(--color-card)',
-                                color: 'var(--color-danger)',
-                                fontWeight: '600'
-                              }}
                             />
                           ) : (
-                            r.salidas > 0 ? `-${Number(r.salidas).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '0'
+                            Number(r.salidas || 0).toLocaleString('en-US')
                           )}
                         </td>
-
-                        {/* TOTAL LIBRAS (Editable si no está bloqueado) */}
                         <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
-                          {!isLocked ? (
+                          {activeCut && !isLocked ? (
                             <input
                               type="number"
-                              step="any"
-                              value={r.stockFinal}
+                              className="form-input"
+                              style={{ width: '110px', textAlign: 'right', margin: 0, padding: '0.35rem 0.5rem', fontWeight: 'bold' }}
+                              value={r.stockFinal ?? ''}
                               onChange={(e) => handleCellEdit('congelados', idx, 'stockFinal', e.target.value)}
-                              style={{
-                                width: '100%',
-                                textAlign: 'right',
-                                padding: '0.25rem 0.4rem',
-                                fontSize: '0.85rem',
-                                border: '1px solid var(--color-primary)',
-                                borderRadius: '4px',
-                                background: 'var(--color-card)',
-                                color: 'var(--color-text)',
-                                fontWeight: '700'
-                              }}
                             />
                           ) : (
-                            Number(r.stockFinal).toLocaleString('en-US', { maximumFractionDigits: 2 })
+                            Number(r.stockFinal || 0).toLocaleString('en-US')
                           )}
                         </td>
-
-                        <td style={{ textAlign: 'right' }}>${formatPrice(r.precio)}</td>
-                        <td style={{ textAlign: 'right', fontWeight: '500' }}>${formatCurrency(r.totalMonto)}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
+                          ${formatPrice(r.precio)}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#2980b9' }}>
+                          ${formatCurrency(r.totalMonto)}
+                        </td>
                       </tr>
                     ))
                   )}
@@ -1134,10 +1303,10 @@ const Summary2 = () => {
                     <tr style={{ backgroundColor: 'var(--color-surface)', fontWeight: 'bold' }}>
                       <td></td>
                       <td>Totales</td>
-                      <td style={{ textAlign: 'right' }}>{congTotals.invInicial.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--color-success)' }}>{congTotals.entradas.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--color-danger)' }}>{congTotals.salidas.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
-                      <td style={{ textAlign: 'right' }}>{congTotals.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                      <td style={{ textAlign: 'right' }}>{congTotals.invInicial.toLocaleString('en-US')}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--color-success)' }}>{congTotals.entradas.toLocaleString('en-US')}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--color-danger)' }}>{congTotals.salidas.toLocaleString('en-US')}</td>
+                      <td style={{ textAlign: 'right' }}>{congTotals.stockFinal.toLocaleString('en-US')}</td>
                       <td></td>
                       <td style={{ textAlign: 'right', color: '#2980b9' }}>${formatCurrency(congTotals.totalMonto)}</td>
                     </tr>
@@ -1149,45 +1318,51 @@ const Summary2 = () => {
         </div>
       )}
 
-      {/* 2. TABLA PREPARADOS (CESTAS - $0.038) */}
+      {/* =========================================================================
+          TABLA 2: PRODUCTOS PREPARADOS (CESTAS - $0.038 / CESTA / DIA)
+          ========================================================================= */}
       {showPreparados && (
-        <div style={{ marginBottom: '2rem' }}>
+        <div style={{ marginBottom: '2.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <h2 style={{ fontSize: '1rem', color: '#27ae60', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}>
-              <Layers size={18} /> ALMACENAMIENTO PRODUCTOS PREPARADOS (CESTAS - $0.038 / CESTA / DÍA)
-            </h2>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              {!isLocked && activeCut && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#27ae60' }}></div>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--color-text)', margin: 0 }}>
+                ALMACENAMIENTO PRODUCTOS PREPARADOS
+              </h2>
+              <span className="badge badge-outline" style={{ fontSize: '0.75rem', borderColor: '#27ae60', color: '#27ae60' }}>
+                Tarifa: $0.038 / cesta / día ($1.33 / pallet / día)
+              </span>
+              {activeCut && !isLocked && (
                 <span className="badge badge-warning" style={{ fontSize: '0.7rem' }}>
-                  <Pencil size={11} /> Celdas Editables Activas
+                  ✍️ Celdas Editables (Autoguardado)
                 </span>
               )}
-              <span className="badge" style={{ backgroundColor: '#eafaf1', color: '#27ae60', fontWeight: 600 }}>
-                Tarifa: $0.038 / cesta / día
-              </span>
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--color-text-light)' }}>
+              Subtotal Preparados: <strong style={{ color: '#27ae60' }}>${formatCurrency(prepTotals.totalMonto)}</strong>
             </div>
           </div>
 
-          <div className="card" style={{ padding: '0' }}>
+          <div className="card" style={{ padding: 0 }}>
             <div className="table-container" style={{ border: 'none', boxShadow: 'none' }}>
               <table>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--color-bg)' }}>
-                    <th style={{ width: '110px' }}>FECHA</th>
+                    <th>FECHA</th>
                     <th>DESCRIPCION</th>
-                    <th style={{ textAlign: 'right', width: '130px' }}>INV CESTAS</th>
-                    <th style={{ textAlign: 'right', width: '130px' }}>ENTRADA CESTAS</th>
-                    <th style={{ textAlign: 'right', width: '130px' }}>SALIDA CESTAS</th>
-                    <th style={{ textAlign: 'right', width: '140px' }}>TOTAL CESTA</th>
-                    <th style={{ textAlign: 'right', width: '90px' }}>PRECIO CESTA</th>
-                    <th style={{ textAlign: 'right', width: '110px' }}>TOTAL $</th>
+                    <th style={{ textAlign: 'right' }}>INV CESTAS</th>
+                    <th style={{ textAlign: 'right' }}>ENTRADA CESTAS</th>
+                    <th style={{ textAlign: 'right' }}>SALIDA CESTAS</th>
+                    <th style={{ textAlign: 'right' }}>TOTAL CESTA</th>
+                    <th style={{ textAlign: 'center' }}>PRECIO CESTA</th>
+                    <th style={{ textAlign: 'right' }}>Total $</th>
                   </tr>
                 </thead>
                 <tbody>
                   {preparadosRows.length === 0 ? (
                     <tr>
-                      <td colSpan="8" style={{ textAlign: 'center', padding: '1.5rem' }}>
-                        No hay movimientos de preparados en el rango de fechas seleccionado.
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--color-text-light)' }}>
+                        No hay movimientos de productos preparados en el período seleccionado.
                       </td>
                     </tr>
                   ) : (
@@ -1195,109 +1370,64 @@ const Summary2 = () => {
                       <tr key={idx}>
                         <td style={{ fontWeight: '500' }}>{formatDate(r.fecha)}</td>
                         <td>{r.descripcion}</td>
-
-                        {/* INV CESTAS (Editable si no está bloqueado) */}
                         <td style={{ textAlign: 'right' }}>
-                          {!isLocked ? (
+                          {activeCut && !isLocked ? (
                             <input
                               type="number"
-                              step="1"
-                              value={r.stockInicial}
+                              className="form-input"
+                              style={{ width: '100px', textAlign: 'right', margin: 0, padding: '0.35rem 0.5rem' }}
+                              value={r.stockInicial ?? ''}
                               onChange={(e) => handleCellEdit('preparados', idx, 'stockInicial', e.target.value)}
-                              style={{
-                                width: '100%',
-                                textAlign: 'right',
-                                padding: '0.25rem 0.4rem',
-                                fontSize: '0.85rem',
-                                border: '1px solid var(--color-primary)',
-                                borderRadius: '4px',
-                                background: 'var(--color-card)',
-                                color: 'var(--color-text)',
-                                fontWeight: '500'
-                              }}
                             />
                           ) : (
-                            Number(r.stockInicial).toLocaleString('en-US', { maximumFractionDigits: 0 })
+                            Number(r.stockInicial || 0).toLocaleString('en-US')
                           )}
                         </td>
-
-                        {/* ENTRADA CESTAS (Editable si no está bloqueado) */}
-                        <td style={{ textAlign: 'right', color: r.entradas > 0 ? 'var(--color-success)' : 'inherit' }}>
-                          {!isLocked ? (
+                        <td style={{ textAlign: 'right' }}>
+                          {activeCut && !isLocked ? (
                             <input
                               type="number"
-                              step="1"
-                              value={r.entradas}
+                              className="form-input"
+                              style={{ width: '100px', textAlign: 'right', margin: 0, padding: '0.35rem 0.5rem', color: 'var(--color-success)' }}
+                              value={r.entradas ?? ''}
                               onChange={(e) => handleCellEdit('preparados', idx, 'entradas', e.target.value)}
-                              style={{
-                                width: '100%',
-                                textAlign: 'right',
-                                padding: '0.25rem 0.4rem',
-                                fontSize: '0.85rem',
-                                border: '1px solid var(--color-primary)',
-                                borderRadius: '4px',
-                                background: 'var(--color-card)',
-                                color: 'var(--color-success)',
-                                fontWeight: '600'
-                              }}
                             />
                           ) : (
-                            r.entradas > 0 ? `+${Number(r.entradas).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '0'
+                            Number(r.entradas || 0).toLocaleString('en-US')
                           )}
                         </td>
-
-                        {/* SALIDA CESTAS (Editable si no está bloqueado) */}
-                        <td style={{ textAlign: 'right', color: r.salidas > 0 ? 'var(--color-danger)' : 'inherit' }}>
-                          {!isLocked ? (
+                        <td style={{ textAlign: 'right' }}>
+                          {activeCut && !isLocked ? (
                             <input
                               type="number"
-                              step="1"
-                              value={r.salidas}
+                              className="form-input"
+                              style={{ width: '100px', textAlign: 'right', margin: 0, padding: '0.35rem 0.5rem', color: 'var(--color-danger)' }}
+                              value={r.salidas ?? ''}
                               onChange={(e) => handleCellEdit('preparados', idx, 'salidas', e.target.value)}
-                              style={{
-                                width: '100%',
-                                textAlign: 'right',
-                                padding: '0.25rem 0.4rem',
-                                fontSize: '0.85rem',
-                                border: '1px solid var(--color-primary)',
-                                borderRadius: '4px',
-                                background: 'var(--color-card)',
-                                color: 'var(--color-danger)',
-                                fontWeight: '600'
-                              }}
                             />
                           ) : (
-                            r.salidas > 0 ? `-${Number(r.salidas).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '0'
+                            Number(r.salidas || 0).toLocaleString('en-US')
                           )}
                         </td>
-
-                        {/* TOTAL CESTAS (Editable si no está bloqueado) */}
                         <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
-                          {!isLocked ? (
+                          {activeCut && !isLocked ? (
                             <input
                               type="number"
-                              step="1"
-                              value={r.stockFinal}
+                              className="form-input"
+                              style={{ width: '110px', textAlign: 'right', margin: 0, padding: '0.35rem 0.5rem', fontWeight: 'bold' }}
+                              value={r.stockFinal ?? ''}
                               onChange={(e) => handleCellEdit('preparados', idx, 'stockFinal', e.target.value)}
-                              style={{
-                                width: '100%',
-                                textAlign: 'right',
-                                padding: '0.25rem 0.4rem',
-                                fontSize: '0.85rem',
-                                border: '1px solid var(--color-primary)',
-                                borderRadius: '4px',
-                                background: 'var(--color-card)',
-                                color: 'var(--color-text)',
-                                fontWeight: '700'
-                              }}
                             />
                           ) : (
-                            Number(r.stockFinal).toLocaleString('en-US', { maximumFractionDigits: 0 })
+                            Number(r.stockFinal || 0).toLocaleString('en-US')
                           )}
                         </td>
-
-                        <td style={{ textAlign: 'right' }}>${formatPrice(r.precio)}</td>
-                        <td style={{ textAlign: 'right', fontWeight: '500' }}>${formatCurrency(r.totalMonto)}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
+                          ${formatPrice(r.precio)}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#27ae60' }}>
+                          ${formatCurrency(r.totalMonto)}
+                        </td>
                       </tr>
                     ))
                   )}
@@ -1307,10 +1437,10 @@ const Summary2 = () => {
                     <tr style={{ backgroundColor: 'var(--color-surface)', fontWeight: 'bold' }}>
                       <td></td>
                       <td>Totales</td>
-                      <td style={{ textAlign: 'right' }}>{prepTotals.invInicial.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--color-success)' }}>{prepTotals.entradas.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--color-danger)' }}>{prepTotals.salidas.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
-                      <td style={{ textAlign: 'right' }}>{prepTotals.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                      <td style={{ textAlign: 'right' }}>{prepTotals.invInicial.toLocaleString('en-US')}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--color-success)' }}>{prepTotals.entradas.toLocaleString('en-US')}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--color-danger)' }}>{prepTotals.salidas.toLocaleString('en-US')}</td>
+                      <td style={{ textAlign: 'right' }}>{prepTotals.stockFinal.toLocaleString('en-US')}</td>
                       <td></td>
                       <td style={{ textAlign: 'right', color: '#27ae60' }}>${formatCurrency(prepTotals.totalMonto)}</td>
                     </tr>
@@ -1322,11 +1452,29 @@ const Summary2 = () => {
         </div>
       )}
 
-      {/* 3. TABLA SERVICIOS EXTRAORDINARIOS */}
-      <div style={{ marginBottom: '2rem' }}>
-        <h2 style={{ fontSize: '1rem', color: '#e67e22', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}>
-          <FileText size={18} /> SERVICIOS EXTRA-ORDINARIOS
-        </h2>
+      {/* =========================================================================
+          TABLA 3: SERVICIOS EXTRAORDINARIOS (MANIOBRAS, HORAS EXTRAS, TEMPERATURA)
+          ========================================================================= */}
+      <div style={{ marginBottom: '2.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#e67e22' }}></div>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--color-text)', margin: 0 }}>
+              SERVICIOS EXTRA-ORDINARIOS
+            </h2>
+            <span className="badge badge-outline" style={{ fontSize: '0.75rem', borderColor: '#e67e22', color: '#e67e22' }}>
+              Tarifas según Contrato Anexo A
+            </span>
+            {activeCut && !isLocked && (
+              <span className="badge badge-warning" style={{ fontSize: '0.7rem' }}>
+                ✍️ Celdas Editables (Autoguardado)
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: '0.85rem', color: 'var(--color-text-light)' }}>
+            Total Servicios: <strong style={{ color: '#e67e22' }}>${formatCurrency(totalServicios)}</strong>
+          </div>
+        </div>
 
         <div className="card" style={{ padding: 0 }}>
           <div className="table-container" style={{ border: 'none', boxShadow: 'none' }}>
@@ -1335,7 +1483,7 @@ const Summary2 = () => {
                 <tr style={{ backgroundColor: 'var(--color-bg)' }}>
                   <th>FECHA</th>
                   <th>DESCRIPCION</th>
-                  <th style={{ textAlign: 'center' }}>TOTAL (CANT/LBS)</th>
+                  <th style={{ textAlign: 'center' }}>TOTAL (CANT / LBS)</th>
                   <th style={{ textAlign: 'right' }}>PRECIO</th>
                   <th style={{ textAlign: 'right' }}>VALOR</th>
                 </tr>
@@ -1351,10 +1499,64 @@ const Summary2 = () => {
                   servicesData.map((s, idx) => (
                     <tr key={idx}>
                       <td style={{ fontWeight: '500' }}>{formatDate(s.date)}</td>
-                      <td>{s.description} {s.ref ? `(${s.ref})` : ''}</td>
-                      <td style={{ textAlign: 'center' }}>{s.quantity !== undefined ? Number(s.quantity).toLocaleString('en-US') : '1'}</td>
-                      <td style={{ textAlign: 'right' }}>{s.unitPrice ? `$${formatPrice(s.unitPrice)}` : `$${formatCurrency(s.value)}`}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 'bold' }}>${formatCurrency(s.value)}</td>
+                      <td>
+                        {activeCut && !isLocked ? (
+                          <input
+                            type="text"
+                            className="form-input"
+                            style={{ margin: 0, padding: '0.35rem 0.5rem', width: '100%' }}
+                            value={s.description || ''}
+                            onChange={(e) => handleServiceCellEdit(idx, 'description', e.target.value)}
+                          />
+                        ) : (
+                          <>{s.description} {s.ref ? `(${s.ref})` : ''}</>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        {activeCut && !isLocked ? (
+                          <input
+                            type="number"
+                            step="any"
+                            className="form-input"
+                            style={{ width: '110px', textAlign: 'center', margin: '0 auto', padding: '0.35rem 0.5rem', fontWeight: 'bold' }}
+                            value={s.quantity ?? ''}
+                            onChange={(e) => handleServiceCellEdit(idx, 'quantity', e.target.value)}
+                            title="Cantidad o Libras recibidas"
+                          />
+                        ) : (
+                          Number(s.quantity).toLocaleString('en-US', { maximumFractionDigits: 2 })
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {activeCut && !isLocked ? (
+                          <input
+                            type="number"
+                            step="any"
+                            className="form-input"
+                            style={{ width: '90px', textAlign: 'right', margin: 0, padding: '0.35rem 0.5rem' }}
+                            value={s.unitPrice ?? ''}
+                            onChange={(e) => handleServiceCellEdit(idx, 'unitPrice', e.target.value)}
+                            title="Precio unitario o tasa por libra"
+                          />
+                        ) : (
+                          s.unitPrice !== undefined ? `$${formatPrice(s.unitPrice)}` : `$${formatCurrency(s.value)}`
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                        {activeCut && !isLocked ? (
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="form-input"
+                            style={{ width: '90px', textAlign: 'right', margin: 0, padding: '0.35rem 0.5rem', fontWeight: 'bold', color: '#e67e22' }}
+                            value={s.value ?? ''}
+                            onChange={(e) => handleServiceCellEdit(idx, 'value', e.target.value)}
+                            title="Total en dólares"
+                          />
+                        ) : (
+                          `$${formatCurrency(s.value)}`
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -1364,7 +1566,7 @@ const Summary2 = () => {
                   <tr style={{ backgroundColor: 'var(--color-surface)', fontWeight: 'bold' }}>
                     <td></td>
                     <td>TOTALES</td>
-                    <td style={{ textAlign: 'center' }}>{servicesData.reduce((a, c) => a + (Number(c.quantity) || 1), 0)}</td>
+                    <td style={{ textAlign: 'center' }}>{totalServiciosQty.toLocaleString('en-US')}</td>
                     <td></td>
                     <td style={{ textAlign: 'right', color: '#e67e22' }}>${formatCurrency(totalServicios)}</td>
                   </tr>
@@ -1394,26 +1596,26 @@ const Summary2 = () => {
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
-            <span style={{ color: 'var(--color-text-light)' }}>Servicios Extra-ordinarios:</span>
+            <span style={{ color: 'var(--color-text-light)' }}>Servicios Extraordinarios:</span>
             <strong>${formatCurrency(totalServicios)}</strong>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem', paddingTop: '0.5rem', borderTop: '1px solid var(--color-border)' }}>
-            <span style={{ fontWeight: 'bold' }}>Sub Total:</span>
-            <strong style={{ color: 'var(--color-primary)', fontSize: '1.1rem' }}>${formatCurrency(reportSubtotal)}</strong>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem', borderTop: '1px solid var(--color-border)', paddingTop: '0.6rem' }}>
+            <span style={{ fontWeight: '600' }}>Sub Total:</span>
+            <strong>${formatCurrency(reportSubtotal)}</strong>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.8rem' }}>
-            <span style={{ color: 'var(--color-text-light)' }}>IVA (13%):</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+            <span style={{ color: 'var(--color-text-light)' }}>IVA ({CONTRACT_INFO.ivaRate * 100}%):</span>
             <strong>${formatCurrency(reportIva)}</strong>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.75rem', borderTop: '2px solid var(--color-border)', fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--color-primary)' }}>
-            <span>TOTAL GENERAL:</span>
-            <span>${formatCurrency(reportGrandTotal)}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.85rem', paddingTop: '0.85rem', borderTop: '2px solid var(--color-primary)', fontSize: '1.15rem' }}>
+            <span style={{ fontWeight: 'bold', color: 'var(--color-primary)' }}>TOTAL GENERAL:</span>
+            <strong style={{ color: 'var(--color-primary)' }}>${formatCurrency(reportGrandTotal)}</strong>
           </div>
         </div>
       </div>
 
       {/* =========================================================================
-          MODAL: CONGELAR PERÍODO ACTUAL
+          MODAL: CONGELAR CORTE ACTUAL
           ========================================================================= */}
       {freezeModalOpen && (
         <div className="modal-backdrop">
@@ -1467,7 +1669,7 @@ const Summary2 = () => {
                 </div>
 
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                  🔒 El corte se guardará en modo bloqueado por seguridad. Podrás desbloquearlo en cualquier momento si necesitas ajustar lecturas.
+                  🔒 El corte se guardará en modo bloqueado por seguridad. Podrás desbloquearlo en cualquier momento si necesitas ajustar lecturas o fechas.
                 </div>
               </div>
 
@@ -1490,7 +1692,7 @@ const Summary2 = () => {
           ========================================================================= */}
       {historyModalOpen && (
         <div className="modal-backdrop">
-          <div className="modal" style={{ maxWidth: '850px', width: '95%' }}>
+          <div className="modal" style={{ maxWidth: '1000px', width: '95%' }}>
             <div className="modal-header">
               <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <History size={22} style={{ color: 'var(--color-primary)' }} />
@@ -1501,7 +1703,7 @@ const Summary2 = () => {
               </button>
             </div>
 
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '65vh', overflowY: 'auto' }}>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '70vh', overflowY: 'auto' }}>
               {/* Buscador de cortes */}
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <div style={{ position: 'relative', flex: 1 }}>
@@ -1520,7 +1722,7 @@ const Summary2 = () => {
                 </button>
               </div>
 
-              {/* Lista o Tabla de Cortes */}
+              {/* Tabla de Cortes con layout amplio */}
               {loadingHistory ? (
                 <div style={{ textAlign: 'center', padding: '2.5rem' }}>
                   <div className="spin" style={{ width: '30px', height: '30px', border: '3px solid var(--color-border)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', margin: '0 auto 0.75rem' }}></div>
@@ -1533,17 +1735,17 @@ const Summary2 = () => {
                   <p style={{ fontSize: '0.8rem' }}>Puedes congelar el período activo usando el botón "Congelar Período".</p>
                 </div>
               ) : (
-                <div className="table-container" style={{ margin: 0 }}>
-                  <table>
+                <div className="table-container" style={{ margin: 0, overflowX: 'auto' }}>
+                  <table style={{ minWidth: '850px', width: '100%' }}>
                     <thead>
                       <tr>
-                        <th>TÍTULO / CORTE</th>
-                        <th>PERÍODO</th>
-                        <th>CLIENTE</th>
-                        <th style={{ textAlign: 'right' }}>TOTAL FACTURADO</th>
-                        <th style={{ textAlign: 'center' }}>ESTADO</th>
-                        <th style={{ textAlign: 'center' }}>CREADO</th>
-                        <th style={{ textAlign: 'right' }}>ACCIONES</th>
+                        <th style={{ minWidth: '190px' }}>TÍTULO / CORTE</th>
+                        <th style={{ minWidth: '150px' }}>PERÍODO</th>
+                        <th style={{ minWidth: '160px' }}>CLIENTE</th>
+                        <th style={{ textAlign: 'right', minWidth: '130px' }}>TOTAL FACTURADO</th>
+                        <th style={{ textAlign: 'center', minWidth: '110px' }}>ESTADO</th>
+                        <th style={{ textAlign: 'center', minWidth: '95px' }}>CREADO</th>
+                        <th style={{ textAlign: 'center', minWidth: '140px' }}>ACCIONES</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1559,7 +1761,7 @@ const Summary2 = () => {
                                 <span>{cut.title}</span>
                               </div>
                             </td>
-                            <td style={{ fontSize: '0.825rem' }}>
+                            <td style={{ fontSize: '0.825rem', whiteSpace: 'nowrap' }}>
                               {formatDate(cut.startDate)} al {formatDate(cut.endDate)}
                             </td>
                             <td style={{ fontSize: '0.825rem' }}>{cut.clientName}</td>
@@ -1574,11 +1776,11 @@ const Summary2 = () => {
                             <td style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                               {cut.created_at ? formatDate(cut.created_at) : 'Reciente'}
                             </td>
-                            <td style={{ textAlign: 'right' }}>
-                              <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'flex-end' }}>
+                            <td style={{ textAlign: 'center' }}>
+                              <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center', alignItems: 'center' }}>
                                 <button
                                   className="btn btn-primary"
-                                  style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
+                                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem', whiteSpace: 'nowrap' }}
                                   onClick={() => handleSelectCutFromHistory(cut)}
                                   title="Cargar y ver datos de este corte en pantalla"
                                 >
@@ -1590,7 +1792,7 @@ const Summary2 = () => {
                                   onClick={() => handleDeleteCut(cut)}
                                   title="Eliminar este corte permanentemente"
                                 >
-                                  <Trash2 size={13} />
+                                  <Trash2 size={14} />
                                 </button>
                               </div>
                             </td>
