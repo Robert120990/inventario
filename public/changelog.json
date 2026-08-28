@@ -1,5 +1,4 @@
-// Registro cronológico maestro y automático de versiones del sistema generado desde Git
-export const SYSTEM_CHANGELOG = [
+[
   {
     "id": "e9372c6",
     "version": "v2.7.104",
@@ -1822,6 +1821,4 @@ export const SYSTEM_CHANGELOG = [
       }
     ]
   }
-];
-
-export default SYSTEM_CHANGELOG;
+]
