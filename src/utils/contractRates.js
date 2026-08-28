@@ -51,24 +51,45 @@ export const TEMPERATURE_RATES = {
 };
 
 /**
- * Obtiene la tarifa por libra según la temperatura en °C
- * Si la temperatura está dentro del rango (-14°C o menor), la tarifa es 0.
- * Si es mayor a -14°C, aplica el escalafón del contrato (ej. -13.9°C -> -13°C: $0.003).
+ * Formatea la temperatura para visualización en reportes y descripciones.
+ * Si el valor está entre -14.0°C y -13.95°C (ej. -13.97°C), usa 2 decimales para evitar que se redondee a -14.0°C.
+ */
+export const formatTemperatureDisplay = (tempCelsius) => {
+  const num = Number(tempCelsius);
+  if (isNaN(num)) return '0.0';
+  
+  let formatted = '';
+  if (num > -14.0 && num < -13.95) {
+    formatted = num.toFixed(2);
+  } else if (Number.isInteger(num)) {
+    formatted = num.toFixed(1);
+  } else {
+    const str = num.toFixed(2);
+    formatted = str.endsWith('0') ? num.toFixed(1) : str;
+  }
+  
+  return num > 0 ? `+${formatted}` : formatted;
+};
+
+/**
+ * Obtiene la tarifa por libra según la temperatura en °C.
+ * Si la temperatura es -14.0°C o menor (más fría), la tarifa es $0 (dentro del rango permitido).
+ * Si es estrictamente mayor a -14.0°C (ej. -13.999°C, -13.9°C, -13.0°C), aplica el cobro según el contrato.
  * Si es mayor que +6°C, se aplica la tarifa máxima de 6°C ($0.034).
  */
 export const getTemperatureRate = (tempCelsius) => {
   if (tempCelsius === null || tempCelsius === undefined || isNaN(Number(tempCelsius))) return 0;
   const num = Number(tempCelsius);
-  if (num <= -14.000001) return 0; // Dentro del rango normal o permitido (-14°C o menor)
+  if (num <= -14.0) return 0; // -14.0 exacto o menor no tiene cobro
   
-  // Para temperaturas fuera de rango (> -14°C), se aplica el escalafón del contrato (Math.ceil)
-  // Ej: -13.9°C cae en -13°C ($0.003), -12.4°C en -12°C ($0.004), etc.
+  // Para temperaturas fuera de rango (> -14.0°C), se aplica el escalafón del contrato
+  // Ej: -13.999°C o -13.0°C caen en -13°C ($0.003), -12.4°C en -12°C ($0.004), etc.
   const tempKey = Math.min(6, Math.max(-13, Math.ceil(num)));
   return TEMPERATURE_RATES[String(tempKey)] || 0;
 };
 
 /**
- * Calcula el cobro extraordinario por temperatura fuera de rango
+ * Calcula el cobro extraordinario por temperatura fuera de rango (> -14.0°C)
  * @param {number} tempCelsius Temperatura promedio registrada
  * @param {number} pounds Total de libras recibidas en el movimiento
  * @param {boolean} isAverage Indica si es promedio de temperatura
@@ -78,8 +99,7 @@ export const calculateTemperatureService = (tempCelsius, pounds, isAverage = tru
   const rate = getTemperatureRate(numTemp);
   if (rate <= 0 || !pounds || pounds <= 0) return null;
   
-  const roundedTemp = Number(numTemp.toFixed(1));
-  const formattedTemp = roundedTemp > 0 ? `+${roundedTemp}` : `${roundedTemp}`;
+  const formattedTemp = formatTemperatureDisplay(numTemp);
   const prefix = isAverage ? 'Temperatura Promedio' : 'Temperatura';
   
   return {

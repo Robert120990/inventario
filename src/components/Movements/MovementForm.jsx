@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { Save, X, Plus, Trash2, Zap, ThermometerSnowflake } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { EXTRA_SERVICE_PRESETS, calculateTemperatureService, getTemperatureRate } from '../../utils/contractRates';
+import { EXTRA_SERVICE_PRESETS, calculateTemperatureService, getTemperatureRate, formatTemperatureDisplay } from '../../utils/contractRates';
 import { DatePicker } from '../Common/DatePicker';
 
 const MovementForm = ({ onCancel, initialData }) => {
@@ -110,10 +110,10 @@ const MovementForm = ({ onCancel, initialData }) => {
 
     const totalTemp = itemsWithTemp.reduce((sum, it) => sum + Number(it.temperature), 0);
     const avgTemp = totalTemp / itemsWithTemp.length;
-    const roundedAvgTemp = Number(avgTemp.toFixed(1));
+    const formattedDisplay = formatTemperatureDisplay(avgTemp);
 
     if (avgTemp <= -14) {
-      toast(`La temperatura promedio (${roundedAvgTemp}°C) está dentro del rango permitido (-14°C o menor). No aplica penalización.`, {
+      toast(`La temperatura promedio (${formattedDisplay}°C) está dentro del rango permitido (-14°C o menor). No aplica penalización.`, {
         icon: '❄️'
       });
       // Limpiar cualquier cobro previo de temperatura si ahora está en rango
@@ -128,7 +128,7 @@ const MovementForm = ({ onCancel, initialData }) => {
 
     const totalPounds = formData.items.reduce((sum, it) => sum + Number(it.qtyPounds || 0), 0);
     if (totalPounds <= 0) {
-      toast.error(`La temperatura promedio (${roundedAvgTemp}°C) está fuera de rango (> -14°C), pero el movimiento no tiene libras especificadas.`);
+      toast.error(`La temperatura promedio (${formattedDisplay}°C) está fuera de rango (> -14°C), pero el movimiento no tiene libras especificadas.`);
       return;
     }
 
@@ -146,9 +146,8 @@ const MovementForm = ({ onCancel, initialData }) => {
     const updatedServices = [...cleanServices, service];
     setFormData(prev => ({ ...prev, services: updatedServices }));
 
-    const formattedTemp = roundedAvgTemp > 0 ? `+${roundedAvgTemp}` : `${roundedAvgTemp}`;
     toast.success(
-      `Cobro aplicado: Promedio ${formattedTemp}°C sobre ${totalPounds.toLocaleString('en-US')} lbs totales ($${service.value.toFixed(2)})`
+      `Cobro aplicado: Promedio ${formattedDisplay}°C sobre ${totalPounds.toLocaleString('en-US')} lbs totales ($${service.value.toFixed(2)})`
     );
   };
 
