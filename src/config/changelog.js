@@ -1,6 +1,24 @@
 // Registro cronológico maestro y automático de versiones del sistema generado desde Git
 export const SYSTEM_CHANGELOG = [
   {
+    "id": "ec6e8e6",
+    "version": "v2.7.109",
+    "commit": "ec6e8e6",
+    "fullCommit": "ec6e8e6706f6e793e8a2d956ed672f6cd4b66ff7",
+    "description": "Calcular cobro por temperatura promedio fuera de rango (> -14°C) sobre libras totales y recálculo retroactivo en BD",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-08-28",
+    "time": "08:48",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "fix",
+        "text": "Calcular cobro por temperatura promedio fuera de rango (> -14°C) sobre libras totales y recálculo retroactivo en BD"
+      }
+    ]
+  },
+  {
     "id": "c871bff",
     "version": "v2.7.108",
     "commit": "c871bff",
@@ -171,7 +189,7 @@ export const SYSTEM_CHANGELOG = [
     "author": "Ing. Raúl Sosa",
     "date": "2026-08-28",
     "time": "22:08",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
