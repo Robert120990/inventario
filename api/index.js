@@ -1424,6 +1424,205 @@ router.delete('/daily-cuts/:id', async (req, res) => {
     }
 });
 
+// ==========================================
+// RUTAS PARA CORTES DE SEGURO (INSURANCE CUTS)
+// ==========================================
+
+// Obtener todos los cortes de seguro guardados
+router.get('/insurance-cuts', async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT *
+            FROM insurance_cuts
+            ORDER BY cutoffDate DESC, created_at DESC
+        `);
+
+        const cuts = rows.map(r => {
+            let totals = {};
+            let rowsData = [];
+            try {
+                totals = typeof r.totalsData === 'string' ? JSON.parse(r.totalsData) : (r.totalsData || {});
+            } catch (e) { totals = {}; }
+            try {
+                rowsData = typeof r.rowsData === 'string' ? JSON.parse(r.rowsData) : (r.rowsData || []);
+            } catch (e) { rowsData = []; }
+
+            const cleanStart = r.startDate 
+                ? (r.startDate instanceof Date ? r.startDate.toISOString().split('T')[0] : String(r.startDate).split('T')[0])
+                : null;
+            const cleanCutoff = r.cutoffDate instanceof Date 
+                ? r.cutoffDate.toISOString().split('T')[0] 
+                : String(r.cutoffDate || '').split('T')[0];
+
+            return {
+                ...r,
+                startDate: cleanStart,
+                cutoffDate: cleanCutoff,
+                premiumRate: Number(r.premiumRate || 0.10),
+                isLocked: Boolean(r.isLocked),
+                rowsData,
+                totals
+            };
+        });
+
+        res.json(cuts);
+    } catch (error) {
+        console.error('Error fetching insurance cuts:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Obtener un corte de seguro específico por ID
+router.get('/insurance-cuts/:id', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM insurance_cuts WHERE id = ?', [req.params.id]);
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'Corte de seguro no encontrado' });
+        }
+        const cut = rows[0];
+        const cleanStart = cut.startDate 
+            ? (cut.startDate instanceof Date ? cut.startDate.toISOString().split('T')[0] : String(cut.startDate).split('T')[0])
+            : null;
+        const cleanCutoff = cut.cutoffDate instanceof Date 
+            ? cut.cutoffDate.toISOString().split('T')[0] 
+            : String(cut.cutoffDate || '').split('T')[0];
+
+        res.json({
+            ...cut,
+            startDate: cleanStart,
+            cutoffDate: cleanCutoff,
+            premiumRate: Number(cut.premiumRate || 0.10),
+            isLocked: Boolean(cut.isLocked),
+            rowsData: typeof cut.rowsData === 'string' ? JSON.parse(cut.rowsData || '[]') : cut.rowsData,
+            totalsData: typeof cut.totalsData === 'string' ? JSON.parse(cut.totalsData || '{}') : cut.totalsData
+        });
+    } catch (error) {
+        console.error('Error fetching insurance cut by id:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Crear y congelar un nuevo corte de seguro
+router.post('/insurance-cuts', async (req, res) => {
+    try {
+        const {
+            id = randomUUID(),
+            title,
+            customerName = 'AVICOLA SALVADOREÑA S.A. DE C.V.',
+            warehouseName = 'ALMACENADORA LIL',
+            startDate,
+            cutoffDate,
+            premiumRate = 0.10,
+            isLocked = 1,
+            rowsData = [],
+            totalsData = {},
+            created_by = (req.user && req.user.username) || 'admin'
+        } = req.body;
+
+        if (!cutoffDate) {
+            return res.status(400).json({ error: 'La fecha de corte es obligatoria.' });
+        }
+
+        const autoTitle = title || `Corte de Seguro al ${cutoffDate}`;
+        const jsonRows = typeof rowsData === 'string' ? rowsData : JSON.stringify(rowsData);
+        const jsonTotals = typeof totalsData === 'string' ? totalsData : JSON.stringify(totalsData);
+
+        await pool.query(
+            `INSERT INTO insurance_cuts 
+            (id, title, customerName, warehouseName, startDate, cutoffDate, premiumRate, isLocked, rowsData, totalsData, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [id, autoTitle, customerName, warehouseName, startDate || null, cutoffDate, premiumRate, isLocked ? 1 : 0, jsonRows, jsonTotals, created_by]
+        );
+
+        res.status(201).json({
+            success: true,
+            id,
+            title: autoTitle,
+            customerName,
+            warehouseName,
+            startDate,
+            cutoffDate,
+            premiumRate,
+            isLocked: Boolean(isLocked),
+            created_by
+        });
+    } catch (error) {
+        console.error('Error creating insurance cut:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Actualizar un corte de seguro existente (datos editados, bloqueo / desbloqueo, totales)
+router.put('/insurance-cuts/:id', async (req, res) => {
+    try {
+        const {
+            title,
+            customerName,
+            warehouseName,
+            startDate,
+            cutoffDate,
+            premiumRate,
+            isLocked,
+            rowsData,
+            totalsData
+        } = req.body;
+
+        const [existing] = await pool.query('SELECT * FROM insurance_cuts WHERE id = ?', [req.params.id]);
+        if (existing.length === 0) {
+            return res.status(404).json({ error: 'Corte de seguro no encontrado para actualizar' });
+        }
+
+        const current = existing[0];
+        const newTitle = title !== undefined ? title : current.title;
+        const newCustomer = customerName !== undefined ? customerName : current.customerName;
+        const newWarehouse = warehouseName !== undefined ? warehouseName : current.warehouseName;
+        const newStartDate = startDate !== undefined ? startDate : current.startDate;
+        const newCutoffDate = cutoffDate !== undefined ? cutoffDate : current.cutoffDate;
+        const newPremiumRate = premiumRate !== undefined ? premiumRate : current.premiumRate;
+        const newIsLocked = isLocked !== undefined ? (isLocked ? 1 : 0) : current.isLocked;
+
+        const newRows = rowsData !== undefined 
+            ? (typeof rowsData === 'string' ? rowsData : JSON.stringify(rowsData))
+            : current.rowsData;
+
+        const newTotals = totalsData !== undefined
+            ? (typeof totalsData === 'string' ? totalsData : JSON.stringify(totalsData))
+            : current.totalsData;
+
+        await pool.query(
+            `UPDATE insurance_cuts 
+            SET title = ?, customerName = ?, warehouseName = ?, startDate = ?, cutoffDate = ?, 
+                premiumRate = ?, isLocked = ?, rowsData = ?, totalsData = ?
+            WHERE id = ?`,
+            [newTitle, newCustomer, newWarehouse, newStartDate, newCutoffDate, newPremiumRate, newIsLocked, newRows, newTotals, req.params.id]
+        );
+
+        res.json({
+            success: true,
+            id: req.params.id,
+            title: newTitle,
+            isLocked: Boolean(newIsLocked)
+        });
+    } catch (error) {
+        console.error('Error updating insurance cut:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Eliminar un corte de seguro registrado
+router.delete('/insurance-cuts/:id', async (req, res) => {
+    try {
+        const [result] = await pool.query('DELETE FROM insurance_cuts WHERE id = ?', [req.params.id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Corte de seguro no encontrado' });
+        }
+        res.json({ success: true, id: req.params.id });
+    } catch (error) {
+        console.error('Error deleting insurance cut:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Mount router under /api
 app.use('/api', (req, res, next) => {
     // Rutas públicas que no requieren token

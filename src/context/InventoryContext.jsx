@@ -983,6 +983,90 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
+  // Insurance Cuts (Cortes de Seguro Congelados)
+  const fetchInsuranceCuts = async () => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/insurance-cuts`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          return data;
+        }
+      }
+      return [];
+    } catch (e) {
+      console.error('Error fetching insurance cuts:', e);
+      return [];
+    }
+  };
+
+  const fetchInsuranceCutById = async (id) => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/insurance-cuts/${id}`);
+      if (res.ok) {
+        return await res.json();
+      }
+      return null;
+    } catch (e) {
+      console.error('Error fetching insurance cut by id:', e);
+      return null;
+    }
+  };
+
+  const createInsuranceCut = async (cutData) => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/insurance-cuts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...cutData,
+          created_by: currentUser?.username || 'admin'
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        logAuditEvent('FREEZE_INSURANCE_CUT', 'insurance', `Congelamiento de corte de seguro '${data.title}' (al ${cutData.cutoffDate})`);
+        return { success: true, ...data };
+      }
+      return { success: false, message: data.error || 'Error al congelar corte de seguro' };
+    } catch (e) {
+      console.error('Error creating insurance cut:', e);
+      return { success: false, message: 'Error de conexión con el servidor' };
+    }
+  };
+
+  const updateInsuranceCut = async (id, updateData) => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/insurance-cuts/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        return { success: true, ...data };
+      }
+      return { success: false, message: data.error || 'Error al actualizar corte de seguro' };
+    } catch (e) {
+      console.error('Error updating insurance cut:', e);
+      return { success: false, message: 'Error de conexión con el servidor' };
+    }
+  };
+
+  const deleteInsuranceCut = async (id, title = '') => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/insurance-cuts/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        logAuditEvent('DELETE_INSURANCE_CUT', 'insurance', `Eliminación de corte de seguro '${title || id}'`);
+        return { success: true };
+      }
+      return { success: false };
+    } catch (e) {
+      console.error('Error deleting insurance cut:', e);
+      return { success: false };
+    }
+  };
+
   // Secure Server-Side Login
   const login = async (username, password) => {
     const cleanUser = (username || '').trim();
@@ -1111,6 +1195,11 @@ export const InventoryProvider = ({ children }) => {
       createDailyCut,
       updateDailyCut,
       deleteDailyCut,
+      fetchInsuranceCuts,
+      fetchInsuranceCutById,
+      createInsuranceCut,
+      updateInsuranceCut,
+      deleteInsuranceCut,
       refreshData,
       login,
       logout,

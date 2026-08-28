@@ -167,6 +167,22 @@ export const ensureSchema = async () => {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 INDEX idx_daily_cuts_dates (startDate, endDate)
+            )`,
+            `CREATE TABLE IF NOT EXISTS insurance_cuts (
+                id VARCHAR(50) PRIMARY KEY,
+                title VARCHAR(200) NOT NULL,
+                customerName VARCHAR(150) NOT NULL,
+                warehouseName VARCHAR(150) NOT NULL,
+                startDate DATE NULL,
+                cutoffDate DATE NOT NULL,
+                premiumRate DECIMAL(10, 4) DEFAULT 0.10,
+                isLocked TINYINT(1) DEFAULT 1,
+                rowsData LONGTEXT NOT NULL,
+                totalsData LONGTEXT NOT NULL,
+                created_by VARCHAR(50) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_insurance_cuts_dates (cutoffDate)
             )`
         ];
 
