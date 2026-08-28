@@ -41,17 +41,18 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
             width: '34px',
             height: '34px',
             borderRadius: 'var(--radius)',
-            background: 'linear-gradient(135deg, rgba(0, 209, 102, 0.2) 0%, rgba(0, 109, 50, 0.4) 100%)',
+            background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            border: '1px solid rgba(100, 255, 146, 0.3)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
             flexShrink: 0
           }}>
             {settings.logo ? (
               <img src={settings.logo} alt="Logo" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
             ) : (
-              <Package size={20} style={{ color: 'var(--color-primary-fixed)' }} />
+              <Package size={20} style={{ color: '#ffffff' }} />
             )}
           </div>
           {!isCollapsed && (

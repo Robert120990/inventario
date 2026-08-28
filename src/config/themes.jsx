@@ -1,0 +1,85 @@
+import React from 'react';
+import { Sun, Moon, Palette, Sparkles, Flame, Droplets } from 'lucide-react';
+
+export const WINDOWS_THEMES = [
+  {
+    id: 'light',
+    name: 'Windows Claro',
+    subtitle: 'Bloom Azul Clásico',
+    mode: 'light',
+    icon: <Sun size={15} />,
+    color: '#0067c0',
+    glow: '#0078d4',
+    bg: '#f3f3f3',
+    surface: '#ffffff',
+    cardBg: '#ffffff',
+    pillBg: '#f0f2f5',
+    pillAccent: '#0067c0',
+    thumbGradient: 'linear-gradient(135deg, #dbeafe 0%, #93c5fd 50%, #e0e7ff 100%)',
+    desc: 'Limpio y luminoso con acento azul original de Windows 11'
+  },
+  {
+    id: 'dark',
+    name: 'Windows Oscuro',
+    subtitle: 'Bloom Azul Eléctrico',
+    mode: 'dark',
+    icon: <Moon size={15} />,
+    color: '#4cc2ff',
+    glow: '#60cdff',
+    bg: '#202020',
+    surface: '#2c2c2c',
+    cardBg: '#272727',
+    pillBg: '#1e2430',
+    pillAccent: '#4cc2ff',
+    thumbGradient: 'linear-gradient(135deg, #091322 0%, #173255 50%, #0f233d 100%)',
+    desc: 'Elegante y descansado con acento azul cielo'
+  },
+  {
+    id: 'motion',
+    name: 'Movimiento',
+    subtitle: 'Captured Motion Naranja',
+    mode: 'dark',
+    icon: <Flame size={15} />,
+    color: '#f7630c',
+    glow: '#ff8c00',
+    bg: '#211c27',
+    surface: '#2e2637',
+    cardBg: '#261f2e',
+    pillBg: '#2a2233',
+    pillAccent: '#f7630c',
+    thumbGradient: 'linear-gradient(135deg, #2a112d 0%, #451a2e 50%, #1f1225 100%)',
+    desc: 'Cálido y dinámico con acento naranja y coral'
+  },
+  {
+    id: 'sunrise',
+    name: 'Amanecer',
+    subtitle: 'Sunrise Verde / Teal',
+    mode: 'light',
+    icon: <Droplets size={15} />,
+    color: '#008272',
+    glow: '#00a896',
+    bg: '#f0f7f6',
+    surface: '#ffffff',
+    cardBg: '#ffffff',
+    pillBg: '#e6f4f1',
+    pillAccent: '#008272',
+    thumbGradient: 'linear-gradient(135deg, #ccfbf1 0%, #99f6e4 50%, #bae6fd 100%)',
+    desc: 'Fresco y relajante con acento verde azulado'
+  },
+  {
+    id: 'glow',
+    name: 'Resplandor',
+    subtitle: 'Glow Púrpura / Violeta',
+    mode: 'dark',
+    icon: <Sparkles size={15} />,
+    color: '#b146c2',
+    glow: '#d870e8',
+    bg: '#1d1229',
+    surface: '#2c1b3f',
+    cardBg: '#231433',
+    pillBg: '#271738',
+    pillAccent: '#b146c2',
+    thumbGradient: 'linear-gradient(135deg, #170826 0%, #360f4e 50%, #140520 100%)',
+    desc: 'Profundo y moderno con acento violeta neón'
+  }
+];

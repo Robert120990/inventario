@@ -3,6 +3,7 @@ import { useInventory } from '../../context/InventoryContext';
 import { Plus, Trash2, Home, Save, Image as ImageIcon, GitBranch, Calendar, Palette } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { formatDate } from '../../utils/formatUtils';
+import { WINDOWS_THEMES } from '../../config/themes';
 
 const Settings = () => {
   const { categories, documentTypes, settings, categoryUnits, versions, addCategory, deleteCategory, addDocumentType, deleteDocumentType, updateSettings, updateCategoryUnit, addVersion, deleteVersion, theme, setTheme } = useInventory();
@@ -153,50 +154,116 @@ const Settings = () => {
           </form>
         </div>
 
-        {/* Theme Customizer Card */}
+        {/* Theme Customizer Card (Windows 11 Gallery) */}
         <div className="card">
-          <h2 style={{ fontSize: '1.2rem', marginBottom: '0.5rem', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Palette size={20} /> Tema Visual y Apariencia
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <h2 style={{ fontSize: '1.2rem', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+              <Palette size={20} /> Temas de Windows 11
+            </h2>
+            <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', borderRadius: 'var(--radius-full)', backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-light)' }}>
+              Fluent / Mica Design
+            </span>
+          </div>
           <p style={{ color: 'var(--color-text-light)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
-            Personaliza el tema cromático de la plataforma para mejorar el contraste, la legibilidad y la experiencia visual.
+            Selecciona un tema para aplicar a la plataforma. Cada estilo calibra los fondos, tarjetas, contraste y acentos cromáticos.
           </p>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-            {[
-              { id: 'light', name: 'Modo Claro', desc: 'Fondo limpio y texto de alto contraste', bg: '#f8fafc', surface: '#ffffff', primary: '#1e3a8a' },
-              { id: 'dark', name: 'Modo Oscuro', desc: 'Elegante y descansado para la vista', bg: '#0b0f19', surface: '#111827', primary: '#3b82f6' },
-              { id: 'navy', name: 'Azul Noche', desc: 'Tonalidad nocturna azul profundo', bg: '#08122d', surface: '#0e1e4a', primary: '#38bdf8' },
-              { id: 'emerald', name: 'Esmeralda Pro', desc: 'Verde profesional para almacén', bg: '#051c19', surface: '#0a2e2b', primary: '#10b981' }
-            ].map(t => {
-              const isSelected = theme === t.id;
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+            {WINDOWS_THEMES.map(t => {
+              const isSelected = (theme === t.id) || (theme === 'navy' && t.id === 'dark') || (theme === 'emerald' && t.id === 'sunrise');
               return (
                 <div
                   key={t.id}
                   onClick={() => setTheme(t.id)}
                   style={{
                     border: isSelected ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius)',
-                    padding: '1rem',
+                    borderRadius: 'var(--radius-lg)',
+                    padding: '0.65rem',
                     cursor: 'pointer',
-                    backgroundColor: t.surface,
-                    boxShadow: isSelected ? '0 0 0 3px rgba(59, 130, 246, 0.2)' : 'none',
-                    transition: 'var(--transition)'
+                    backgroundColor: 'var(--color-surface)',
+                    boxShadow: isSelected ? '0 0 0 3px rgba(0, 103, 192, 0.2), var(--shadow)' : 'var(--shadow-sm)',
+                    transition: 'var(--transition)',
+                    position: 'relative',
+                    overflow: 'hidden'
                   }}
+                  title={`Aplicar tema ${t.name}`}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: t.primary, display: 'inline-block' }}></span>
-                      <strong style={{ fontSize: '0.9rem', color: t.id === 'light' ? '#1e293b' : '#f8fafc' }}>{t.name}</strong>
+                  {/* Wallpaper / Visual Thumbnail inspired by Windows 11 */}
+                  <div
+                    style={{
+                      height: '95px',
+                      borderRadius: 'calc(var(--radius) - 2px)',
+                      background: t.thumbGradient,
+                      position: 'relative',
+                      overflow: 'hidden',
+                      marginBottom: '0.65rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '1px solid rgba(255, 255, 255, 0.15)'
+                    }}
+                  >
+                    {/* Stylized Glow Orb */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        width: '65px',
+                        height: '65px',
+                        borderRadius: '50%',
+                        background: t.color,
+                        opacity: 0.85,
+                        filter: 'blur(12px)',
+                        top: '15%',
+                        left: '20%'
+                      }}
+                    />
+                    
+                    {/* Mini Windows 11 Surface Preview Capsule (Bottom-Right) */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: '8px',
+                        right: '8px',
+                        width: '42px',
+                        height: '42px',
+                        borderRadius: '8px',
+                        backgroundColor: t.pillBg,
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        boxShadow: '0 4px 10px rgba(0, 0, 0, 0.35)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'flex-end',
+                        alignItems: 'center',
+                        padding: '5px'
+                      }}
+                    >
+                      {/* Mini Accent Pill */}
+                      <div
+                        style={{
+                          width: '24px',
+                          height: '7px',
+                          borderRadius: '4px',
+                          backgroundColor: t.pillAccent,
+                          boxShadow: `0 0 4px ${t.pillAccent}`
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Theme Info */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: t.color, display: 'inline-block' }} />
+                      <strong style={{ fontSize: '0.85rem', color: 'var(--color-text)' }}>{t.name}</strong>
                     </div>
                     {isSelected && (
-                      <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '8px', backgroundColor: t.primary, color: 'white', fontWeight: 'bold' }}>
+                      <span style={{ fontSize: '0.65rem', padding: '1px 6px', borderRadius: '10px', backgroundColor: 'var(--color-primary)', color: 'white', fontWeight: 'bold' }}>
                         Activo
                       </span>
                     )}
                   </div>
-                  <p style={{ fontSize: '0.75rem', color: t.id === 'light' ? '#64748b' : '#94a3b8', margin: 0 }}>
-                    {t.desc}
+                  <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', margin: 0, lineHeight: 1.3 }}>
+                    {t.subtitle}
                   </p>
                 </div>
               );

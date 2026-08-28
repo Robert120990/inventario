@@ -1,62 +1,65 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700;800&display=swap');
 
 /* ==========================================================================
-   STITCH DESIGN SYSTEM: "THE LUMINOUS ENGINE" (Veridian Flow & Resource Fluidity)
+   WINDOWS 11 THEME SUITE: FLUENT / MICA DESIGN SYSTEM
    ========================================================================== */
 
-/* Default (Light Theme - Stitch Luminous Engine) */
+/* 1. Windows 11 Claro (Bloom Light - Azul Clásico) */
 :root, [data-theme="light"] {
   --font-headline: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   
-  /* Surface Tonal Hierarchy */
-  --color-bg: #f8f9ff;                    /* Base surface */
-  --color-surface: #eff4ff;               /* Surface Container Low */
-  --color-card: #ffffff;                  /* Surface Container Lowest (Elevated Cards) */
-  --color-card-muted: #e5eeff;            /* Surface Container (Level 2 modules) */
-  --color-card-high: #dce9ff;             /* Surface Container High */
-  --color-card-highest: #d3e4fe;          /* Surface Container Highest */
+  /* Surfaces & Mica */
+  --color-bg: #f3f3f3;                    /* Windows 11 Light Mica Canvas */
+  --color-surface: #f9f9fb;               /* Surface Container Low */
+  --color-card: #ffffff;                  /* Elevated Acrylic Card */
+  --color-card-muted: #f0f2f5;            /* Surface Container Level 2 */
+  --color-card-high: #e5e7eb;             /* Surface Container High */
+  --color-card-highest: #d1d5db;          /* Surface Container Highest */
+  --color-card-glass: rgba(255, 255, 255, 0.85);
+  --color-topbar-bg: rgba(243, 243, 243, 0.85);
+  --color-table-hover: rgba(0, 103, 192, 0.04);
   
-  /* Stitch Accents & Semantics */
-  --color-primary: #006d32;               /* Luminous Energy Primary */
-  --color-primary-hover: #005224;
-  --color-primary-glow: #00d166;          /* Vibrant Container Glow */
-  --color-primary-fixed: #64ff92;         /* Luminous Light Pill */
-  --color-on-primary-fixed: #00210b;
-  --color-secondary: #0059bb;             /* Flow Ocean Secondary */
-  --color-secondary-hover: #004493;
-  --color-secondary-container: #0070ea;
-  --color-secondary-fixed: #d8e2ff;
+  /* Windows Signature Blue Accents */
+  --color-primary: #0067c0;               /* Windows 11 Royal Blue */
+  --color-primary-hover: #005a9e;
+  --color-primary-glow: #0078d4;
+  --color-primary-fixed: #e0f2fe;
+  --color-on-primary-fixed: #003366;
+  --color-secondary: #008272;             /* Sage / Teal */
+  --color-secondary-hover: #006b5d;
+  --color-secondary-container: #0284c7;
+  --color-secondary-fixed: #e6fffa;
   
   /* Sidebar */
-  --color-sidebar-bg: #0b1c30;            /* Deep Space Navy Sidebar */
-  --color-sidebar-text: #eaf1ff;
+  --color-sidebar-bg: #0f172a;            /* Deep Slate Navy Sidebar */
+  --color-sidebar-text: #f8fafc;
   --color-sidebar-border: rgba(255, 255, 255, 0.08);
   
   /* Text & Labels */
-  --color-text: #0b1c30;                  /* On Surface (Deep Ink Navy, No pure black) */
-  --color-text-light: #475569;            /* On Surface Variant */
+  --color-text: #1b1b1b;                  /* High Contrast Windows Text */
+  --color-text-light: #475569;            /* Secondary Text */
   --color-text-muted: #64748b;            /* Subtitle / Helper */
   
-  /* Ghost Borders & Outlines (No-Line Rule: faint boundaries only) */
-  --color-border: rgba(187, 203, 185, 0.3);
-  --color-border-subtle: rgba(11, 28, 48, 0.05);
-  --color-outline: #6c7b6c;
+  /* Fluent Borders & Outlines */
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-subtle: rgba(0, 0, 0, 0.04);
+  --color-outline: #94a3b8;
   
   /* Functional Colors */
-  --color-danger: #ba1a1a;
-  --color-danger-bg: #ffdad6;
-  --color-danger-text: #93000a;
-  --color-success: #008744;
-  --color-success-bg: #d1f7dc;
-  --color-warning: #b45309;
-  --color-warning-bg: #fef3c7;
+  --color-danger: #c42b1c;                /* Windows Error Red */
+  --color-danger-bg: #fde8e8;
+  --color-danger-text: #991b1b;
+  --color-success: #0f7b0f;               /* Windows Success Green */
+  --color-success-bg: #def7ec;
+  --color-warning: #9d5d00;               /* Windows Warning Amber */
+  --color-warning-bg: #fef08a;
   
-  /* Shadows & Radius */
-  --shadow-sm: 0 2px 4px rgba(11, 28, 48, 0.04);
-  --shadow: 0 10px 25px -5px rgba(11, 28, 48, 0.05), 0 4px 10px -2px rgba(11, 28, 48, 0.03);
-  --shadow-lg: 0 24px 40px -12px rgba(11, 28, 48, 0.08);
-  --editorial-shadow: 0 24px 40px -12px rgba(11, 28, 48, 0.06);
+  /* Shadows & Radius (Fluent Standard) */
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 20px 35px -8px rgba(0, 0, 0, 0.1);
+  --editorial-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.06);
   --radius-sm: 0.375rem;
   --radius: 0.75rem;
   --radius-lg: 1rem;
@@ -65,148 +68,208 @@
   --transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Dark Theme (Stitch Dark Luminous) */
-[data-theme="dark"] {
+/* 2. Windows 11 Oscuro (Bloom Dark - Azul Eléctrico) */
+[data-theme="dark"], [data-theme="navy"] {
   --font-headline: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   
-  --color-bg: #090f1d;
-  --color-surface: #0f192c;
-  --color-card: #152238;
-  --color-card-muted: #1c2c48;
-  --color-card-high: #243758;
-  --color-card-highest: #2e446d;
+  --color-bg: #202020;                    /* Windows 11 Dark Mica Background */
+  --color-surface: #272727;
+  --color-card: #2c2c2c;                  /* Elevated Acrylic Dark Card */
+  --color-card-muted: #323232;
+  --color-card-high: #383838;
+  --color-card-highest: #444444;
+  --color-card-glass: rgba(44, 44, 44, 0.85);
+  --color-topbar-bg: rgba(32, 32, 32, 0.85);
+  --color-table-hover: rgba(76, 194, 255, 0.06);
   
-  --color-primary: #30e375;
-  --color-primary-hover: #64ff92;
-  --color-primary-glow: #00d166;
-  --color-primary-fixed: #005224;
-  --color-on-primary-fixed: #64ff92;
-  --color-secondary: #38bdf8;
-  --color-secondary-hover: #7dd3fc;
-  --color-secondary-container: #0284c7;
-  --color-secondary-fixed: #003366;
+  --color-primary: #4cc2ff;               /* Windows 11 Electric Sky Blue */
+  --color-primary-hover: #60cdff;
+  --color-primary-glow: #0098ff;
+  --color-primary-fixed: #003355;
+  --color-on-primary-fixed: #60cdff;
+  --color-secondary: #00b7c3;
+  --color-secondary-hover: #38d6df;
+  --color-secondary-container: #008272;
+  --color-secondary-fixed: #002b28;
   
-  --color-sidebar-bg: #050b14;
-  --color-sidebar-text: #f0f6ff;
-  --color-sidebar-border: rgba(255, 255, 255, 0.06);
+  --color-sidebar-bg: #181818;
+  --color-sidebar-text: #f3f3f3;
+  --color-sidebar-border: rgba(255, 255, 255, 0.07);
   
-  --color-text: #f1f6ff;
-  --color-text-light: #94a9c9;
-  --color-text-muted: #647a9b;
+  --color-text: #ffffff;
+  --color-text-light: #cccccc;
+  --color-text-muted: #999999;
   
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-subtle: rgba(255, 255, 255, 0.04);
-  --color-outline: #8997a9;
+  --color-border: rgba(255, 255, 255, 0.09);
+  --color-border-subtle: rgba(255, 255, 255, 0.05);
+  --color-outline: #777777;
   
-  --color-danger: #f87171;
-  --color-danger-bg: rgba(239, 68, 68, 0.15);
-  --color-danger-text: #fca5a5;
-  --color-success: #34d399;
-  --color-success-bg: rgba(16, 185, 129, 0.15);
-  --color-warning: #fbbf24;
-  --color-warning-bg: rgba(245, 158, 11, 0.15);
+  --color-danger: #ff99a4;
+  --color-danger-bg: rgba(196, 43, 28, 0.2);
+  --color-danger-text: #ffccd2;
+  --color-success: #6ccb5f;
+  --color-success-bg: rgba(15, 123, 15, 0.2);
+  --color-warning: #fce100;
+  --color-warning-bg: rgba(157, 93, 0, 0.2);
   
-  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
-  --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 4px 10px -2px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 24px 40px -12px rgba(0, 0, 0, 0.55);
-  --editorial-shadow: 0 24px 40px -12px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.35);
+  --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.45), 0 4px 10px -2px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 24px 40px -12px rgba(0, 0, 0, 0.6);
+  --editorial-shadow: 0 24px 40px -12px rgba(0, 0, 0, 0.55);
 }
 
-/* Midnight Navy Theme (Stitch Deep Ocean Flow) */
-[data-theme="navy"] {
+/* 3. Windows 11 Captured Motion (Naranja / Coral / Ámbar) */
+[data-theme="motion"], [data-theme="orange"] {
   --font-headline: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   
-  --color-bg: #071329;
-  --color-surface: #0e2042;
-  --color-card: #142c5b;
-  --color-card-muted: #1c3b77;
-  --color-card-high: #244991;
-  --color-card-highest: #2d58ab;
+  --color-bg: #211c27;                    /* Rich Charcoal Violet-Black */
+  --color-surface: #27212f;
+  --color-card: #2e2637;                  /* Elevated Motion Card */
+  --color-card-muted: #362e40;
+  --color-card-high: #41374d;
+  --color-card-highest: #4e425c;
+  --color-card-glass: rgba(46, 38, 55, 0.85);
+  --color-topbar-bg: rgba(33, 28, 39, 0.85);
+  --color-table-hover: rgba(247, 99, 12, 0.08);
   
-  --color-primary: #38bdf8;
-  --color-primary-hover: #7dd3fc;
-  --color-primary-glow: #00e5ff;
-  --color-primary-fixed: #082f49;
-  --color-on-primary-fixed: #7dd3fc;
-  --color-secondary: #818cf8;
-  --color-secondary-hover: #a5b4fc;
-  --color-secondary-container: #4f46e5;
-  --color-secondary-fixed: #1e1b4b;
+  --color-primary: #f7630c;               /* Windows 11 Coral Orange */
+  --color-primary-hover: #ff8c00;
+  --color-primary-glow: #ff7b2b;
+  --color-primary-fixed: #451b04;
+  --color-on-primary-fixed: #ffcaa4;
+  --color-secondary: #ff4343;             /* Warm Coral Red */
+  --color-secondary-hover: #ff6e6e;
+  --color-secondary-container: #d83b01;
+  --color-secondary-fixed: #3b0c0c;
   
-  --color-sidebar-bg: #040c1c;
-  --color-sidebar-text: #f0f6fc;
-  --color-sidebar-border: rgba(56, 189, 248, 0.12);
+  --color-sidebar-bg: #17121d;
+  --color-sidebar-text: #fbf7ff;
+  --color-sidebar-border: rgba(247, 99, 12, 0.15);
   
-  --color-text: #f0f6fc;
-  --color-text-light: #93c5fd;
-  --color-text-muted: #60a5fa;
+  --color-text: #ffffff;
+  --color-text-light: #e4d8f0;
+  --color-text-muted: #ad9bbd;
   
-  --color-border: rgba(56, 189, 248, 0.15);
-  --color-border-subtle: rgba(56, 189, 248, 0.06);
-  --color-outline: #7dd3fc;
+  --color-border: rgba(247, 99, 12, 0.18);
+  --color-border-subtle: rgba(255, 255, 255, 0.06);
+  --color-outline: #f7630c;
   
-  --color-danger: #fb7185;
-  --color-danger-bg: rgba(251, 113, 133, 0.15);
-  --color-danger-text: #fda4af;
-  --color-success: #2dd4bf;
-  --color-success-bg: rgba(45, 212, 191, 0.15);
-  --color-warning: #fde047;
-  --color-warning-bg: rgba(253, 224, 71, 0.15);
-  
-  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.4);
-  --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 24px 40px -12px rgba(0, 0, 0, 0.65);
-  --editorial-shadow: 0 24px 40px -12px rgba(0, 0, 0, 0.6);
-}
-
-/* Emerald Forest Theme (Stitch Bio Energy) */
-[data-theme="emerald"] {
-  --font-headline: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  
-  --color-bg: #051c19;
-  --color-surface: #0a2e2b;
-  --color-card: #11423e;
-  --color-card-muted: #175752;
-  --color-card-high: #1e6c66;
-  --color-card-highest: #26827b;
-  
-  --color-primary: #10b981;
-  --color-primary-hover: #34d399;
-  --color-primary-glow: #00d166;
-  --color-primary-fixed: #064e3b;
-  --color-on-primary-fixed: #6ee7b7;
-  --color-secondary: #06b6d4;
-  --color-secondary-hover: #22d3ee;
-  --color-secondary-container: #0891b2;
-  --color-secondary-fixed: #164e63;
-  
-  --color-sidebar-bg: #021a17;
-  --color-sidebar-text: #ecfdf5;
-  --color-sidebar-border: rgba(16, 185, 129, 0.15);
-  
-  --color-text: #ecfdf5;
-  --color-text-light: #6ee7b7;
-  --color-text-muted: #a7f3d0;
-  
-  --color-border: rgba(16, 185, 129, 0.18);
-  --color-border-subtle: rgba(16, 185, 129, 0.08);
-  --color-outline: #34d399;
-  
-  --color-danger: #f87171;
-  --color-danger-bg: rgba(248, 113, 113, 0.15);
-  --color-danger-text: #fca5a5;
-  --color-success: #34d399;
-  --color-success-bg: rgba(52, 211, 153, 0.15);
-  --color-warning: #fbbf24;
-  --color-warning-bg: rgba(251, 191, 36, 0.15);
+  --color-danger: #ff8585;
+  --color-danger-bg: rgba(232, 17, 35, 0.2);
+  --color-danger-text: #ffd0d0;
+  --color-success: #5cdbb5;
+  --color-success-bg: rgba(16, 185, 129, 0.2);
+  --color-warning: #ffb900;
+  --color-warning-bg: rgba(255, 185, 0, 0.2);
   
   --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.35);
   --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 24px 40px -12px rgba(0, 0, 0, 0.55);
-  --editorial-shadow: 0 24px 40px -12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 24px 40px -12px rgba(0, 0, 0, 0.6);
+  --editorial-shadow: 0 24px 40px -12px rgba(0, 0, 0, 0.55);
+}
+
+/* 4. Windows 11 Sunrise (Amanecer Verde / Teal) */
+[data-theme="sunrise"], [data-theme="emerald"], [data-theme="green"] {
+  --font-headline: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  
+  --color-bg: #f0f7f6;                    /* Windows 11 Sunrise Clean Canvas */
+  --color-surface: #e6f1f0;
+  --color-card: #ffffff;                  /* Elevated White Card */
+  --color-card-muted: #dcf0ee;
+  --color-card-high: #cfe8e5;
+  --color-card-highest: #bfdeda;
+  --color-card-glass: rgba(255, 255, 255, 0.88);
+  --color-topbar-bg: rgba(240, 247, 246, 0.85);
+  --color-table-hover: rgba(0, 130, 114, 0.05);
+  
+  --color-primary: #008272;               /* Windows 11 Sunrise Teal / Emerald */
+  --color-primary-hover: #006b5d;
+  --color-primary-glow: #00a896;
+  --color-primary-fixed: #ccfbf1;
+  --color-on-primary-fixed: #042f2e;
+  --color-secondary: #0078d4;             /* Windows Lake Blue */
+  --color-secondary-hover: #005a9e;
+  --color-secondary-container: #0284c7;
+  --color-secondary-fixed: #e0f2fe;
+  
+  --color-sidebar-bg: #0c201d;            /* Forest Dark Teal Sidebar */
+  --color-sidebar-text: #f0fdfa;
+  --color-sidebar-border: rgba(0, 130, 114, 0.15);
+  
+  --color-text: #16201e;                  /* Dark Slate Teal */
+  --color-text-light: #3d5652;
+  --color-text-muted: #5e7a75;
+  
+  --color-border: rgba(0, 130, 114, 0.14);
+  --color-border-subtle: rgba(0, 130, 114, 0.06);
+  --color-outline: #008272;
+  
+  --color-danger: #c42b1c;
+  --color-danger-bg: #fee2e2;
+  --color-danger-text: #991b1b;
+  --color-success: #0f7b0f;
+  --color-success-bg: #dcfce7;
+  --color-warning: #9d5d00;
+  --color-warning-bg: #fef9c3;
+  
+  --shadow-sm: 0 2px 4px rgba(12, 32, 29, 0.04);
+  --shadow: 0 8px 24px -4px rgba(12, 32, 29, 0.06), 0 2px 6px -1px rgba(12, 32, 29, 0.04);
+  --shadow-lg: 0 20px 35px -8px rgba(12, 32, 29, 0.1);
+  --editorial-shadow: 0 16px 32px -8px rgba(12, 32, 29, 0.06);
+}
+
+/* 5. Windows 11 Glow (Púrpura / Violeta / Resplandor) */
+[data-theme="glow"], [data-theme="purple"] {
+  --font-headline: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  
+  --color-bg: #1d1229;                    /* Windows 11 Glow Dark Violet */
+  --color-surface: #241733;
+  --color-card: #2c1b3f;                  /* Elevated Glow Card */
+  --color-card-muted: #36224d;
+  --color-card-high: #422a5e;
+  --color-card-highest: #4f3370;
+  --color-card-glass: rgba(44, 27, 63, 0.85);
+  --color-topbar-bg: rgba(29, 18, 41, 0.85);
+  --color-table-hover: rgba(177, 70, 194, 0.08);
+  
+  --color-primary: #b146c2;               /* Windows 11 Glow Magenta / Purple */
+  --color-primary-hover: #c562d4;
+  --color-primary-glow: #d870e8;
+  --color-primary-fixed: #440c4d;
+  --color-on-primary-fixed: #f5d0fa;
+  --color-secondary: #8764b8;             /* Soft Violet */
+  --color-secondary-hover: #9f7cd4;
+  --color-secondary-container: #7738b5;
+  --color-secondary-fixed: #271042;
+  
+  --color-sidebar-bg: #140a1d;
+  --color-sidebar-text: #fbf7ff;
+  --color-sidebar-border: rgba(177, 70, 194, 0.15);
+  
+  --color-text: #ffffff;
+  --color-text-light: #dfd0ee;
+  --color-text-muted: #ab98bd;
+  
+  --color-border: rgba(177, 70, 194, 0.18);
+  --color-border-subtle: rgba(255, 255, 255, 0.06);
+  --color-outline: #b146c2;
+  
+  --color-danger: #ff8585;
+  --color-danger-bg: rgba(232, 17, 35, 0.2);
+  --color-danger-text: #ffd0d0;
+  --color-success: #5cdbb5;
+  --color-success-bg: rgba(16, 185, 129, 0.2);
+  --color-warning: #ffb900;
+  --color-warning-bg: rgba(255, 185, 0, 0.2);
+  
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.35);
+  --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 24px 40px -12px rgba(0, 0, 0, 0.6);
+  --editorial-shadow: 0 24px 40px -12px rgba(0, 0, 0, 0.55);
 }
 
 /* Base Styles */
@@ -288,35 +351,17 @@ button, input, select, textarea {
 
 /* Glassmorphism and Gradients */
 .glass-card {
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: var(--color-card-glass, rgba(255, 255, 255, 0.85));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--color-border);
 }
 
-[data-theme="dark"] .glass-card,
-[data-theme="navy"] .glass-card,
-[data-theme="emerald"] .glass-card {
-  background: rgba(21, 34, 56, 0.75);
-}
-
 .glass-nav {
-  background: rgba(248, 249, 255, 0.85);
+  background: var(--color-topbar-bg, rgba(243, 243, 243, 0.85));
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--color-border);
-}
-
-[data-theme="dark"] .glass-nav {
-  background: rgba(9, 15, 29, 0.85);
-}
-
-[data-theme="navy"] .glass-nav {
-  background: rgba(7, 19, 41, 0.85);
-}
-
-[data-theme="emerald"] .glass-nav {
-  background: rgba(5, 28, 25, 0.85);
 }
 
 .hero-gradient {
@@ -424,25 +469,25 @@ button, input, select, textarea {
 .btn-primary {
   background-color: var(--color-primary);
   color: #ffffff;
-  box-shadow: 0 4px 14px -3px rgba(0, 109, 50, 0.35);
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.15);
 }
 
 .btn-primary:hover {
   background-color: var(--color-primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px -2px rgba(0, 209, 102, 0.4);
+  box-shadow: 0 6px 18px -2px rgba(0, 0, 0, 0.25);
 }
 
 .btn-secondary {
   background-color: var(--color-secondary);
   color: #ffffff;
-  box-shadow: 0 4px 14px -3px rgba(0, 89, 187, 0.3);
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.15);
 }
 
 .btn-secondary:hover {
   background-color: var(--color-secondary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px -2px rgba(0, 112, 234, 0.4);
+  box-shadow: 0 6px 18px -2px rgba(0, 0, 0, 0.25);
 }
 
 .btn-danger {
@@ -703,19 +748,15 @@ button, input, select, textarea {
   align-items: center;
   justify-content: space-between;
   padding: 0.85rem 1.5rem;
-  background: rgba(248, 249, 255, 0.8);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: var(--color-topbar-bg, rgba(243, 243, 243, 0.85));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--color-border);
   margin-bottom: 1.5rem;
   border-radius: var(--radius-lg);
 }
 
-[data-theme="dark"] .app-topbar { background: rgba(9, 15, 29, 0.85); }
-[data-theme="navy"] .app-topbar { background: rgba(7, 19, 41, 0.85); }
-[data-theme="emerald"] .app-topbar { background: rgba(5, 28, 25, 0.85); }
-
-/* Tables (Stitch Editorial Spec: Soft rounded tonal wrappers, ghost lines) */
+/* Tables (Fluent Design Spec: Soft rounded tonal wrappers, subtle borders) */
 .table-container {
   overflow-x: auto;
   background-color: var(--color-card);
@@ -754,13 +795,7 @@ tr:last-child td {
 }
 
 tr:hover td {
-  background-color: rgba(0, 109, 50, 0.02);
-}
-
-[data-theme="dark"] tr:hover td,
-[data-theme="navy"] tr:hover td,
-[data-theme="emerald"] tr:hover td {
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: var(--color-table-hover, rgba(0, 103, 192, 0.04));
 }
 
 /* Badges & Chips (Pill full-rounded with Stitch tonal backgrounds) */
