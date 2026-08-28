@@ -19,7 +19,7 @@ export const apiFetch = async (url, options = {}) => {
     localStorage.removeItem('inv_token');
     localStorage.removeItem('inv_current_user');
     localStorage.removeItem('inv_session_id');
-    window.location.reload();
+    window.dispatchEvent(new CustomEvent('auth:unauthorized'));
   }
   return response;
 };
@@ -77,9 +77,26 @@ export const InventoryProvider = ({ children }) => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
+  // Listener para deslogueo reactivo sin recarga forzada
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setCurrentUser(null);
+      setSessionId(null);
+      setLoading(false);
+    };
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, []);
+
   // Initial Fetch
   useEffect(() => {
     const fetchData = async () => {
+      const token = localStorage.getItem('inv_token');
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
       // Fail-safe: Force stop loading after 8 seconds
       const timeoutId = setTimeout(() => {
         setLoading(false);
@@ -899,9 +916,12 @@ export const InventoryProvider = ({ children }) => {
       const data = await res.json();
 
       if (res.ok && data.success) {
+        localStorage.setItem('inv_token', data.token);
+        localStorage.setItem('inv_current_user', JSON.stringify(data.user));
+        localStorage.setItem('inv_session_id', data.sessionId);
         setCurrentUser(data.user);
         setSessionId(data.sessionId);
-        localStorage.setItem('inv_token', data.token);
+        await refreshData();
         return { success: true };
       }
 
