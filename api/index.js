@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import fs from 'node:fs';
+import path from 'node:path';
 import pool, { ensureSchema } from './db.js';
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -58,6 +60,22 @@ router.get('/health', async (req, res) => {
         hasUser: !!process.env.DB_USER
     });
 });
+
+// Server Version Information (Always un-cached)
+router.get('/version', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    try {
+        const vPath = path.resolve(process.cwd(), 'src', 'config', 'version.json');
+        if (fs.existsSync(vPath)) {
+            const vData = JSON.parse(fs.readFileSync(vPath, 'utf8'));
+            return res.json(vData);
+        }
+    } catch (e) {}
+    res.json({ version: '1.3.98', displayVersion: 'v1.3.98', build: 98, commit: 'local' });
+});
+
 
 // Products con soporte de paginación y búsqueda server-side
 router.get('/products', async (req, res) => {

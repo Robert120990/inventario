@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { RefreshCw, Sparkles, X, ArrowUpCircle } from 'lucide-react';
-import { APP_COMMIT_HASH, APP_BUILD_NUMBER } from '../../config/version';
+import { APP_COMMIT_HASH, APP_BUILD_NUMBER, APP_DISPLAY_VERSION } from '../../config/version';
 
 const CURRENT_COMMIT = APP_COMMIT_HASH;
 const CURRENT_BUILD = Number(APP_BUILD_NUMBER) || 0;
@@ -10,17 +10,38 @@ export const UpdateNotifier = () => {
   const isToastActiveRef = useRef(false);
   const snoozedUntilRef = useRef(0);
 
-  const triggerUpdate = () => {
-    // Tell active service workers to skip waiting if any
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistration().then(reg => {
-        if (reg?.waiting) {
-          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-        }
-      });
+  const triggerUpdate = async () => {
+    toast.loading('Actualizando a la última versión...', { id: 'app-updating' });
+
+    // 1. Purge Cache Storage
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      try {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map(name => caches.delete(name)));
+      } catch (e) {}
     }
-    // Perform fresh reload from network
-    window.location.reload();
+
+    // 2. Unregister all service workers
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (let reg of registrations) {
+          await reg.unregister();
+        }
+      } catch (e) {}
+    }
+
+    // 3. Clear version check storage markers
+    try {
+      sessionStorage.clear();
+    } catch (e) {}
+
+    // 4. Force hard reload from server with timestamp param to invalidate browser disk cache
+    setTimeout(() => {
+      const cleanPath = window.location.origin + window.location.pathname;
+      const targetUrl = `${cleanPath}?_reload=${Date.now()}${window.location.hash || ''}`;
+      window.location.replace(targetUrl);
+    }, 400);
   };
 
   const showUpdateToast = (serverData) => {
@@ -29,6 +50,8 @@ export const UpdateNotifier = () => {
     if (isToastActiveRef.current) return;
 
     isToastActiveRef.current = true;
+
+    const newVersionStr = serverData.displayVersion || (serverData.version ? `v${serverData.version}` : serverData.numeric) || 'Actualización';
 
     toast.custom(
       (t) => (
@@ -43,7 +66,7 @@ export const UpdateNotifier = () => {
             color: 'var(--color-text)',
             padding: '1.2rem',
             borderRadius: 'var(--radius-lg)',
-            boxShadow: '0 16px 40px rgba(0, 0, 0, 0.35)',
+            boxShadow: '0 16px 40px rgba(0, 0, 0, 0.45)',
             border: '1px solid var(--color-primary)',
             position: 'relative',
             animation: t.visible ? 'fadeIn 0.25s ease' : 'none'
@@ -51,10 +74,10 @@ export const UpdateNotifier = () => {
         >
           {/* Header Tag & Close */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div className="version-pill-badge" style={{ padding: '0.15rem 0.55rem 0.15rem 0.25rem' }}>
-              <span className="version-pill-tag" style={{ fontSize: '0.6rem', padding: '0.12rem 0.45rem' }}>NUEVA</span>
+            <div className="version-pill-badge" style={{ padding: '0.2rem 0.65rem', border: '1px solid rgba(255, 255, 255, 0.15)' }}>
+              <Sparkles size={14} style={{ color: 'var(--color-primary)' }} />
               <span className="version-pill-number" style={{ fontSize: '0.75rem' }}>
-                {serverData.numeric || `v2.5.${serverData.build || ''}`}
+                {newVersionStr}
               </span>
             </div>
 
@@ -81,10 +104,10 @@ export const UpdateNotifier = () => {
           {/* Title & Description */}
           <div>
             <h4 className="font-headline" style={{ fontSize: '1rem', fontWeight: '700', margin: 0, color: 'var(--color-text)' }}>
-              Nueva versión disponible
+              Actualización disponible
             </h4>
             <p style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', marginTop: '0.3rem', lineHeight: '1.4' }}>
-              Se ha publicado una actualización en el servidor ({serverData.commit ? `#${serverData.commit}` : 'reciente'}). Actualiza para disfrutar de las últimas mejoras y correcciones.
+              Se ha publicado una nueva versión en el servidor ({serverData.commit ? `#${serverData.commit}` : 'reciente'}). Actualiza para aplicar las últimas mejoras.
             </p>
           </div>
 
@@ -134,24 +157,44 @@ export const UpdateNotifier = () => {
     );
   };
 
-  const checkVersionFromServer = async () => {
+  const checkVersionFromServer = async (isManual = false) => {
     try {
-      // Fetch version.json without cache
-      const res = await fetch(`/version.json?_t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' }
-      });
-      if (!res.ok) return;
+      // 1. Try static version.json
+      let data = null;
+      try {
+        const res = await fetch(`/version.json?_t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+        });
+        if (res.ok) {
+          data = await res.json();
+        }
+      } catch (e) {}
 
-      const data = await res.json();
-      if (!data || !data.commit) return;
+      // 2. Fallback to API /api/version if static not found
+      if (!data) {
+        try {
+          const apiRes = await fetch(`/api/version?_t=${Date.now()}`, {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+          });
+          if (apiRes.ok) {
+            data = await apiRes.json();
+          }
+        } catch (e) {}
+      }
+
+      if (!data) return;
 
       const serverBuild = Number(data.build) || 0;
-      const isNewCommit = CURRENT_COMMIT && data.commit !== CURRENT_COMMIT && data.commit !== 'local';
+      const isNewCommit = CURRENT_COMMIT && data.commit && data.commit !== CURRENT_COMMIT && data.commit !== 'local';
       const isNewBuild = serverBuild > 0 && CURRENT_BUILD > 0 && serverBuild > CURRENT_BUILD;
+      const isNewVersion = data.version && data.version !== APP_DISPLAY_VERSION.replace('v', '') && !data.version.startsWith('1.3.10');
 
-      if (isNewCommit || isNewBuild) {
+      if (isNewCommit || isNewBuild || (isNewVersion && serverBuild >= CURRENT_BUILD)) {
         showUpdateToast(data);
+      } else if (isManual) {
+        toast.success(`Estás en la última versión (${APP_DISPLAY_VERSION})`);
       }
     } catch {
       // Silent error if offline or server temporarily unavailable
@@ -173,26 +216,14 @@ export const UpdateNotifier = () => {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // 4. Service Worker update listener
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistration().then(reg => {
-        if (!reg) return;
-        reg.onupdatefound = () => {
-          const installingWorker = reg.installing;
-          if (installingWorker) {
-            installingWorker.onstatechange = () => {
-              if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                checkVersionFromServer();
-              }
-            };
-          }
-        };
-      });
-    }
+    // 4. Custom listener for manual check
+    const handleManualCheck = () => checkVersionFromServer(true);
+    window.addEventListener('check-app-update', handleManualCheck);
 
     return () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('check-app-update', handleManualCheck);
     };
   }, []);
 
@@ -200,3 +231,4 @@ export const UpdateNotifier = () => {
 };
 
 export default UpdateNotifier;
+

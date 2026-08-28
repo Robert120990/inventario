@@ -161,8 +161,7 @@ const Login = () => {
 
         {/* Footer info with Version Pill Badge */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-          <div className="version-pill-badge" style={{ padding: '0.2rem 0.65rem 0.2rem 0.3rem' }}>
-            <span className="version-pill-tag">NUEVA</span>
+          <div className="version-pill-badge" style={{ padding: '0.25rem 0.85rem' }}>
             <span className="version-pill-number">{APP_DISPLAY_VERSION}</span>
             <span className="version-pill-commit">· {APP_COMMIT_HASH}</span>
           </div>
@@ -170,6 +169,7 @@ const Login = () => {
             © 2026 Sistema de Control de Inventario
           </span>
         </div>
+
       </div>
     </div>
   );

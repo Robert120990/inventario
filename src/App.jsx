@@ -174,13 +174,14 @@ function AppContent() {
             <button
               onClick={() => setCurrentView('security-changelog')}
               className="version-pill-badge"
+              style={{ padding: '0.25rem 0.85rem' }}
               title="Ver Historial de Cambios y Novedades"
               type="button"
             >
-              <span className="version-pill-tag">NUEVA</span>
               <span className="version-pill-number">{APP_DISPLAY_VERSION}</span>
               <span className="version-pill-commit">#{APP_BUILD_NUMBER} · {APP_COMMIT_HASH}</span>
             </button>
+
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
               Actualización automática de versión por commit
             </span>

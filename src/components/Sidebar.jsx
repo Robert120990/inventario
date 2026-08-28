@@ -383,15 +383,15 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
             <button
               onClick={() => setCurrentView('security-changelog')}
               className="version-pill-badge"
-              style={{ padding: '0.15rem 0.6rem 0.15rem 0.25rem', border: '1px solid rgba(255, 255, 255, 0.12)' }}
+              style={{ padding: '0.2rem 0.75rem', border: '1px solid rgba(255, 255, 255, 0.12)' }}
               title="Ver Historial de Cambios y Novedades"
               type="button"
             >
-              <span className="version-pill-tag" style={{ fontSize: '0.55rem', padding: '0.1rem 0.45rem' }}>NUEVA</span>
-              <span className="version-pill-number" style={{ fontSize: '0.725rem' }}>{APP_DISPLAY_VERSION}</span>
+              <span className="version-pill-number" style={{ fontSize: '0.75rem' }}>{APP_DISPLAY_VERSION}</span>
             </button>
           </div>
         )}
+
       </div>
     </aside>
   );

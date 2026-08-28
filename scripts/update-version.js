@@ -44,16 +44,16 @@ const envCommit = (
   'local'
 ).slice(0, 7);
 
-// Auto-increment build counter
-const buildNumber = (gitCount && !isNaN(gitCount) && gitCount > 0)
-  ? gitCount
-  : (Number(prevData.build) || 86) + 1;
+// Auto-increment build counter monotonically
+const prevBuild = Number(prevData.build) || 97;
+const buildNumber = prevBuild + 1;
 
 const major = prevData.major || 1;
 const minor = prevData.minor || 3;
 const version = `${major}.${minor}.${buildNumber}`;
 const displayVersion = `v${major}.${minor}.${buildNumber}`;
 const shortDisplay = `v${major}.${minor}`;
+
 
 const versionData = {
   major,

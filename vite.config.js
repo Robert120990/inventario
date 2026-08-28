@@ -1,52 +1,55 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { execSync } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const env = globalThis.process?.env || {}
-let gitCommit = ''
-let gitCommitCount = 1
-try {
-  gitCommit = execSync('git rev-parse --short HEAD').toString().trim()
-  gitCommitCount = parseInt(execSync('git rev-list --count HEAD').toString().trim(), 10) || 1
-} catch {
-  // fallback if git command fails
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const versionFilePath = path.resolve(__dirname, 'src', 'config', 'version.json')
+
+let versionData = {
+  major: 1,
+  minor: 3,
+  build: 98,
+  version: '1.3.98',
+  displayVersion: 'v1.3.98',
+  commit: 'local'
 }
 
-const appCommit = (
-  env.VERCEL_GIT_COMMIT_SHA ||
-  env.GITHUB_SHA ||
-  env.VITE_APP_VERSION ||
-  gitCommit ||
-  'local'
-).slice(0, 7)
+if (fs.existsSync(versionFilePath)) {
+  try {
+    versionData = JSON.parse(fs.readFileSync(versionFilePath, 'utf8'))
+  } catch {}
+}
 
-const numericVersion = `v2.5.${gitCommitCount}`
+const appCommit = versionData.commit || 'local'
+const buildNumber = versionData.build || 98
+const displayVersion = versionData.displayVersion || `v${versionData.version}`
 
 function versionJsonPlugin() {
   return {
     name: 'generate-version-json',
     configureServer(server) {
       server.middlewares.use('/version.json', (req, res) => {
+        let current = versionData
+        if (fs.existsSync(versionFilePath)) {
+          try { current = JSON.parse(fs.readFileSync(versionFilePath, 'utf8')) } catch {}
+        }
         res.setHeader('Content-Type', 'application/json')
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
-        res.end(JSON.stringify({
-          commit: appCommit,
-          build: gitCommitCount,
-          numeric: numericVersion,
-          timestamp: Date.now()
-        }))
+        res.end(JSON.stringify(current))
       })
     },
     generateBundle() {
+      let current = versionData
+      if (fs.existsSync(versionFilePath)) {
+        try { current = JSON.parse(fs.readFileSync(versionFilePath, 'utf8')) } catch {}
+      }
       this.emitFile({
         type: 'asset',
         fileName: 'version.json',
-        source: JSON.stringify({
-          commit: appCommit,
-          build: gitCommitCount,
-          numeric: numericVersion,
-          timestamp: Date.now()
-        })
+        source: JSON.stringify(current)
       })
     }
   }
@@ -57,9 +60,10 @@ export default defineConfig({
   plugins: [react(), versionJsonPlugin()],
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(appCommit),
-    'import.meta.env.VITE_APP_BUILD_NUMBER': JSON.stringify(gitCommitCount),
-    'import.meta.env.VITE_APP_NUMERIC_VERSION': JSON.stringify(numericVersion),
+    'import.meta.env.VITE_APP_BUILD_NUMBER': JSON.stringify(buildNumber),
+    'import.meta.env.VITE_APP_NUMERIC_VERSION': JSON.stringify(displayVersion),
   },
+
   server: {
     proxy: {
       '/api': 'http://localhost:3001'
