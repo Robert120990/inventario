@@ -97,32 +97,59 @@ const MovementForm = ({ onCancel, initialData }) => {
     toast.success(`Servicio "${preset.label}" añadido`);
   };
 
-  // Calcular cobro automático por temperatura fuera de rango
+  // Calcular cobro automático por temperatura promedio de todos los productos (> -14°C)
   const handleAutoCalculateTemperaturePenalty = () => {
-    const itemsOutOfRange = formData.items.filter(it => {
-      const temp = Number(it.temperature);
-      const pounds = Number(it.qtyPounds);
-      return it.temperature !== '' && !isNaN(temp) && temp > -14 && pounds > 0;
-    });
+    const itemsWithTemp = formData.items.filter(it => 
+      it.temperature !== '' && it.temperature !== null && !isNaN(Number(it.temperature))
+    );
 
-    if (itemsOutOfRange.length === 0) {
-      toast.error('No hay productos en este movimiento con temperatura fuera de rango (> -14°C) y libras especificadas.');
+    if (itemsWithTemp.length === 0) {
+      toast.error('No se ha especificado la temperatura en los productos de este movimiento.');
       return;
     }
 
-    let addedCount = 0;
-    const newServices = [...formData.services];
+    const totalTemp = itemsWithTemp.reduce((sum, it) => sum + Number(it.temperature), 0);
+    const avgTemp = totalTemp / itemsWithTemp.length;
+    const roundedAvgTemp = Number(avgTemp.toFixed(1));
 
-    itemsOutOfRange.forEach(it => {
-      const service = calculateTemperatureService(it.temperature, it.qtyPounds);
-      if (service) {
-        newServices.push(service);
-        addedCount++;
+    if (avgTemp <= -14) {
+      toast(`La temperatura promedio (${roundedAvgTemp}°C) está dentro del rango permitido (-14°C o menor). No aplica penalización.`, {
+        icon: '❄️'
+      });
+      // Limpiar cualquier cobro previo de temperatura si ahora está en rango
+      const cleanServices = formData.services.filter(s => 
+        !String(s.description || '').toLowerCase().includes('temperatura')
+      );
+      if (cleanServices.length !== formData.services.length) {
+        setFormData(prev => ({ ...prev, services: cleanServices }));
       }
-    });
+      return;
+    }
 
-    setFormData(prev => ({ ...prev, services: newServices }));
-    toast.success(`Se agregaron ${addedCount} cobro(s) de temperatura según el Contrato 2025-2026`);
+    const totalPounds = formData.items.reduce((sum, it) => sum + Number(it.qtyPounds || 0), 0);
+    if (totalPounds <= 0) {
+      toast.error(`La temperatura promedio (${roundedAvgTemp}°C) está fuera de rango (> -14°C), pero el movimiento no tiene libras especificadas.`);
+      return;
+    }
+
+    const service = calculateTemperatureService(avgTemp, totalPounds, true);
+    if (!service) {
+      toast.error('No se pudo calcular la tarifa para la temperatura promedio.');
+      return;
+    }
+
+    // Limpiar cobros anteriores de temperatura para evitar duplicados
+    const cleanServices = formData.services.filter(s => 
+      !String(s.description || '').toLowerCase().includes('temperatura')
+    );
+
+    const updatedServices = [...cleanServices, service];
+    setFormData(prev => ({ ...prev, services: updatedServices }));
+
+    const formattedTemp = roundedAvgTemp > 0 ? `+${roundedAvgTemp}` : `${roundedAvgTemp}`;
+    toast.success(
+      `Cobro aplicado: Promedio ${formattedTemp}°C sobre ${totalPounds.toLocaleString('en-US')} lbs totales ($${service.value.toFixed(2)})`
+    );
   };
 
   const removeService = (index) => {

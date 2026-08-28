@@ -52,29 +52,38 @@ export const TEMPERATURE_RATES = {
 
 /**
  * Obtiene la tarifa por libra según la temperatura en °C
- * Si la temperatura está dentro del rango (-18°C o menor), la tarifa es 0.
+ * Si la temperatura está dentro del rango (-14°C o menor), la tarifa es 0.
+ * Si es mayor a -14°C, aplica el escalafón del contrato (ej. -13.9°C -> -13°C: $0.003).
  * Si es mayor que +6°C, se aplica la tarifa máxima de 6°C ($0.034).
  */
 export const getTemperatureRate = (tempCelsius) => {
-  if (tempCelsius === null || tempCelsius === undefined || isNaN(tempCelsius)) return 0;
-  const temp = Math.round(Number(tempCelsius));
-  if (temp <= -14) return 0; // Dentro del rango normal o cercano
-  if (temp >= 6) return 0.034;
-  return TEMPERATURE_RATES[String(temp)] || 0;
+  if (tempCelsius === null || tempCelsius === undefined || isNaN(Number(tempCelsius))) return 0;
+  const num = Number(tempCelsius);
+  if (num <= -14.000001) return 0; // Dentro del rango normal o permitido (-14°C o menor)
+  
+  // Para temperaturas fuera de rango (> -14°C), se aplica el escalafón del contrato (Math.ceil)
+  // Ej: -13.9°C cae en -13°C ($0.003), -12.4°C en -12°C ($0.004), etc.
+  const tempKey = Math.min(6, Math.max(-13, Math.ceil(num)));
+  return TEMPERATURE_RATES[String(tempKey)] || 0;
 };
 
 /**
  * Calcula el cobro extraordinario por temperatura fuera de rango
- * @param {number} tempCelsius Temperatura registrada
- * @param {number} pounds Total de libras recibidas
+ * @param {number} tempCelsius Temperatura promedio registrada
+ * @param {number} pounds Total de libras recibidas en el movimiento
+ * @param {boolean} isAverage Indica si es promedio de temperatura
  */
-export const calculateTemperatureService = (tempCelsius, pounds) => {
-  const rate = getTemperatureRate(tempCelsius);
+export const calculateTemperatureService = (tempCelsius, pounds, isAverage = true) => {
+  const numTemp = Number(tempCelsius);
+  const rate = getTemperatureRate(numTemp);
   if (rate <= 0 || !pounds || pounds <= 0) return null;
   
-  const formattedTemp = Number(tempCelsius) > 0 ? `+${tempCelsius}` : `${tempCelsius}`;
+  const roundedTemp = Number(numTemp.toFixed(1));
+  const formattedTemp = roundedTemp > 0 ? `+${roundedTemp}` : `${roundedTemp}`;
+  const prefix = isAverage ? 'Temperatura Promedio' : 'Temperatura';
+  
   return {
-    description: `Temperatura ${formattedTemp}°C (${pounds.toLocaleString('en-US', { maximumFractionDigits: 2 })} lbs)`,
+    description: `${prefix} ${formattedTemp}°C (${Number(pounds).toLocaleString('en-US', { maximumFractionDigits: 2 })} lbs)`,
     quantity: Number(pounds),
     unitPrice: rate,
     value: Number((pounds * rate).toFixed(2))
