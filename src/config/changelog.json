@@ -1,5 +1,23 @@
 [
   {
+    "id": "87e6b15",
+    "version": "v2.7.115",
+    "commit": "87e6b15",
+    "fullCommit": "87e6b15809699da48eedfe6fe7769df18c700f97",
+    "description": "Implementar cortes de seguro congelados, bloqueo/desbloqueo, historial y fecha inicio automatica al dia siguiente",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-08-28",
+    "time": "09:41",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "feature",
+        "text": "Implementar cortes de seguro congelados, bloqueo/desbloqueo, historial y fecha inicio automatica al dia siguiente"
+      }
+    ]
+  },
+  {
     "id": "facb5be",
     "version": "v2.7.114",
     "commit": "facb5be",
@@ -170,7 +188,7 @@
     "author": "Ing. Raúl Sosa",
     "date": "2026-08-28",
     "time": "08:25",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
