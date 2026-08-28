@@ -1192,25 +1192,48 @@ router.delete('/versions/:id', async (req, res) => {
 // CORTES DIARIOS CONGELADOS (DAILY CUTS)
 // ==========================================
 
-// Listar todos los cortes registrados
+// Listar todos los cortes registrados con detalle completo para continuidad y balance
 router.get('/daily-cuts', async (req, res) => {
     try {
         const [rows] = await pool.query(`
-            SELECT id, title, clientName, startDate, endDate, isLocked, totalsData, created_by, created_at, updated_at
+            SELECT *
             FROM daily_cuts
             ORDER BY startDate DESC, created_at DESC
         `);
 
         const cuts = rows.map(r => {
             let totals = {};
+            let congelados = [];
+            let preparados = [];
+            let services = [];
             try {
                 totals = typeof r.totalsData === 'string' ? JSON.parse(r.totalsData) : (r.totalsData || {});
-            } catch (e) {
-                totals = {};
-            }
+            } catch (e) { totals = {}; }
+            try {
+                congelados = typeof r.congeladosData === 'string' ? JSON.parse(r.congeladosData) : (r.congeladosData || []);
+            } catch (e) { congelados = []; }
+            try {
+                preparados = typeof r.preparadosData === 'string' ? JSON.parse(r.preparadosData) : (r.preparadosData || []);
+            } catch (e) { preparados = []; }
+            try {
+                services = typeof r.servicesData === 'string' ? JSON.parse(r.servicesData) : (r.servicesData || []);
+            } catch (e) { services = []; }
+
+            const cleanStart = r.startDate instanceof Date 
+                ? r.startDate.toISOString().split('T')[0] 
+                : String(r.startDate || '').split('T')[0];
+            const cleanEnd = r.endDate instanceof Date 
+                ? r.endDate.toISOString().split('T')[0] 
+                : String(r.endDate || '').split('T')[0];
+
             return {
                 ...r,
+                startDate: cleanStart,
+                endDate: cleanEnd,
                 isLocked: Boolean(r.isLocked),
+                congeladosData: congelados,
+                preparadosData: preparados,
+                servicesData: services,
                 totals
             };
         });
@@ -1230,8 +1253,17 @@ router.get('/daily-cuts/:id', async (req, res) => {
             return res.status(404).json({ error: 'Corte no encontrado' });
         }
         const cut = rows[0];
+        const cleanStart = cut.startDate instanceof Date 
+            ? cut.startDate.toISOString().split('T')[0] 
+            : String(cut.startDate || '').split('T')[0];
+        const cleanEnd = cut.endDate instanceof Date 
+            ? cut.endDate.toISOString().split('T')[0] 
+            : String(cut.endDate || '').split('T')[0];
+
         res.json({
             ...cut,
+            startDate: cleanStart,
+            endDate: cleanEnd,
             isLocked: Boolean(cut.isLocked),
             congeladosData: typeof cut.congeladosData === 'string' ? JSON.parse(cut.congeladosData || '[]') : cut.congeladosData,
             preparadosData: typeof cut.preparadosData === 'string' ? JSON.parse(cut.preparadosData || '[]') : cut.preparadosData,
@@ -1243,6 +1275,7 @@ router.get('/daily-cuts/:id', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 
 // Crear y congelar un nuevo corte
 router.post('/daily-cuts', async (req, res) => {

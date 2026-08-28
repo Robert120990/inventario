@@ -64,8 +64,10 @@ export const InventoryProvider = ({ children }) => {
   });
   const [categoryUnits, setCategoryUnits] = useState({});
   const [versions, setVersions] = useState(SYSTEM_CHANGELOG);
+  const [dailyCuts, setDailyCuts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [theme, setThemeState] = useState(() => localStorage.getItem('inv_theme') || 'light');
+
 
   const setTheme = (newTheme) => {
     setThemeState(newTheme);
@@ -105,7 +107,7 @@ export const InventoryProvider = ({ children }) => {
 
       try {
         setLoading(true);
-        const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes, rolesRes, notifRes] = await Promise.all([
+        const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes, rolesRes, notifRes, cutsRes] = await Promise.all([
           apiFetch(`${API_BASE_URL}/api/products`).then(res => res.json()).catch(() => []),
           apiFetch(`${API_BASE_URL}/api/movements`).then(res => res.json()).catch(() => []),
           apiFetch(`${API_BASE_URL}/api/users`).then(res => res.json()).catch(() => []),
@@ -113,7 +115,8 @@ export const InventoryProvider = ({ children }) => {
           apiFetch(`${API_BASE_URL}/api/settings`).then(res => res.json()).catch(() => ({})),
           apiFetch(`${API_BASE_URL}/api/versions`).then(res => res.json()).catch(() => []),
           apiFetch(`${API_BASE_URL}/api/roles`).then(res => res.json()).catch(() => []),
-          apiFetch(`${API_BASE_URL}/api/notifications`).then(res => res.json()).catch(() => [])
+          apiFetch(`${API_BASE_URL}/api/notifications`).then(res => res.json()).catch(() => []),
+          apiFetch(`${API_BASE_URL}/api/daily-cuts`).then(res => res.json()).catch(() => [])
         ]);
         
         clearTimeout(timeoutId);
@@ -124,6 +127,8 @@ export const InventoryProvider = ({ children }) => {
         setVersions(mergeChangelog(versionsRes));
         if (Array.isArray(rolesRes)) setRoles(rolesRes);
         if (Array.isArray(notifRes)) setNotifications(notifRes);
+        if (Array.isArray(cutsRes)) setDailyCuts(cutsRes);
+
         
         if (configRes && !configRes.error) {
           if (configRes.categories) setCategories(configRes.categories.map(c => c.name));
@@ -902,7 +907,11 @@ export const InventoryProvider = ({ children }) => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/daily-cuts`);
       if (res.ok) {
-        return await res.json();
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setDailyCuts(data);
+          return data;
+        }
       }
       return [];
     } catch (e) {
@@ -937,6 +946,7 @@ export const InventoryProvider = ({ children }) => {
       const data = await res.json();
       if (res.ok && data.success) {
         logAuditEvent('FREEZE_DAILY_CUT', 'summary2', `Congelamiento de corte '${data.title}' (${cutData.startDate} al ${cutData.endDate})`);
+        await fetchDailyCuts();
         return { success: true, ...data };
       }
       return { success: false, message: data.error || 'Error al congelar corte' };
@@ -955,6 +965,7 @@ export const InventoryProvider = ({ children }) => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        await fetchDailyCuts();
         return { success: true, ...data };
       }
       return { success: false, message: data.error || 'Error al actualizar corte' };
@@ -969,6 +980,7 @@ export const InventoryProvider = ({ children }) => {
       const res = await apiFetch(`${API_BASE_URL}/api/daily-cuts/${id}`, { method: 'DELETE' });
       if (res.ok) {
         logAuditEvent('DELETE_DAILY_CUT', 'summary2', `Eliminación de corte '${title || id}'`);
+        await fetchDailyCuts();
         return { success: true };
       }
       return { success: false };
@@ -1056,6 +1068,7 @@ export const InventoryProvider = ({ children }) => {
       categoryUnits,
       versions,
       currentVersion,
+      dailyCuts,
       systemLogs,
       activeSessions,
       notifications,
@@ -1112,6 +1125,7 @@ export const InventoryProvider = ({ children }) => {
       theme,
       setTheme
     }}>
+
       {children}
     </InventoryContext.Provider>
   );

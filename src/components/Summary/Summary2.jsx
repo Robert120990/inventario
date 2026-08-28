@@ -20,7 +20,9 @@ const Summary2 = () => {
     categoryUnits, 
     canExport, 
     currentUser,
+    dailyCuts,
     fetchDailyCuts, 
+
     fetchDailyCutById, 
     createDailyCut, 
     updateDailyCut, 
@@ -133,20 +135,31 @@ const Summary2 = () => {
     const unitTypeKey = unitField === 'qtyPounds' ? 'congeladosData' : 'preparadosData';
 
     // Buscar cortes congelados previos para usar como línea base y asegurar cuadre perfecto
-    const priorCuts = cutsList
-      .filter(c => c.endDate && c.endDate.split('T')[0] <= d0 && Array.isArray(c[unitTypeKey]) && c[unitTypeKey].length > 0)
-      .sort((a, b) => (b.endDate || '').localeCompare(a.endDate || ''));
+    const allCuts = (dailyCuts && dailyCuts.length > 0) ? dailyCuts : cutsList;
+    const priorCuts = allCuts
+      .filter(c => {
+        const cutEnd = String(c.endDate || '').split('T')[0];
+        const rows = c[unitTypeKey];
+        return cutEnd && cutEnd <= d0 && Array.isArray(rows) && rows.length > 0;
+      })
+      .sort((a, b) => {
+        const endA = String(a.endDate || '').split('T')[0];
+        const endB = String(b.endDate || '').split('T')[0];
+        return endB.localeCompare(endA);
+      });
 
     let baselineDate = null;
     let baselineFinalStock = null;
 
     if (priorCuts.length > 0) {
       const lastCut = priorCuts[0];
-      const cutRows = lastCut[unitTypeKey];
-      const lastRow = cutRows[cutRows.length - 1];
-      if (lastRow && lastRow.stockFinal !== undefined) {
-        baselineDate = lastCut.endDate.split('T')[0];
-        baselineFinalStock = Number(lastRow.stockFinal);
+      const cutRows = lastCut[unitTypeKey] || [];
+      const cutEnd = String(lastCut.endDate || '').split('T')[0];
+      
+      const rowOnEnd = cutRows.find(r => String(r.fecha || '').split('T')[0] === cutEnd) || cutRows[cutRows.length - 1];
+      if (rowOnEnd && rowOnEnd.stockFinal !== undefined && rowOnEnd.stockFinal !== null) {
+        baselineDate = cutEnd;
+        baselineFinalStock = Number(rowOnEnd.stockFinal || 0);
       }
     }
 
@@ -255,7 +268,7 @@ const Summary2 = () => {
       'Lbs',
       'Mantenimiento congelado (-18°)'
     );
-  }, [products, movements, dateList, categoryUnits, cutsList]);
+  }, [products, movements, dateList, categoryUnits, cutsList, dailyCuts]);
 
   // Cálculo en vivo: 2. PRODUCTOS PREPARADOS
   const livePreparadosRows = useMemo(() => {
@@ -269,7 +282,8 @@ const Summary2 = () => {
       'Cst',
       'Mantenimiento congelado (Preparados)'
     );
-  }, [products, movements, dateList, categoryUnits, cutsList]);
+  }, [products, movements, dateList, categoryUnits, cutsList, dailyCuts]);
+
 
   // Cálculo en vivo: 3. SERVICIOS EXTRAORDINARIOS (Resueltos con libras y tarifas reales)
   const liveServicesData = useMemo(() => {
