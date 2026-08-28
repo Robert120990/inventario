@@ -481,14 +481,14 @@ const Summary2 = () => {
     }
   };
 
-  // Edición en línea para Servicios Extraordinarios
+  // Edición en línea para Servicios Extraordinarios (CANTIDAD y PRECIO calculan automáticamente el VALOR total)
   const handleServiceCellEdit = (index, field, rawValue) => {
     if (isLocked && activeCut) {
       toast('Desbloquea el corte para poder editar los servicios.', { icon: '🔒' });
       return;
     }
 
-    const newServices = [...servicesData.map(resolveServiceDetails)];
+    const newServices = servicesData.map(s => ({ ...s }));
     const item = { ...newServices[index] };
 
     if (field === 'description') {
@@ -497,22 +497,16 @@ const Summary2 = () => {
       const numVal = rawValue === '' ? 0 : Number(rawValue);
       item[field] = numVal;
 
-      if (field === 'quantity' || field === 'unitPrice') {
-        const q = field === 'quantity' ? numVal : Number(item.quantity || 1);
-        const p = field === 'unitPrice' ? numVal : Number(item.unitPrice || 0);
-        item.value = Number((q * p).toFixed(2));
-      } else if (field === 'value') {
-        const q = Number(item.quantity || 1);
-        if (q > 0) {
-          item.unitPrice = Number((numVal / q).toFixed(4));
-        }
-      }
+      const q = Number(field === 'quantity' ? numVal : item.quantity) || 0;
+      const p = Number(field === 'unitPrice' ? numVal : item.unitPrice) || 0;
+      item.value = Number((q * p).toFixed(2));
     }
 
     newServices[index] = item;
     setCustomServices(newServices);
     triggerAutoSave(null, null, newServices);
   };
+
 
   // Abrir modal para congelar corte actual
   const handleOpenFreezeModal = () => {
@@ -1556,21 +1550,10 @@ const Summary2 = () => {
                           s.unitPrice !== undefined ? `$${formatPrice(s.unitPrice)}` : `$${formatCurrency(s.value)}`
                         )}
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
-                        {activeCut && !isLocked ? (
-                          <input
-                            type="number"
-                            step="0.01"
-                            className="form-input"
-                            style={{ width: '90px', textAlign: 'right', margin: 0, padding: '0.35rem 0.5rem', fontWeight: 'bold', color: '#e67e22' }}
-                            value={s.value ?? ''}
-                            onChange={(e) => handleServiceCellEdit(idx, 'value', e.target.value)}
-                            title="Total en dólares"
-                          />
-                        ) : (
-                          `$${formatCurrency(s.value)}`
-                        )}
+                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#e67e22' }}>
+                        ${formatCurrency(s.value)}
                       </td>
+
                     </tr>
                   ))
                 )}
