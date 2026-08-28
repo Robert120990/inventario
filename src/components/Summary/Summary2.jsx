@@ -1,6 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { FileText, Download, FileSpreadsheet, FileOutput, ShieldCheck, Layers, Package } from 'lucide-react';
+import { 
+  FileText, Download, FileSpreadsheet, FileOutput, Layers, Package, 
+  Snowflake, Lock, Unlock, History, RotateCcw, Save, Trash2, 
+  CheckCircle2, AlertCircle, RefreshCw, Search, X, Check, Eye, Pencil
+} from 'lucide-react';
 import { exportCuadroClienteCuartoFrio } from '../../utils/exportManager';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -10,7 +14,19 @@ import { toast } from 'react-hot-toast';
 import { DatePicker, DateQuickPresets, getLocalDateStr } from '../Common/DatePicker';
 
 const Summary2 = () => {
-  const { products, movements, categories, categoryUnits, settings, canExport } = useInventory();
+  const { 
+    products, 
+    movements, 
+    categoryUnits, 
+    canExport, 
+    currentUser,
+    fetchDailyCuts, 
+    fetchDailyCutById, 
+    createDailyCut, 
+    updateDailyCut, 
+    deleteDailyCut 
+  } = useInventory();
+  
   const allowExport = canExport('summary2');
   
   // Rango de fechas por defecto: Mes actual (1 al día actual)
@@ -23,8 +39,29 @@ const Summary2 = () => {
   const [clientName, setClientName] = useState(CONTRACT_INFO.clientName);
   const [selectedCategory, setSelectedCategory] = useState('all'); // 'all' | 'Preparados' | 'Congelados'
 
-  // Controladores de fecha sincronizados
+  // Estados para Cortes Congelados e Historial
+  const [activeCut, setActiveCut] = useState(null); // null = Modo en Vivo, Objeto = Corte Congelado
+  const [isLocked, setIsLocked] = useState(true); // Bloqueo de edición del corte
+  const [customCongelados, setCustomCongelados] = useState(null);
+  const [customPreparados, setCustomPreparados] = useState(null);
+  const [customServices, setCustomServices] = useState(null);
+
+  // Estados de interfaz y modales
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [cutsList, setCutsList] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historySearch, setHistorySearch] = useState('');
+  
+  const [freezeModalOpen, setFreezeModalOpen] = useState(false);
+  const [freezeTitle, setFreezeTitle] = useState('');
+  const [isSavingCut, setIsSavingCut] = useState(false);
+  const [saveStatus, setSaveStatus] = useState(null); // 'saving' | 'saved' | null
+  
+  const autoSaveTimerRef = useRef(null);
+
+  // Controladores de fecha sincronizados (solo modificables en Modo En Vivo)
   const handleStartDateChange = (newStart) => {
+    if (activeCut) return;
     setStartDate(newStart);
     if (endDate && newStart > endDate) {
       setEndDate(newStart);
@@ -32,6 +69,7 @@ const Summary2 = () => {
   };
 
   const handleEndDateChange = (newEnd) => {
+    if (activeCut) return;
     setEndDate(newEnd);
     if (startDate && newEnd < startDate) {
       setStartDate(newEnd);
@@ -39,6 +77,7 @@ const Summary2 = () => {
   };
 
   const handlePresetSelect = (start, end) => {
+    if (activeCut) return;
     setStartDate(start);
     setEndDate(end);
   };
@@ -128,8 +167,8 @@ const Summary2 = () => {
     });
   };
 
-  // 1. PRODUCTOS CONGELADOS (LIBRAS - $0.001 / lb / día)
-  const congeladosRows = useMemo(() => {
+  // Cálculo en vivo: 1. PRODUCTOS CONGELADOS
+  const liveCongeladosRows = useMemo(() => {
     if (products.length === 0 || dateList.length === 0) return [];
     const congProducts = products.filter(p => p.category === 'Congelados' || categoryUnits[p.category] === 'pounds');
     return calculateDailySeries(
@@ -142,8 +181,8 @@ const Summary2 = () => {
     );
   }, [products, movements, dateList, categoryUnits]);
 
-  // 2. PRODUCTOS PREPARADOS (CESTAS - $0.038 / cesta / día)
-  const preparadosRows = useMemo(() => {
+  // Cálculo en vivo: 2. PRODUCTOS PREPARADOS
+  const livePreparadosRows = useMemo(() => {
     if (products.length === 0 || dateList.length === 0) return [];
     const prepProducts = products.filter(p => p.category === 'Preparados' || categoryUnits[p.category] === 'baskets');
     return calculateDailySeries(
@@ -156,8 +195,8 @@ const Summary2 = () => {
     );
   }, [products, movements, dateList, categoryUnits]);
 
-  // 3. SERVICIOS EXTRAORDINARIOS REGISTRADOS EN EL PERÍODO
-  const servicesData = useMemo(() => {
+  // Cálculo en vivo: 3. SERVICIOS EXTRAORDINARIOS
+  const liveServicesData = useMemo(() => {
     if (!startDate || !endDate) return [];
     const services = [];
     movements.forEach(m => {
@@ -178,29 +217,42 @@ const Summary2 = () => {
     return services;
   }, [movements, startDate, endDate]);
 
+  // Filas activas en pantalla (utiliza datos del corte congelado o cálculo dinámico en vivo)
+  const congeladosRows = customCongelados !== null 
+    ? customCongelados 
+    : (activeCut ? (activeCut.congeladosData || []) : liveCongeladosRows);
+
+  const preparadosRows = customPreparados !== null 
+    ? customPreparados 
+    : (activeCut ? (activeCut.preparadosData || []) : livePreparadosRows);
+
+  const servicesData = customServices !== null 
+    ? customServices 
+    : (activeCut ? (activeCut.servicesData || []) : liveServicesData);
+
   // Totales Congelados (Libras)
   const congTotals = useMemo(() => {
-    const invInicial = congeladosRows.reduce((acc, r) => acc + r.stockInicial, 0);
-    const entradas = congeladosRows.reduce((acc, r) => acc + r.entradas, 0);
-    const salidas = congeladosRows.reduce((acc, r) => acc + r.salidas, 0);
-    const stockFinal = congeladosRows.reduce((acc, r) => acc + r.stockFinal, 0);
-    const totalMonto = congeladosRows.reduce((acc, r) => acc + r.totalMonto, 0);
+    const invInicial = congeladosRows.reduce((acc, r) => acc + (Number(r.stockInicial) || 0), 0);
+    const entradas = congeladosRows.reduce((acc, r) => acc + (Number(r.entradas) || 0), 0);
+    const salidas = congeladosRows.reduce((acc, r) => acc + (Number(r.salidas) || 0), 0);
+    const stockFinal = congeladosRows.reduce((acc, r) => acc + (Number(r.stockFinal) || 0), 0);
+    const totalMonto = congeladosRows.reduce((acc, r) => acc + (Number(r.totalMonto) || 0), 0);
     return { invInicial, entradas, salidas, stockFinal, totalMonto };
   }, [congeladosRows]);
 
   // Totales Preparados (Cestas)
   const prepTotals = useMemo(() => {
-    const invInicial = preparadosRows.reduce((acc, r) => acc + r.stockInicial, 0);
-    const entradas = preparadosRows.reduce((acc, r) => acc + r.entradas, 0);
-    const salidas = preparadosRows.reduce((acc, r) => acc + r.salidas, 0);
-    const stockFinal = preparadosRows.reduce((acc, r) => acc + r.stockFinal, 0);
-    const totalMonto = preparadosRows.reduce((acc, r) => acc + r.totalMonto, 0);
+    const invInicial = preparadosRows.reduce((acc, r) => acc + (Number(r.stockInicial) || 0), 0);
+    const entradas = preparadosRows.reduce((acc, r) => acc + (Number(r.entradas) || 0), 0);
+    const salidas = preparadosRows.reduce((acc, r) => acc + (Number(r.salidas) || 0), 0);
+    const stockFinal = preparadosRows.reduce((acc, r) => acc + (Number(r.stockFinal) || 0), 0);
+    const totalMonto = preparadosRows.reduce((acc, r) => acc + (Number(r.totalMonto) || 0), 0);
     return { invInicial, entradas, salidas, stockFinal, totalMonto };
   }, [preparadosRows]);
 
   // Totales Servicios Extraordinarios
   const totalServicios = useMemo(() => {
-    return servicesData.reduce((acc, s) => acc + s.value, 0);
+    return servicesData.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
   }, [servicesData]);
 
   // Totales de Facturación Consolidada según filtro activo
@@ -211,6 +263,261 @@ const Summary2 = () => {
   const reportSubtotal = reportTotalAlmacenaje + totalServicios;
   const reportIva = reportSubtotal * CONTRACT_INFO.ivaRate;
   const reportGrandTotal = reportSubtotal + reportIva;
+
+  // =========================================================================
+  // GESTIÓN DE CORTES CONGELADOS, DESBLOQUEO, EDICIÓN Y AUTO-GUARDADO
+  // =========================================================================
+
+  // Disparador de autoguardado con debounce cuando se edita un corte activo
+  const triggerAutoSave = (updatedCong, updatedPrep, updatedServ) => {
+    if (!activeCut) return;
+
+    setSaveStatus('saving');
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    autoSaveTimerRef.current = setTimeout(async () => {
+      const cong = updatedCong || congeladosRows;
+      const prep = updatedPrep || preparadosRows;
+      const serv = updatedServ || servicesData;
+
+      const calcCongTotal = cong.reduce((acc, r) => acc + (Number(r.totalMonto) || 0), 0);
+      const calcPrepTotal = prep.reduce((acc, r) => acc + (Number(r.totalMonto) || 0), 0);
+      const calcServTotal = serv.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
+      const calcSub = calcCongTotal + calcPrepTotal + calcServTotal;
+      const calcIva = calcSub * CONTRACT_INFO.ivaRate;
+      const calcGrand = calcSub + calcIva;
+
+      const totalsPayload = {
+        totalAlmacenaje: calcCongTotal + calcPrepTotal,
+        subtotal: calcSub,
+        iva: calcIva,
+        totalGeneral: calcGrand,
+        congeladosMonto: calcCongTotal,
+        preparadosMonto: calcPrepTotal,
+        serviciosMonto: calcServTotal
+      };
+
+      const res = await updateDailyCut(activeCut.id, {
+        congeladosData: cong,
+        preparadosData: prep,
+        servicesData: serv,
+        totalsData: totalsPayload,
+        clientName
+      });
+
+      if (res.success) {
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus(null), 3000);
+      } else {
+        setSaveStatus(null);
+        toast.error('Error al autoguardar cambios en el corte');
+      }
+    }, 600);
+  };
+
+  // Edición en línea de celdas (INV-INICIAL, ENTRADA, SALIDA, TOTAL)
+  const handleCellEdit = (tableType, index, field, rawValue) => {
+    if (isLocked && activeCut) {
+      toast('Desbloquea el corte para poder editar las lecturas.', { icon: '🔒' });
+      return;
+    }
+
+    const numVal = rawValue === '' ? 0 : Number(rawValue);
+
+    if (tableType === 'congelados') {
+      const newRows = [...congeladosRows];
+      const row = { ...newRows[index] };
+      row[field] = numVal;
+
+      // Recalcular Total Lbs y Monto $
+      if (field === 'stockInicial' || field === 'entradas' || field === 'salidas') {
+        const init = Number(field === 'stockInicial' ? numVal : row.stockInicial) || 0;
+        const ent = Number(field === 'entradas' ? numVal : row.entradas) || 0;
+        const sal = Number(field === 'salidas' ? numVal : row.salidas) || 0;
+        row.stockFinal = init + ent - sal;
+      }
+
+      row.totalMonto = Number(row.stockFinal || 0) * Number(row.precio || 0);
+      newRows[index] = row;
+      setCustomCongelados(newRows);
+      triggerAutoSave(newRows, null, null);
+    } else if (tableType === 'preparados') {
+      const newRows = [...preparadosRows];
+      const row = { ...newRows[index] };
+      row[field] = numVal;
+
+      // Recalcular Total Cestas y Monto $
+      if (field === 'stockInicial' || field === 'entradas' || field === 'salidas') {
+        const init = Number(field === 'stockInicial' ? numVal : row.stockInicial) || 0;
+        const ent = Number(field === 'entradas' ? numVal : row.entradas) || 0;
+        const sal = Number(field === 'salidas' ? numVal : row.salidas) || 0;
+        row.stockFinal = init + ent - sal;
+      }
+
+      row.totalMonto = Number(row.stockFinal || 0) * Number(row.precio || 0);
+      newRows[index] = row;
+      setCustomPreparados(newRows);
+      triggerAutoSave(null, newRows, null);
+    }
+  };
+
+  // Abrir modal para congelar corte actual
+  const handleOpenFreezeModal = () => {
+    setFreezeTitle(`Corte ${formatDate(startDate)} al ${formatDate(endDate)}`);
+    setFreezeModalOpen(true);
+  };
+
+  // Confirmar y congelar el período actual
+  const handleConfirmFreeze = async (e) => {
+    e.preventDefault();
+    if (!freezeTitle.trim()) {
+      toast.error('Ingresa un título o identificador para el corte.');
+      return;
+    }
+
+    setIsSavingCut(true);
+    try {
+      const totalsPayload = {
+        totalAlmacenaje: reportTotalAlmacenaje,
+        subtotal: reportSubtotal,
+        iva: reportIva,
+        totalGeneral: reportGrandTotal,
+        congeladosMonto: congTotals.totalMonto,
+        preparadosMonto: prepTotals.totalMonto,
+        serviciosMonto: totalServicios
+      };
+
+      const res = await createDailyCut({
+        title: freezeTitle.trim(),
+        clientName,
+        startDate,
+        endDate,
+        isLocked: 1,
+        congeladosData: congeladosRows,
+        preparadosData: preparadosRows,
+        servicesData: servicesData,
+        totalsData: totalsPayload
+      });
+
+      if (res.success) {
+        toast.success('¡Corte diario congelado y guardado con éxito!');
+        setFreezeModalOpen(false);
+        // Cargar el corte recién creado como corte activo
+        const fullCut = await fetchDailyCutById(res.id);
+        if (fullCut) {
+          setActiveCut(fullCut);
+          setCustomCongelados(fullCut.congeladosData);
+          setCustomPreparados(fullCut.preparadosData);
+          setCustomServices(fullCut.servicesData);
+          setIsLocked(true);
+        }
+      } else {
+        toast.error(res.message || 'No se pudo guardar el corte.');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al congelar el período: ' + err.message);
+    } finally {
+      setIsSavingCut(false);
+    }
+  };
+
+  // Alternar Bloqueo / Desbloqueo del corte activo
+  const handleToggleLock = async () => {
+    if (!activeCut) return;
+
+    const newLockState = !isLocked;
+    setIsLocked(newLockState);
+
+    try {
+      const res = await updateDailyCut(activeCut.id, { isLocked: newLockState ? 1 : 0 });
+      if (res.success) {
+        setActiveCut(prev => ({ ...prev, isLocked: newLockState }));
+        if (newLockState) {
+          toast.success('Corte bloqueado (Modo Solo Lectura).');
+        } else {
+          toast('Corte desbloqueado. Ahora puedes editar las lecturas directamente.', { icon: '🔓' });
+        }
+      }
+    } catch (e) {
+      toast.error('Error al actualizar estado de bloqueo');
+    }
+  };
+
+  // Volver al Modo en Vivo (tiempo real)
+  const handleBackToLive = () => {
+    setActiveCut(null);
+    setCustomCongelados(null);
+    setCustomPreparados(null);
+    setCustomServices(null);
+    setIsLocked(false);
+    setSaveStatus(null);
+    toast.success('Has regresado al Modo en Tiempo Real.');
+  };
+
+  // Cargar lista de historial de cortes
+  const loadHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const cuts = await fetchDailyCuts();
+      setCutsList(Array.isArray(cuts) ? cuts : []);
+    } catch (e) {
+      toast.error('Error al cargar historial de cortes');
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const handleOpenHistory = () => {
+    setHistoryModalOpen(true);
+    loadHistory();
+  };
+
+  // Cargar un corte guardado desde el historial
+  const handleSelectCutFromHistory = async (cutSummary) => {
+    try {
+      const fullCut = await fetchDailyCutById(cutSummary.id);
+      if (fullCut) {
+        setStartDate(fullCut.startDate.split('T')[0]);
+        setEndDate(fullCut.endDate.split('T')[0]);
+        setClientName(fullCut.clientName || CONTRACT_INFO.clientName);
+        setActiveCut(fullCut);
+        setCustomCongelados(fullCut.congeladosData);
+        setCustomPreparados(fullCut.preparadosData);
+        setCustomServices(fullCut.servicesData);
+        setIsLocked(Boolean(fullCut.isLocked));
+        setSaveStatus(null);
+        setHistoryModalOpen(false);
+        toast.success(`Corte '${fullCut.title}' cargado.`);
+      }
+    } catch (e) {
+      toast.error('Error al cargar el corte seleccionado');
+    }
+  };
+
+  // Eliminar un corte del historial
+  const handleDeleteCut = async (cut) => {
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar permanentemente el corte '${cut.title}'?`)) {
+      return;
+    }
+
+    const res = await deleteDailyCut(cut.id, cut.title);
+    if (res.success) {
+      toast.success('Corte eliminado con éxito.');
+      if (activeCut?.id === cut.id) {
+        handleBackToLive();
+      }
+      loadHistory();
+    } else {
+      toast.error('Error al eliminar el corte.');
+    }
+  };
+
+  // =========================================================================
+  // EXPORTACIONES
+  // =========================================================================
 
   // Exportar Excel
   const handleExportXLSX = () => {
@@ -274,8 +581,12 @@ const Summary2 = () => {
     doc.setFont(undefined, 'normal');
     doc.text(`Cliente: ${clientName}`, 14, 19);
     doc.text(`Movimientos diarios entre: ${formatDate(startDate)} Hasta ${formatDate(endDate)}`, 14, 24);
+    if (activeCut) {
+      doc.setFont(undefined, 'italic');
+      doc.text(`[Corte Oficial Congelado: ${activeCut.title}]`, 14, 28);
+    }
     
-    let currentY = 28;
+    let currentY = activeCut ? 32 : 28;
 
     // 1. Tabla Congelados (Libras - $0.001)
     if (showCongelados && congeladosRows.length > 0) {
@@ -287,10 +598,10 @@ const Summary2 = () => {
       const congBody = congeladosRows.map(r => [
         formatDate(r.fecha),
         r.descripcion,
-        r.stockInicial.toLocaleString('en-US', { maximumFractionDigits: 2 }),
-        r.entradas.toLocaleString('en-US', { maximumFractionDigits: 2 }),
-        r.salidas.toLocaleString('en-US', { maximumFractionDigits: 2 }),
-        r.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 2 }),
+        Number(r.stockInicial).toLocaleString('en-US', { maximumFractionDigits: 2 }),
+        Number(r.entradas).toLocaleString('en-US', { maximumFractionDigits: 2 }),
+        Number(r.salidas).toLocaleString('en-US', { maximumFractionDigits: 2 }),
+        Number(r.stockFinal).toLocaleString('en-US', { maximumFractionDigits: 2 }),
         `$${formatPrice(r.precio)}`,
         `$${formatCurrency(r.totalMonto)}`
       ]);
@@ -329,10 +640,10 @@ const Summary2 = () => {
       const prepBody = preparadosRows.map(r => [
         formatDate(r.fecha),
         r.descripcion,
-        r.stockInicial.toLocaleString('en-US', { maximumFractionDigits: 0 }),
-        r.entradas.toLocaleString('en-US', { maximumFractionDigits: 0 }),
-        r.salidas.toLocaleString('en-US', { maximumFractionDigits: 0 }),
-        r.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        Number(r.stockInicial).toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        Number(r.entradas).toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        Number(r.salidas).toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        Number(r.stockFinal).toLocaleString('en-US', { maximumFractionDigits: 0 }),
         `$${formatPrice(r.precio)}`,
         `$${formatCurrency(r.totalMonto)}`
       ]);
@@ -370,7 +681,7 @@ const Summary2 = () => {
       const servRows = servicesData.map(s => [
         formatDate(s.date),
         s.description + (s.ref ? ` (${s.ref})` : ''),
-        s.quantity ? s.quantity.toLocaleString('en-US') : '1',
+        s.quantity ? Number(s.quantity).toLocaleString('en-US') : '1',
         s.unitPrice ? `$${formatPrice(s.unitPrice)}` : `$${formatCurrency(s.value)}`,
         `$${formatCurrency(s.value)}`
       ]);
@@ -404,8 +715,21 @@ const Summary2 = () => {
     doc.save(`Cuadro_cliente_cuarto_frio_${startDate}_al_${endDate}.pdf`);
   };
 
+  // Filtrado de historial
+  const filteredCuts = useMemo(() => {
+    if (!historySearch.trim()) return cutsList;
+    const q = historySearch.toLowerCase();
+    return cutsList.filter(c => 
+      (c.title || '').toLowerCase().includes(q) ||
+      (c.clientName || '').toLowerCase().includes(q) ||
+      (c.startDate || '').includes(q) ||
+      (c.endDate || '').includes(q)
+    );
+  }, [cutsList, historySearch]);
+
   return (
     <div>
+      {/* Topbar Principal */}
       <div className="topbar">
         <div>
           <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
@@ -417,22 +741,139 @@ const Summary2 = () => {
           </p>
         </div>
 
-        {allowExport && (
-          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-            <button className="btn btn-primary" onClick={handleExportXLSX} title="Descargar en formato Microsoft Excel nativo">
-              <FileSpreadsheet size={18} /> Exportar Excel (.xlsx)
+        {/* Acciones Superiores: Congelar, Historial y Exportaciones */}
+        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* Botón Congelar Período Actual */}
+          {!activeCut ? (
+            <button 
+              className="btn btn-primary" 
+              onClick={handleOpenFreezeModal}
+              title="Congelar y guardar el estado de este período en la base de datos"
+            >
+              <Snowflake size={18} /> Congelar Período
             </button>
-            <button className="btn btn-outline" onClick={handleExportCSV} title="Descargar en formato CSV compatible">
-              <Download size={18} /> Exportar CSV
+          ) : (
+            <button 
+              className={`btn ${isLocked ? 'btn-outline' : 'btn-primary'}`}
+              onClick={handleToggleLock}
+              title={isLocked ? 'Desbloquear corte para editar lecturas' : 'Bloquear corte para evitar modificaciones'}
+            >
+              {isLocked ? <Unlock size={18} /> : <Lock size={18} />}
+              {isLocked ? 'Desbloquear Corte' : 'Bloquear Corte'}
             </button>
-            <button className="btn btn-outline" onClick={handleExportPDF} title="Descargar reporte en PDF">
-              <FileOutput size={18} /> Exportar PDF
+          )}
+
+          {/* Botón Historial de Cortes */}
+          <button 
+            className="btn btn-outline" 
+            onClick={handleOpenHistory}
+            title="Ver historial de cortes diarios congelados"
+          >
+            <History size={18} /> Historial Cortes
+          </button>
+
+          {allowExport && (
+            <div style={{ display: 'flex', gap: '0.4rem', borderLeft: '1px solid var(--color-border)', paddingLeft: '0.6rem' }}>
+              <button className="btn btn-outline" onClick={handleExportXLSX} title="Descargar en Excel (.xlsx)">
+                <FileSpreadsheet size={16} /> Excel
+              </button>
+              <button className="btn btn-outline" onClick={handleExportCSV} title="Descargar en CSV">
+                <Download size={16} /> CSV
+              </button>
+              <button className="btn btn-outline" onClick={handleExportPDF} title="Descargar reporte en PDF">
+                <FileOutput size={16} /> PDF
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Banner de Estado del Corte (Modo En Vivo vs Corte Congelado) */}
+      <div style={{
+        marginBottom: '1.25rem',
+        padding: '0.85rem 1.25rem',
+        borderRadius: 'var(--radius-lg)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '0.75rem',
+        backgroundColor: activeCut ? 'rgba(79, 70, 229, 0.08)' : 'rgba(16, 185, 129, 0.08)',
+        border: activeCut ? '1px solid rgba(79, 70, 229, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {activeCut ? (
+            <div style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              backgroundColor: isLocked ? 'rgba(79, 70, 229, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+              color: isLocked ? '#4f46e5' : '#f59e0b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              {isLocked ? <Lock size={18} /> : <Unlock size={18} />}
+            </div>
+          ) : (
+            <div style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              backgroundColor: 'rgba(16, 185, 129, 0.2)',
+              color: '#10b981',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <RefreshCw size={18} />
+            </div>
+          )}
+
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <strong style={{ fontSize: '0.95rem', color: 'var(--color-text)' }}>
+                {activeCut ? `Corte Congelado: ${activeCut.title}` : 'Modo en Vivo (Tiempo Real)'}
+              </strong>
+              {activeCut && (
+                <span className={`badge ${isLocked ? 'badge-primary' : 'badge-warning'}`} style={{ fontSize: '0.7rem' }}>
+                  {isLocked ? '🔒 Bloqueado (Solo lectura)' : '🔓 Desbloqueado (Modo edición)'}
+                </span>
+              )}
+              {saveStatus === 'saving' && (
+                <span className="badge badge-warning" style={{ fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <RefreshCw size={11} className="spin" /> Guardando cambios...
+                </span>
+              )}
+              {saveStatus === 'saved' && (
+                <span className="badge badge-success" style={{ fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <Check size={11} /> Autoguardado
+                </span>
+              )}
+            </div>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-text-light)', marginTop: '0.15rem' }}>
+              {activeCut 
+                ? `Período oficial del ${formatDate(activeCut.startDate)} al ${formatDate(activeCut.endDate)} · Creado por ${activeCut.created_by || 'admin'}`
+                : 'Calculando lecturas y existencias dinámicamente desde los movimientos registrados en el sistema.'}
+            </p>
+          </div>
+        </div>
+
+        {activeCut && (
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button 
+              className="btn btn-outline" 
+              style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }} 
+              onClick={handleBackToLive}
+              title="Salir de la vista del corte guardado y volver al cálculo dinámico en tiempo real"
+            >
+              <RotateCcw size={14} /> Volver a Tiempo Real
             </button>
           </div>
         )}
       </div>
 
-      {/* Panel de Filtros y Configuración del Corte */}
+      {/* Panel de Filtros y Configuración del Período */}
       <div className="card" style={{ marginBottom: '1.5rem', padding: '1.25rem' }}>
         <div style={{ marginBottom: '1rem', paddingBottom: '0.85rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
           <DateQuickPresets
@@ -466,7 +907,12 @@ const Summary2 = () => {
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Cliente / Depositante</label>
-            <input type="text" className="form-input" value={clientName} onChange={(e) => setClientName(e.target.value)} />
+            <input 
+              type="text" 
+              className="form-input" 
+              value={clientName} 
+              onChange={(e) => setClientName(e.target.value)} 
+            />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Mostrar Tablas</label>
@@ -537,9 +983,16 @@ const Summary2 = () => {
             <h2 style={{ fontSize: '1rem', color: '#2980b9', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}>
               <Package size={18} /> ALMACENAMIENTO PRODUCTOS CONGELADOS (LIBRAS - $0.001 / LB / DÍA)
             </h2>
-            <span className="badge" style={{ backgroundColor: '#ebf5fb', color: '#2980b9', fontWeight: 600 }}>
-              Tarifa: $0.001 / lb / día
-            </span>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              {!isLocked && activeCut && (
+                <span className="badge badge-warning" style={{ fontSize: '0.7rem' }}>
+                  <Pencil size={11} /> Celdas Editables Activas
+                </span>
+              )}
+              <span className="badge" style={{ backgroundColor: '#ebf5fb', color: '#2980b9', fontWeight: 600 }}>
+                Tarifa: $0.001 / lb / día
+              </span>
+            </div>
           </div>
 
           <div className="card" style={{ padding: '0' }}>
@@ -547,14 +1000,14 @@ const Summary2 = () => {
               <table>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--color-bg)' }}>
-                    <th>FECHA</th>
+                    <th style={{ width: '110px' }}>FECHA</th>
                     <th>DESCRIPCION</th>
-                    <th style={{ textAlign: 'right' }}>INV-INICIAL</th>
-                    <th style={{ textAlign: 'right' }}>ENTRADA LB</th>
-                    <th style={{ textAlign: 'right' }}>SALIDA LB</th>
-                    <th style={{ textAlign: 'right' }}>TOTAL LIBRAS</th>
-                    <th style={{ textAlign: 'right' }}>PRECIO</th>
-                    <th style={{ textAlign: 'right' }}>TOTAL $</th>
+                    <th style={{ textAlign: 'right', width: '130px' }}>INV-INICIAL</th>
+                    <th style={{ textAlign: 'right', width: '130px' }}>ENTRADA LB</th>
+                    <th style={{ textAlign: 'right', width: '130px' }}>SALIDA LB</th>
+                    <th style={{ textAlign: 'right', width: '140px' }}>TOTAL LIBRAS</th>
+                    <th style={{ textAlign: 'right', width: '90px' }}>PRECIO</th>
+                    <th style={{ textAlign: 'right', width: '110px' }}>TOTAL $</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -569,14 +1022,107 @@ const Summary2 = () => {
                       <tr key={idx}>
                         <td style={{ fontWeight: '500' }}>{formatDate(r.fecha)}</td>
                         <td>{r.descripcion}</td>
-                        <td style={{ textAlign: 'right' }}>{r.stockInicial.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                        
+                        {/* INV INICIAL (Editable si no está bloqueado) */}
+                        <td style={{ textAlign: 'right' }}>
+                          {!isLocked ? (
+                            <input
+                              type="number"
+                              step="any"
+                              value={r.stockInicial}
+                              onChange={(e) => handleCellEdit('congelados', idx, 'stockInicial', e.target.value)}
+                              style={{
+                                width: '100%',
+                                textAlign: 'right',
+                                padding: '0.25rem 0.4rem',
+                                fontSize: '0.85rem',
+                                border: '1px solid var(--color-primary)',
+                                borderRadius: '4px',
+                                background: 'var(--color-card)',
+                                color: 'var(--color-text)',
+                                fontWeight: '500'
+                              }}
+                            />
+                          ) : (
+                            Number(r.stockInicial).toLocaleString('en-US', { maximumFractionDigits: 2 })
+                          )}
+                        </td>
+
+                        {/* ENTRADAS (Editable si no está bloqueado) */}
                         <td style={{ textAlign: 'right', color: r.entradas > 0 ? 'var(--color-success)' : 'inherit' }}>
-                          {r.entradas > 0 ? `+${r.entradas.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '0'}
+                          {!isLocked ? (
+                            <input
+                              type="number"
+                              step="any"
+                              value={r.entradas}
+                              onChange={(e) => handleCellEdit('congelados', idx, 'entradas', e.target.value)}
+                              style={{
+                                width: '100%',
+                                textAlign: 'right',
+                                padding: '0.25rem 0.4rem',
+                                fontSize: '0.85rem',
+                                border: '1px solid var(--color-primary)',
+                                borderRadius: '4px',
+                                background: 'var(--color-card)',
+                                color: 'var(--color-success)',
+                                fontWeight: '600'
+                              }}
+                            />
+                          ) : (
+                            r.entradas > 0 ? `+${Number(r.entradas).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '0'
+                          )}
                         </td>
+
+                        {/* SALIDAS (Editable si no está bloqueado) */}
                         <td style={{ textAlign: 'right', color: r.salidas > 0 ? 'var(--color-danger)' : 'inherit' }}>
-                          {r.salidas > 0 ? `-${r.salidas.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '0'}
+                          {!isLocked ? (
+                            <input
+                              type="number"
+                              step="any"
+                              value={r.salidas}
+                              onChange={(e) => handleCellEdit('congelados', idx, 'salidas', e.target.value)}
+                              style={{
+                                width: '100%',
+                                textAlign: 'right',
+                                padding: '0.25rem 0.4rem',
+                                fontSize: '0.85rem',
+                                border: '1px solid var(--color-primary)',
+                                borderRadius: '4px',
+                                background: 'var(--color-card)',
+                                color: 'var(--color-danger)',
+                                fontWeight: '600'
+                              }}
+                            />
+                          ) : (
+                            r.salidas > 0 ? `-${Number(r.salidas).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '0'
+                          )}
                         </td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{r.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+
+                        {/* TOTAL LIBRAS (Editable si no está bloqueado) */}
+                        <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                          {!isLocked ? (
+                            <input
+                              type="number"
+                              step="any"
+                              value={r.stockFinal}
+                              onChange={(e) => handleCellEdit('congelados', idx, 'stockFinal', e.target.value)}
+                              style={{
+                                width: '100%',
+                                textAlign: 'right',
+                                padding: '0.25rem 0.4rem',
+                                fontSize: '0.85rem',
+                                border: '1px solid var(--color-primary)',
+                                borderRadius: '4px',
+                                background: 'var(--color-card)',
+                                color: 'var(--color-text)',
+                                fontWeight: '700'
+                              }}
+                            />
+                          ) : (
+                            Number(r.stockFinal).toLocaleString('en-US', { maximumFractionDigits: 2 })
+                          )}
+                        </td>
+
                         <td style={{ textAlign: 'right' }}>${formatPrice(r.precio)}</td>
                         <td style={{ textAlign: 'right', fontWeight: '500' }}>${formatCurrency(r.totalMonto)}</td>
                       </tr>
@@ -610,9 +1156,16 @@ const Summary2 = () => {
             <h2 style={{ fontSize: '1rem', color: '#27ae60', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}>
               <Layers size={18} /> ALMACENAMIENTO PRODUCTOS PREPARADOS (CESTAS - $0.038 / CESTA / DÍA)
             </h2>
-            <span className="badge" style={{ backgroundColor: '#eafaf1', color: '#27ae60', fontWeight: 600 }}>
-              Tarifa: $0.038 / cesta / día
-            </span>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              {!isLocked && activeCut && (
+                <span className="badge badge-warning" style={{ fontSize: '0.7rem' }}>
+                  <Pencil size={11} /> Celdas Editables Activas
+                </span>
+              )}
+              <span className="badge" style={{ backgroundColor: '#eafaf1', color: '#27ae60', fontWeight: 600 }}>
+                Tarifa: $0.038 / cesta / día
+              </span>
+            </div>
           </div>
 
           <div className="card" style={{ padding: '0' }}>
@@ -620,14 +1173,14 @@ const Summary2 = () => {
               <table>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--color-bg)' }}>
-                    <th>FECHA</th>
+                    <th style={{ width: '110px' }}>FECHA</th>
                     <th>DESCRIPCION</th>
-                    <th style={{ textAlign: 'right' }}>INV CESTAS</th>
-                    <th style={{ textAlign: 'right' }}>ENTRADA CESTAS</th>
-                    <th style={{ textAlign: 'right' }}>SALIDA CESTAS</th>
-                    <th style={{ textAlign: 'right' }}>TOTAL CESTA</th>
-                    <th style={{ textAlign: 'right' }}>PRECIO CESTA</th>
-                    <th style={{ textAlign: 'right' }}>TOTAL $</th>
+                    <th style={{ textAlign: 'right', width: '130px' }}>INV CESTAS</th>
+                    <th style={{ textAlign: 'right', width: '130px' }}>ENTRADA CESTAS</th>
+                    <th style={{ textAlign: 'right', width: '130px' }}>SALIDA CESTAS</th>
+                    <th style={{ textAlign: 'right', width: '140px' }}>TOTAL CESTA</th>
+                    <th style={{ textAlign: 'right', width: '90px' }}>PRECIO CESTA</th>
+                    <th style={{ textAlign: 'right', width: '110px' }}>TOTAL $</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -642,14 +1195,107 @@ const Summary2 = () => {
                       <tr key={idx}>
                         <td style={{ fontWeight: '500' }}>{formatDate(r.fecha)}</td>
                         <td>{r.descripcion}</td>
-                        <td style={{ textAlign: 'right' }}>{r.stockInicial.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+
+                        {/* INV CESTAS (Editable si no está bloqueado) */}
+                        <td style={{ textAlign: 'right' }}>
+                          {!isLocked ? (
+                            <input
+                              type="number"
+                              step="1"
+                              value={r.stockInicial}
+                              onChange={(e) => handleCellEdit('preparados', idx, 'stockInicial', e.target.value)}
+                              style={{
+                                width: '100%',
+                                textAlign: 'right',
+                                padding: '0.25rem 0.4rem',
+                                fontSize: '0.85rem',
+                                border: '1px solid var(--color-primary)',
+                                borderRadius: '4px',
+                                background: 'var(--color-card)',
+                                color: 'var(--color-text)',
+                                fontWeight: '500'
+                              }}
+                            />
+                          ) : (
+                            Number(r.stockInicial).toLocaleString('en-US', { maximumFractionDigits: 0 })
+                          )}
+                        </td>
+
+                        {/* ENTRADA CESTAS (Editable si no está bloqueado) */}
                         <td style={{ textAlign: 'right', color: r.entradas > 0 ? 'var(--color-success)' : 'inherit' }}>
-                          {r.entradas > 0 ? `+${r.entradas.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '0'}
+                          {!isLocked ? (
+                            <input
+                              type="number"
+                              step="1"
+                              value={r.entradas}
+                              onChange={(e) => handleCellEdit('preparados', idx, 'entradas', e.target.value)}
+                              style={{
+                                width: '100%',
+                                textAlign: 'right',
+                                padding: '0.25rem 0.4rem',
+                                fontSize: '0.85rem',
+                                border: '1px solid var(--color-primary)',
+                                borderRadius: '4px',
+                                background: 'var(--color-card)',
+                                color: 'var(--color-success)',
+                                fontWeight: '600'
+                              }}
+                            />
+                          ) : (
+                            r.entradas > 0 ? `+${Number(r.entradas).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '0'
+                          )}
                         </td>
+
+                        {/* SALIDA CESTAS (Editable si no está bloqueado) */}
                         <td style={{ textAlign: 'right', color: r.salidas > 0 ? 'var(--color-danger)' : 'inherit' }}>
-                          {r.salidas > 0 ? `-${r.salidas.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '0'}
+                          {!isLocked ? (
+                            <input
+                              type="number"
+                              step="1"
+                              value={r.salidas}
+                              onChange={(e) => handleCellEdit('preparados', idx, 'salidas', e.target.value)}
+                              style={{
+                                width: '100%',
+                                textAlign: 'right',
+                                padding: '0.25rem 0.4rem',
+                                fontSize: '0.85rem',
+                                border: '1px solid var(--color-primary)',
+                                borderRadius: '4px',
+                                background: 'var(--color-card)',
+                                color: 'var(--color-danger)',
+                                fontWeight: '600'
+                              }}
+                            />
+                          ) : (
+                            r.salidas > 0 ? `-${Number(r.salidas).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '0'
+                          )}
                         </td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{r.stockFinal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+
+                        {/* TOTAL CESTAS (Editable si no está bloqueado) */}
+                        <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                          {!isLocked ? (
+                            <input
+                              type="number"
+                              step="1"
+                              value={r.stockFinal}
+                              onChange={(e) => handleCellEdit('preparados', idx, 'stockFinal', e.target.value)}
+                              style={{
+                                width: '100%',
+                                textAlign: 'right',
+                                padding: '0.25rem 0.4rem',
+                                fontSize: '0.85rem',
+                                border: '1px solid var(--color-primary)',
+                                borderRadius: '4px',
+                                background: 'var(--color-card)',
+                                color: 'var(--color-text)',
+                                fontWeight: '700'
+                              }}
+                            />
+                          ) : (
+                            Number(r.stockFinal).toLocaleString('en-US', { maximumFractionDigits: 0 })
+                          )}
+                        </td>
+
                         <td style={{ textAlign: 'right' }}>${formatPrice(r.precio)}</td>
                         <td style={{ textAlign: 'right', fontWeight: '500' }}>${formatCurrency(r.totalMonto)}</td>
                       </tr>
@@ -706,7 +1352,7 @@ const Summary2 = () => {
                     <tr key={idx}>
                       <td style={{ fontWeight: '500' }}>{formatDate(s.date)}</td>
                       <td>{s.description} {s.ref ? `(${s.ref})` : ''}</td>
-                      <td style={{ textAlign: 'center' }}>{s.quantity !== undefined ? s.quantity.toLocaleString('en-US') : '1'}</td>
+                      <td style={{ textAlign: 'center' }}>{s.quantity !== undefined ? Number(s.quantity).toLocaleString('en-US') : '1'}</td>
                       <td style={{ textAlign: 'right' }}>{s.unitPrice ? `$${formatPrice(s.unitPrice)}` : `$${formatCurrency(s.value)}`}</td>
                       <td style={{ textAlign: 'right', fontWeight: 'bold' }}>${formatCurrency(s.value)}</td>
                     </tr>
@@ -718,7 +1364,7 @@ const Summary2 = () => {
                   <tr style={{ backgroundColor: 'var(--color-surface)', fontWeight: 'bold' }}>
                     <td></td>
                     <td>TOTALES</td>
-                    <td style={{ textAlign: 'center' }}>{servicesData.reduce((a, c) => a + (c.quantity || 1), 0)}</td>
+                    <td style={{ textAlign: 'center' }}>{servicesData.reduce((a, c) => a + (Number(c.quantity) || 1), 0)}</td>
                     <td></td>
                     <td style={{ textAlign: 'right', color: '#e67e22' }}>${formatCurrency(totalServicios)}</td>
                   </tr>
@@ -765,6 +1411,209 @@ const Summary2 = () => {
           </div>
         </div>
       </div>
+
+      {/* =========================================================================
+          MODAL: CONGELAR PERÍODO ACTUAL
+          ========================================================================= */}
+      {freezeModalOpen && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{ maxWidth: '520px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Snowflake size={20} style={{ color: 'var(--color-primary)' }} />
+                Congelar Período de Liquidación
+              </h3>
+              <button className="btn btn-ghost" onClick={() => setFreezeModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmFreeze}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <p style={{ fontSize: '0.875rem', color: 'var(--color-text-light)', margin: 0 }}>
+                  Esta acción guardará una instantánea congelada de todas las lecturas diarias de congelados, preparados y servicios extraordinarios en el rango seleccionado:
+                </p>
+
+                <div style={{
+                  padding: '0.85rem',
+                  backgroundColor: 'var(--color-bg)',
+                  borderRadius: 'var(--radius)',
+                  border: '1px solid var(--color-border)',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.35rem'
+                }}>
+                  <div><strong>Período:</strong> {formatDate(startDate)} al {formatDate(endDate)} ({daysCount} días)</div>
+                  <div><strong>Cliente:</strong> {clientName}</div>
+                  <div><strong>Total Almacenaje:</strong> ${formatCurrency(reportTotalAlmacenaje)}</div>
+                  <div><strong>Servicios:</strong> ${formatCurrency(totalServicios)}</div>
+                  <div style={{ marginTop: '0.25rem', paddingTop: '0.25rem', borderTop: '1px dashed var(--color-border)', color: 'var(--color-primary)', fontWeight: 'bold', fontSize: '0.95rem' }}>
+                    Total Liquidación: ${formatCurrency(reportGrandTotal)}
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Identificador / Nombre del Corte *</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={freezeTitle}
+                    onChange={(e) => setFreezeTitle(e.target.value)}
+                    placeholder="Ej. Corte Primera Quincena Agosto 2026"
+                    required
+                    autoFocus
+                  />
+                </div>
+
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                  🔒 El corte se guardará en modo bloqueado por seguridad. Podrás desbloquearlo en cualquier momento si necesitas ajustar lecturas.
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn btn-outline" onClick={() => setFreezeModalOpen(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={isSavingCut}>
+                  {isSavingCut ? <RefreshCw size={16} className="spin" /> : <Save size={16} />}
+                  <span>{isSavingCut ? 'Guardando...' : 'Confirmar y Congelar'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: HISTORIAL DE CORTES CONGELADOS
+          ========================================================================= */}
+      {historyModalOpen && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{ maxWidth: '850px', width: '95%' }}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <History size={22} style={{ color: 'var(--color-primary)' }} />
+                Historial de Cortes Diarios Congelados
+              </h3>
+              <button className="btn btn-ghost" onClick={() => setHistoryModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '65vh', overflowY: 'auto' }}>
+              {/* Buscador de cortes */}
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Buscar por título, fecha o cliente..."
+                    value={historySearch}
+                    onChange={(e) => setHistorySearch(e.target.value)}
+                    style={{ paddingLeft: '2.25rem' }}
+                  />
+                </div>
+                <button className="btn btn-outline" onClick={loadHistory} disabled={loadingHistory} title="Refrescar lista">
+                  <RefreshCw size={16} className={loadingHistory ? 'spin' : ''} />
+                </button>
+              </div>
+
+              {/* Lista o Tabla de Cortes */}
+              {loadingHistory ? (
+                <div style={{ textAlign: 'center', padding: '2.5rem' }}>
+                  <div className="spin" style={{ width: '30px', height: '30px', border: '3px solid var(--color-border)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', margin: '0 auto 0.75rem' }}></div>
+                  <p style={{ color: 'var(--color-text-light)', fontSize: '0.85rem' }}>Cargando cortes registrados...</p>
+                </div>
+              ) : filteredCuts.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--color-text-muted)', backgroundColor: 'var(--color-bg)', borderRadius: 'var(--radius)' }}>
+                  <Snowflake size={36} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+                  <p style={{ fontWeight: '600', marginBottom: '0.25rem' }}>No se encontraron cortes congelados</p>
+                  <p style={{ fontSize: '0.8rem' }}>Puedes congelar el período activo usando el botón "Congelar Período".</p>
+                </div>
+              ) : (
+                <div className="table-container" style={{ margin: 0 }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>TÍTULO / CORTE</th>
+                        <th>PERÍODO</th>
+                        <th>CLIENTE</th>
+                        <th style={{ textAlign: 'right' }}>TOTAL FACTURADO</th>
+                        <th style={{ textAlign: 'center' }}>ESTADO</th>
+                        <th style={{ textAlign: 'center' }}>CREADO</th>
+                        <th style={{ textAlign: 'right' }}>ACCIONES</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredCuts.map((cut) => {
+                        const isCurrentActive = activeCut?.id === cut.id;
+                        const cutTotal = cut.totals?.totalGeneral || 0;
+
+                        return (
+                          <tr key={cut.id} style={{ backgroundColor: isCurrentActive ? 'rgba(79, 70, 229, 0.06)' : 'inherit' }}>
+                            <td style={{ fontWeight: '600' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                <Snowflake size={14} style={{ color: 'var(--color-primary)' }} />
+                                <span>{cut.title}</span>
+                              </div>
+                            </td>
+                            <td style={{ fontSize: '0.825rem' }}>
+                              {formatDate(cut.startDate)} al {formatDate(cut.endDate)}
+                            </td>
+                            <td style={{ fontSize: '0.825rem' }}>{cut.clientName}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--color-primary)' }}>
+                              ${formatCurrency(cutTotal)}
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <span className={`badge ${cut.isLocked ? 'badge-primary' : 'badge-warning'}`} style={{ fontSize: '0.7rem' }}>
+                                {cut.isLocked ? '🔒 Bloqueado' : '🔓 Desbloqueado'}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                              {cut.created_at ? formatDate(cut.created_at) : 'Reciente'}
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'flex-end' }}>
+                                <button
+                                  className="btn btn-primary"
+                                  style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
+                                  onClick={() => handleSelectCutFromHistory(cut)}
+                                  title="Cargar y ver datos de este corte en pantalla"
+                                >
+                                  <Eye size={13} /> {isCurrentActive ? 'Viendo' : 'Cargar'}
+                                </button>
+                                <button
+                                  className="btn btn-ghost"
+                                  style={{ padding: '0.3rem 0.5rem', color: 'var(--color-danger)' }}
+                                  onClick={() => handleDeleteCut(cut)}
+                                  title="Eliminar este corte permanentemente"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                Total de cortes registrados: <strong>{cutsList.length}</strong>
+              </div>
+              <button className="btn btn-outline" onClick={() => setHistoryModalOpen(false)}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

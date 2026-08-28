@@ -897,6 +897,87 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
+  // Daily Cuts (Cortes Diarios Congelados)
+  const fetchDailyCuts = async () => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/daily-cuts`);
+      if (res.ok) {
+        return await res.json();
+      }
+      return [];
+    } catch (e) {
+      console.error('Error fetching daily cuts:', e);
+      return [];
+    }
+  };
+
+  const fetchDailyCutById = async (id) => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/daily-cuts/${id}`);
+      if (res.ok) {
+        return await res.json();
+      }
+      return null;
+    } catch (e) {
+      console.error('Error fetching daily cut by id:', e);
+      return null;
+    }
+  };
+
+  const createDailyCut = async (cutData) => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/daily-cuts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...cutData,
+          created_by: currentUser?.username || 'admin'
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        logAuditEvent('FREEZE_DAILY_CUT', 'summary2', `Congelamiento de corte '${data.title}' (${cutData.startDate} al ${cutData.endDate})`);
+        return { success: true, ...data };
+      }
+      return { success: false, message: data.error || 'Error al congelar corte' };
+    } catch (e) {
+      console.error('Error creating daily cut:', e);
+      return { success: false, message: 'Error de conexión con el servidor' };
+    }
+  };
+
+  const updateDailyCut = async (id, updateData) => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/daily-cuts/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        return { success: true, ...data };
+      }
+      return { success: false, message: data.error || 'Error al actualizar corte' };
+    } catch (e) {
+      console.error('Error updating daily cut:', e);
+      return { success: false, message: 'Error de conexión con el servidor' };
+    }
+  };
+
+  const deleteDailyCut = async (id, title = '') => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/daily-cuts/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        logAuditEvent('DELETE_DAILY_CUT', 'summary2', `Eliminación de corte '${title || id}'`);
+        return { success: true };
+      }
+      return { success: false };
+    } catch (e) {
+      console.error('Error deleting daily cut:', e);
+      return { success: false };
+    }
+  };
+
   // Secure Server-Side Login
   const login = async (username, password) => {
     const cleanUser = (username || '').trim();
@@ -1019,6 +1100,11 @@ export const InventoryProvider = ({ children }) => {
       deleteVersion,
       updateSettings,
       updateCategoryUnit,
+      fetchDailyCuts,
+      fetchDailyCutById,
+      createDailyCut,
+      updateDailyCut,
+      deleteDailyCut,
       refreshData,
       login,
       logout,

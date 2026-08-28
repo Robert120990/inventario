@@ -151,6 +151,22 @@ export const ensureSchema = async () => {
                 changes LONGTEXT,
                 author VARCHAR(50) DEFAULT 'Sistema',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )`,
+            `CREATE TABLE IF NOT EXISTS daily_cuts (
+                id VARCHAR(50) PRIMARY KEY,
+                title VARCHAR(200) NOT NULL,
+                clientName VARCHAR(150) NOT NULL,
+                startDate DATE NOT NULL,
+                endDate DATE NOT NULL,
+                isLocked TINYINT(1) DEFAULT 1,
+                congeladosData LONGTEXT NOT NULL,
+                preparadosData LONGTEXT NOT NULL,
+                servicesData LONGTEXT NOT NULL,
+                totalsData LONGTEXT NOT NULL,
+                created_by VARCHAR(50) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_daily_cuts_dates (startDate, endDate)
             )`
         ];
 

@@ -1188,6 +1188,191 @@ router.delete('/versions/:id', async (req, res) => {
     }
 });
 
+// ==========================================
+// CORTES DIARIOS CONGELADOS (DAILY CUTS)
+// ==========================================
+
+// Listar todos los cortes registrados
+router.get('/daily-cuts', async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT id, title, clientName, startDate, endDate, isLocked, totalsData, created_by, created_at, updated_at
+            FROM daily_cuts
+            ORDER BY startDate DESC, created_at DESC
+        `);
+
+        const cuts = rows.map(r => {
+            let totals = {};
+            try {
+                totals = typeof r.totalsData === 'string' ? JSON.parse(r.totalsData) : (r.totalsData || {});
+            } catch (e) {
+                totals = {};
+            }
+            return {
+                ...r,
+                isLocked: Boolean(r.isLocked),
+                totals
+            };
+        });
+
+        res.json(cuts);
+    } catch (error) {
+        console.error('Error fetching daily cuts:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Obtener un corte específico por ID con todo su detalle de datos
+router.get('/daily-cuts/:id', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM daily_cuts WHERE id = ?', [req.params.id]);
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'Corte no encontrado' });
+        }
+        const cut = rows[0];
+        res.json({
+            ...cut,
+            isLocked: Boolean(cut.isLocked),
+            congeladosData: typeof cut.congeladosData === 'string' ? JSON.parse(cut.congeladosData || '[]') : cut.congeladosData,
+            preparadosData: typeof cut.preparadosData === 'string' ? JSON.parse(cut.preparadosData || '[]') : cut.preparadosData,
+            servicesData: typeof cut.servicesData === 'string' ? JSON.parse(cut.servicesData || '[]') : cut.servicesData,
+            totalsData: typeof cut.totalsData === 'string' ? JSON.parse(cut.totalsData || '{}') : cut.totalsData
+        });
+    } catch (error) {
+        console.error('Error fetching daily cut by id:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Crear y congelar un nuevo corte
+router.post('/daily-cuts', async (req, res) => {
+    try {
+        const {
+            id = randomUUID(),
+            title,
+            clientName,
+            startDate,
+            endDate,
+            isLocked = 1,
+            congeladosData = [],
+            preparadosData = [],
+            servicesData = [],
+            totalsData = {},
+            created_by = (req.user && req.user.username) || 'admin'
+        } = req.body;
+
+        if (!startDate || !endDate) {
+            return res.status(400).json({ error: 'Las fechas de inicio y fin son obligatorias.' });
+        }
+
+        const autoTitle = title || `Corte ${startDate} al ${endDate}`;
+        const autoClient = clientName || 'SUPER SELECTOS';
+
+        const jsonCongelados = typeof congeladosData === 'string' ? congeladosData : JSON.stringify(congeladosData);
+        const jsonPreparados = typeof preparadosData === 'string' ? preparadosData : JSON.stringify(preparadosData);
+        const jsonServices = typeof servicesData === 'string' ? servicesData : JSON.stringify(servicesData);
+        const jsonTotals = typeof totalsData === 'string' ? totalsData : JSON.stringify(totalsData);
+
+        await pool.query(
+            `INSERT INTO daily_cuts 
+            (id, title, clientName, startDate, endDate, isLocked, congeladosData, preparadosData, servicesData, totalsData, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [id, autoTitle, autoClient, startDate, endDate, isLocked ? 1 : 0, jsonCongelados, jsonPreparados, jsonServices, jsonTotals, created_by]
+        );
+
+        res.status(201).json({
+            success: true,
+            id,
+            title: autoTitle,
+            clientName: autoClient,
+            startDate,
+            endDate,
+            isLocked: Boolean(isLocked),
+            created_by
+        });
+    } catch (error) {
+        console.error('Error creating daily cut:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Actualizar un corte existente (datos editados, bloqueo / desbloqueo, totales)
+router.put('/daily-cuts/:id', async (req, res) => {
+    try {
+        const {
+            title,
+            clientName,
+            startDate,
+            endDate,
+            isLocked,
+            congeladosData,
+            preparadosData,
+            servicesData,
+            totalsData
+        } = req.body;
+
+        const [existing] = await pool.query('SELECT * FROM daily_cuts WHERE id = ?', [req.params.id]);
+        if (existing.length === 0) {
+            return res.status(404).json({ error: 'Corte no encontrado para actualizar' });
+        }
+
+        const current = existing[0];
+        const newTitle = title !== undefined ? title : current.title;
+        const newClient = clientName !== undefined ? clientName : current.clientName;
+        const newStartDate = startDate !== undefined ? startDate : current.startDate;
+        const newEndDate = endDate !== undefined ? endDate : current.endDate;
+        const newIsLocked = isLocked !== undefined ? (isLocked ? 1 : 0) : current.isLocked;
+
+        const newCongelados = congeladosData !== undefined 
+            ? (typeof congeladosData === 'string' ? congeladosData : JSON.stringify(congeladosData))
+            : current.congeladosData;
+
+        const newPreparados = preparadosData !== undefined
+            ? (typeof preparadosData === 'string' ? preparadosData : JSON.stringify(preparadosData))
+            : current.preparadosData;
+
+        const newServices = servicesData !== undefined
+            ? (typeof servicesData === 'string' ? servicesData : JSON.stringify(servicesData))
+            : current.servicesData;
+
+        const newTotals = totalsData !== undefined
+            ? (typeof totalsData === 'string' ? totalsData : JSON.stringify(totalsData))
+            : current.totalsData;
+
+        await pool.query(
+            `UPDATE daily_cuts 
+            SET title = ?, clientName = ?, startDate = ?, endDate = ?, isLocked = ?, 
+                congeladosData = ?, preparadosData = ?, servicesData = ?, totalsData = ?
+            WHERE id = ?`,
+            [newTitle, newClient, newStartDate, newEndDate, newIsLocked, newCongelados, newPreparados, newServices, newTotals, req.params.id]
+        );
+
+        res.json({
+            success: true,
+            id: req.params.id,
+            title: newTitle,
+            isLocked: Boolean(newIsLocked)
+        });
+    } catch (error) {
+        console.error('Error updating daily cut:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Eliminar un corte registrado
+router.delete('/daily-cuts/:id', async (req, res) => {
+    try {
+        const [result] = await pool.query('DELETE FROM daily_cuts WHERE id = ?', [req.params.id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Corte no encontrado' });
+        }
+        res.json({ success: true, id: req.params.id });
+    } catch (error) {
+        console.error('Error deleting daily cut:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Mount router under /api
 app.use('/api', (req, res, next) => {
     // Rutas públicas que no requieren token
