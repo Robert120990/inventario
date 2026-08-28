@@ -1022,17 +1022,19 @@ input[type="date"] {
   font-family: inherit;
 }
 
-input[type="date"]::-webkit-calendar-picker-indicator {
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  opacity: 0.65;
-  transition: var(--transition);
-}
-
-input[type="date"]::-webkit-calendar-picker-indicator:hover {
-  opacity: 1;
-  background-color: rgba(0, 109, 50, 0.12);
+/* Ocultar icono nativo duplicado del navegador */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="date"]::-webkit-inner-spin-button,
+input[type="date"]::-webkit-clear-button {
+  display: none !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: none !important;
 }
 
 .date-picker-icon-btn:hover {

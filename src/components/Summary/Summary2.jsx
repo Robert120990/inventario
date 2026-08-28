@@ -65,10 +65,36 @@ const Summary2 = () => {
   
   const autoSaveTimerRef = useRef(null);
 
-  // Cargar cortes registrados al iniciar para sincronización de balances y baseline
+  // Cargar cortes registrados al iniciar para sincronización de balances, baseline y fecha inicial automática
   useEffect(() => {
     fetchDailyCuts().then(cuts => {
-      if (Array.isArray(cuts)) setCutsList(cuts);
+      if (Array.isArray(cuts) && cuts.length > 0) {
+        setCutsList(cuts);
+        // Obtener el corte más reciente por endDate
+        const sortedCuts = [...cuts].sort((a, b) => {
+          const dateA = String(a.endDate || '').split('T')[0];
+          const dateB = String(b.endDate || '').split('T')[0];
+          return dateB.localeCompare(dateA);
+        });
+
+        const latestCut = sortedCuts[0];
+        if (latestCut && latestCut.endDate) {
+          const lastEndStr = String(latestCut.endDate).split('T')[0];
+          const nextDay = new Date(lastEndStr + 'T12:00:00');
+          nextDay.setDate(nextDay.getDate() + 1);
+          const nextDayStr = getLocalDateStr(nextDay);
+          
+          setStartDate(nextDayStr);
+          const todayStr = getLocalDateStr(new Date());
+          if (nextDayStr > todayStr) {
+            setEndDate(nextDayStr);
+          } else {
+            setEndDate(todayStr);
+          }
+        }
+      } else if (Array.isArray(cuts)) {
+        setCutsList(cuts);
+      }
     });
   }, []);
 
@@ -1078,21 +1104,21 @@ const Summary2 = () => {
         </div>
       </div>
 
-      {/* Banner de Estado del Corte (Modo En Vivo vs Corte Congelado) */}
-      <div style={{
-        marginBottom: '1.25rem',
-        padding: '0.85rem 1.25rem',
-        borderRadius: 'var(--radius-lg)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '0.75rem',
-        backgroundColor: activeCut ? 'rgba(79, 70, 229, 0.08)' : 'rgba(16, 185, 129, 0.08)',
-        border: activeCut ? '1px solid rgba(79, 70, 229, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          {activeCut ? (
+      {/* Banner de Estado del Corte (Solo cuando se visualiza un Corte Congelado) */}
+      {activeCut && (
+        <div style={{
+          marginBottom: '1.25rem',
+          padding: '0.85rem 1.25rem',
+          borderRadius: 'var(--radius-lg)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
+          backgroundColor: 'rgba(79, 70, 229, 0.08)',
+          border: '1px solid rgba(79, 70, 229, 0.3)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <div style={{
               width: '36px',
               height: '36px',
@@ -1105,51 +1131,32 @@ const Summary2 = () => {
             }}>
               {isLocked ? <Lock size={18} /> : <Unlock size={18} />}
             </div>
-          ) : (
-            <div style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '50%',
-              backgroundColor: 'rgba(16, 185, 129, 0.2)',
-              color: '#10b981',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <RefreshCw size={18} />
-            </div>
-          )}
 
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <strong style={{ fontSize: '0.95rem', color: 'var(--color-text)' }}>
-                {activeCut ? `Corte Congelado: ${activeCut.title}` : 'Modo en Vivo (Tiempo Real)'}
-              </strong>
-              {activeCut && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <strong style={{ fontSize: '0.95rem', color: 'var(--color-text)' }}>
+                  Corte Congelado: {activeCut.title}
+                </strong>
                 <span className={`badge ${isLocked ? 'badge-primary' : 'badge-warning'}`} style={{ fontSize: '0.7rem' }}>
                   {isLocked ? '🔒 Bloqueado (Solo lectura)' : '🔓 Desbloqueado (Modo edición y ajuste de fechas)'}
                 </span>
-              )}
-              {saveStatus === 'saving' && (
-                <span className="badge badge-warning" style={{ fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                  <RefreshCw size={11} className="spin" /> Guardando cambios...
-                </span>
-              )}
-              {saveStatus === 'saved' && (
-                <span className="badge badge-success" style={{ fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                  <Check size={11} /> Autoguardado
-                </span>
-              )}
+                {saveStatus === 'saving' && (
+                  <span className="badge badge-warning" style={{ fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <RefreshCw size={11} className="spin" /> Guardando cambios...
+                  </span>
+                )}
+                {saveStatus === 'saved' && (
+                  <span className="badge badge-success" style={{ fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <Check size={11} /> Autoguardado
+                  </span>
+                )}
+              </div>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-text-light)', marginTop: '0.15rem' }}>
+                Período oficial del {formatDate(startDate)} al {formatDate(endDate)} · Creado por {activeCut.created_by || 'admin'}
+              </p>
             </div>
-            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-text-light)', marginTop: '0.15rem' }}>
-              {activeCut 
-                ? `Período oficial del ${formatDate(startDate)} al ${formatDate(endDate)} · Creado por ${activeCut.created_by || 'admin'}`
-                : 'Calculando lecturas y existencias dinámicamente desde los movimientos registrados en el sistema.'}
-            </p>
           </div>
-        </div>
 
-        {activeCut && (
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <button 
               className="btn btn-outline" 
@@ -1160,8 +1167,8 @@ const Summary2 = () => {
               <RotateCcw size={14} /> Volver a Tiempo Real
             </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Panel de Filtros y Configuración del Período */}
       <div className="card" style={{ marginBottom: '1.5rem', padding: '1.25rem' }}>
