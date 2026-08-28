@@ -59,6 +59,10 @@ const Summary2 = () => {
   const [isSavingCut, setIsSavingCut] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null); // 'saving' | 'saved' | null
   
+  // Estado para el modal de desglose de movimientos vinculados (Doble clic / botón en entradas y salidas)
+  const [movementModalData, setMovementModalData] = useState(null);
+  const [movementSearch, setMovementSearch] = useState('');
+  
   const autoSaveTimerRef = useRef(null);
 
   // Cargar cortes registrados al iniciar para sincronización de balances y baseline
@@ -507,6 +511,86 @@ const Summary2 = () => {
     triggerAutoSave(null, null, newServices);
   };
 
+  // Abrir desglose detallado de movimientos vinculados a una sumatoria de Entrada o Salida
+  const handleOpenMovementDetails = (dateStr, type, category, expectedTotal) => {
+    if (!dateStr) return;
+
+    const relevantMovements = [];
+    const itemRows = [];
+
+    const isAll = dateStr === 'ALL';
+    const isCong = category === 'congelados';
+
+    movements.forEach(m => {
+      const mDateStr = String(m.date || '').split('T')[0];
+      if (!isAll && mDateStr !== dateStr) return;
+      if (isAll && (mDateStr < startDate || mDateStr > endDate)) return;
+      if (m.type !== type) return;
+
+      if (m.items && Array.isArray(m.items)) {
+        m.items.forEach(it => {
+          const prod = products.find(p => p.id === it.productId);
+          let belongs = false;
+
+          if (isCong) {
+            belongs = prod?.category === 'Congelados' || categoryUnits[prod?.category] === 'pounds';
+          } else {
+            belongs = prod?.category === 'Preparados' || categoryUnits[prod?.category] === 'baskets';
+          }
+
+          if (belongs) {
+            relevantMovements.push(m);
+            itemRows.push({
+              movementId: m.id,
+              ref: m.refNumber ? `${m.refType || 'Doc'} #${m.refNumber}` : `#${m.id}`,
+              date: mDateStr,
+              time: m.time || (m.date?.includes('T') ? m.date.split('T')[1]?.slice(0, 5) : ''),
+              type: m.type,
+              productId: it.productId,
+              productName: it.productName || prod?.name || 'Producto sin nombre',
+              sku: it.sku || prod?.sku || '-',
+              category: prod?.category || (isCong ? 'Congelados' : 'Preparados'),
+              quantity: Number(it.quantity || 0),
+              qtyPounds: Number(it.qtyPounds || 0),
+              qtyBaskets: Number(it.qtyBaskets || 0),
+              batch: it.batch || it.lote || m.batch || '-',
+              client: m.clientName || m.client || m.supplier || m.entityName || '-',
+              reason: m.reason || m.comments || m.notes || '-',
+              user: m.userName || m.user || m.author || m.createdBy || 'Sistema'
+            });
+          }
+        });
+      }
+    });
+
+    setMovementSearch('');
+    setMovementModalData({
+      dateTitle: isAll ? `Período Completo (${formatDate(startDate)} al ${formatDate(endDate)})` : formatDate(dateStr),
+      rawDate: dateStr,
+      type, // 'in' | 'out'
+      category, // 'congelados' | 'preparados'
+      expectedTotal: Number(expectedTotal || 0),
+      items: itemRows,
+      movementCount: new Set(relevantMovements.map(m => m.id)).size
+    });
+  };
+
+  // Filtrado reactivo de ítems dentro del modal de movimientos
+  const filteredMovementItems = useMemo(() => {
+    if (!movementModalData) return [];
+    const term = movementSearch.toLowerCase().trim();
+    if (!term) return movementModalData.items;
+
+    return movementModalData.items.filter(it => 
+      it.productName.toLowerCase().includes(term) ||
+      it.sku.toLowerCase().includes(term) ||
+      it.ref.toLowerCase().includes(term) ||
+      it.client.toLowerCase().includes(term) ||
+      it.reason.toLowerCase().includes(term) ||
+      it.user.toLowerCase().includes(term) ||
+      it.date.toLowerCase().includes(term)
+    );
+  }, [movementModalData, movementSearch]);
 
   // Abrir modal para congelar corte actual
   const handleOpenFreezeModal = () => {
@@ -1257,7 +1341,15 @@ const Summary2 = () => {
                             Number(r.stockInicial || 0).toLocaleString('en-US')
                           )}
                         </td>
-                        <td style={{ textAlign: 'right' }}>
+                        <td 
+                          style={{ textAlign: 'right', cursor: activeCut && !isLocked ? 'default' : 'pointer' }}
+                          onDoubleClick={() => {
+                            if (!activeCut || isLocked) {
+                              handleOpenMovementDetails(r.fecha, 'in', 'congelados', r.entradas);
+                            }
+                          }}
+                          title={!activeCut || isLocked ? "Doble clic para ver los movimientos de entrada" : ""}
+                        >
                           {activeCut && !isLocked ? (
                             <input
                               type="number"
@@ -1267,10 +1359,46 @@ const Summary2 = () => {
                               onChange={(e) => handleCellEdit('congelados', idx, 'entradas', e.target.value)}
                             />
                           ) : (
-                            Number(r.entradas || 0).toLocaleString('en-US')
+                            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.35rem' }}>
+                              <span style={{ color: Number(r.entradas) > 0 ? 'var(--color-success)' : 'inherit', fontWeight: Number(r.entradas) > 0 ? '600' : 'normal' }}>
+                                {Number(r.entradas || 0).toLocaleString('en-US')}
+                              </span>
+                              {Number(r.entradas) > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenMovementDetails(r.fecha, 'in', 'congelados', r.entradas);
+                                  }}
+                                  className="btn-icon-subtle"
+                                  style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    color: 'var(--color-text-muted)',
+                                    cursor: 'pointer',
+                                    padding: '2px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    borderRadius: '4px',
+                                    opacity: 0.75
+                                  }}
+                                  title="Ver movimientos vinculados"
+                                >
+                                  <Eye size={13} />
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
-                        <td style={{ textAlign: 'right' }}>
+                        <td 
+                          style={{ textAlign: 'right', cursor: activeCut && !isLocked ? 'default' : 'pointer' }}
+                          onDoubleClick={() => {
+                            if (!activeCut || isLocked) {
+                              handleOpenMovementDetails(r.fecha, 'out', 'congelados', r.salidas);
+                            }
+                          }}
+                          title={!activeCut || isLocked ? "Doble clic para ver los movimientos de salida" : ""}
+                        >
                           {activeCut && !isLocked ? (
                             <input
                               type="number"
@@ -1280,7 +1408,35 @@ const Summary2 = () => {
                               onChange={(e) => handleCellEdit('congelados', idx, 'salidas', e.target.value)}
                             />
                           ) : (
-                            Number(r.salidas || 0).toLocaleString('en-US')
+                            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.35rem' }}>
+                              <span style={{ color: Number(r.salidas) > 0 ? 'var(--color-danger)' : 'inherit', fontWeight: Number(r.salidas) > 0 ? '600' : 'normal' }}>
+                                {Number(r.salidas || 0).toLocaleString('en-US')}
+                              </span>
+                              {Number(r.salidas) > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenMovementDetails(r.fecha, 'out', 'congelados', r.salidas);
+                                  }}
+                                  className="btn-icon-subtle"
+                                  style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    color: 'var(--color-text-muted)',
+                                    cursor: 'pointer',
+                                    padding: '2px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    borderRadius: '4px',
+                                    opacity: 0.75
+                                  }}
+                                  title="Ver movimientos vinculados"
+                                >
+                                  <Eye size={13} />
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
@@ -1312,8 +1468,52 @@ const Summary2 = () => {
                       <td></td>
                       <td>Totales</td>
                       <td style={{ textAlign: 'right' }}>{congTotals.invInicial.toLocaleString('en-US')}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--color-success)' }}>{congTotals.entradas.toLocaleString('en-US')}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--color-danger)' }}>{congTotals.salidas.toLocaleString('en-US')}</td>
+                      <td 
+                        style={{ textAlign: 'right', color: 'var(--color-success)', cursor: 'pointer' }}
+                        onDoubleClick={() => handleOpenMovementDetails('ALL', 'in', 'congelados', congTotals.entradas)}
+                        title="Doble clic para ver todas las entradas de congelados del período"
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.35rem' }}>
+                          <span>{congTotals.entradas.toLocaleString('en-US')}</span>
+                          {congTotals.entradas > 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenMovementDetails('ALL', 'in', 'congelados', congTotals.entradas);
+                              }}
+                              className="btn-icon-subtle"
+                              style={{ border: 'none', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', padding: '2px', display: 'inline-flex', alignItems: 'center', opacity: 0.75 }}
+                              title="Ver todas las entradas del período"
+                            >
+                              <Eye size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      <td 
+                        style={{ textAlign: 'right', color: 'var(--color-danger)', cursor: 'pointer' }}
+                        onDoubleClick={() => handleOpenMovementDetails('ALL', 'out', 'congelados', congTotals.salidas)}
+                        title="Doble clic para ver todas las salidas de congelados del período"
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.35rem' }}>
+                          <span>{congTotals.salidas.toLocaleString('en-US')}</span>
+                          {congTotals.salidas > 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenMovementDetails('ALL', 'out', 'congelados', congTotals.salidas);
+                              }}
+                              className="btn-icon-subtle"
+                              style={{ border: 'none', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', padding: '2px', display: 'inline-flex', alignItems: 'center', opacity: 0.75 }}
+                              title="Ver todas las salidas del período"
+                            >
+                              <Eye size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
                       <td style={{ textAlign: 'right' }}>{congTotals.stockFinal.toLocaleString('en-US')}</td>
                       <td></td>
                       <td style={{ textAlign: 'right', color: '#2980b9' }}>${formatCurrency(congTotals.totalMonto)}</td>
@@ -1391,7 +1591,15 @@ const Summary2 = () => {
                             Number(r.stockInicial || 0).toLocaleString('en-US')
                           )}
                         </td>
-                        <td style={{ textAlign: 'right' }}>
+                        <td 
+                          style={{ textAlign: 'right', cursor: activeCut && !isLocked ? 'default' : 'pointer' }}
+                          onDoubleClick={() => {
+                            if (!activeCut || isLocked) {
+                              handleOpenMovementDetails(r.fecha, 'in', 'preparados', r.entradas);
+                            }
+                          }}
+                          title={!activeCut || isLocked ? "Doble clic para ver los movimientos de entrada" : ""}
+                        >
                           {activeCut && !isLocked ? (
                             <input
                               type="number"
@@ -1401,10 +1609,46 @@ const Summary2 = () => {
                               onChange={(e) => handleCellEdit('preparados', idx, 'entradas', e.target.value)}
                             />
                           ) : (
-                            Number(r.entradas || 0).toLocaleString('en-US')
+                            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.35rem' }}>
+                              <span style={{ color: Number(r.entradas) > 0 ? 'var(--color-success)' : 'inherit', fontWeight: Number(r.entradas) > 0 ? '600' : 'normal' }}>
+                                {Number(r.entradas || 0).toLocaleString('en-US')}
+                              </span>
+                              {Number(r.entradas) > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenMovementDetails(r.fecha, 'in', 'preparados', r.entradas);
+                                  }}
+                                  className="btn-icon-subtle"
+                                  style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    color: 'var(--color-text-muted)',
+                                    cursor: 'pointer',
+                                    padding: '2px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    borderRadius: '4px',
+                                    opacity: 0.75
+                                  }}
+                                  title="Ver movimientos vinculados"
+                                >
+                                  <Eye size={13} />
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
-                        <td style={{ textAlign: 'right' }}>
+                        <td 
+                          style={{ textAlign: 'right', cursor: activeCut && !isLocked ? 'default' : 'pointer' }}
+                          onDoubleClick={() => {
+                            if (!activeCut || isLocked) {
+                              handleOpenMovementDetails(r.fecha, 'out', 'preparados', r.salidas);
+                            }
+                          }}
+                          title={!activeCut || isLocked ? "Doble clic para ver los movimientos de salida" : ""}
+                        >
                           {activeCut && !isLocked ? (
                             <input
                               type="number"
@@ -1414,7 +1658,35 @@ const Summary2 = () => {
                               onChange={(e) => handleCellEdit('preparados', idx, 'salidas', e.target.value)}
                             />
                           ) : (
-                            Number(r.salidas || 0).toLocaleString('en-US')
+                            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.35rem' }}>
+                              <span style={{ color: Number(r.salidas) > 0 ? 'var(--color-danger)' : 'inherit', fontWeight: Number(r.salidas) > 0 ? '600' : 'normal' }}>
+                                {Number(r.salidas || 0).toLocaleString('en-US')}
+                              </span>
+                              {Number(r.salidas) > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenMovementDetails(r.fecha, 'out', 'preparados', r.salidas);
+                                  }}
+                                  className="btn-icon-subtle"
+                                  style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    color: 'var(--color-text-muted)',
+                                    cursor: 'pointer',
+                                    padding: '2px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    borderRadius: '4px',
+                                    opacity: 0.75
+                                  }}
+                                  title="Ver movimientos vinculados"
+                                >
+                                  <Eye size={13} />
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
@@ -1446,8 +1718,52 @@ const Summary2 = () => {
                       <td></td>
                       <td>Totales</td>
                       <td style={{ textAlign: 'right' }}>{prepTotals.invInicial.toLocaleString('en-US')}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--color-success)' }}>{prepTotals.entradas.toLocaleString('en-US')}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--color-danger)' }}>{prepTotals.salidas.toLocaleString('en-US')}</td>
+                      <td 
+                        style={{ textAlign: 'right', color: 'var(--color-success)', cursor: 'pointer' }}
+                        onDoubleClick={() => handleOpenMovementDetails('ALL', 'in', 'preparados', prepTotals.entradas)}
+                        title="Doble clic para ver todas las entradas de preparados del período"
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.35rem' }}>
+                          <span>{prepTotals.entradas.toLocaleString('en-US')}</span>
+                          {prepTotals.entradas > 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenMovementDetails('ALL', 'in', 'preparados', prepTotals.entradas);
+                              }}
+                              className="btn-icon-subtle"
+                              style={{ border: 'none', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', padding: '2px', display: 'inline-flex', alignItems: 'center', opacity: 0.75 }}
+                              title="Ver todas las entradas del período"
+                            >
+                              <Eye size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      <td 
+                        style={{ textAlign: 'right', color: 'var(--color-danger)', cursor: 'pointer' }}
+                        onDoubleClick={() => handleOpenMovementDetails('ALL', 'out', 'preparados', prepTotals.salidas)}
+                        title="Doble clic para ver todas las salidas de preparados del período"
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.35rem' }}>
+                          <span>{prepTotals.salidas.toLocaleString('en-US')}</span>
+                          {prepTotals.salidas > 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenMovementDetails('ALL', 'out', 'preparados', prepTotals.salidas);
+                              }}
+                              className="btn-icon-subtle"
+                              style={{ border: 'none', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', padding: '2px', display: 'inline-flex', alignItems: 'center', opacity: 0.75 }}
+                              title="Ver todas las salidas del período"
+                            >
+                              <Eye size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
                       <td style={{ textAlign: 'right' }}>{prepTotals.stockFinal.toLocaleString('en-US')}</td>
                       <td></td>
                       <td style={{ textAlign: 'right', color: '#27ae60' }}>${formatCurrency(prepTotals.totalMonto)}</td>
@@ -1807,6 +2123,192 @@ const Summary2 = () => {
                 Total de cortes registrados: <strong>{cutsList.length}</strong>
               </div>
               <button className="btn btn-outline" onClick={() => setHistoryModalOpen(false)}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: DESGLOSE DE MOVIMIENTOS VINCULADOS (DOBLE CLIC EN ENTRADA / SALIDA)
+          ========================================================================= */}
+      {movementModalData && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal-content" style={{ maxWidth: '980px', width: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.85rem', marginBottom: '1rem' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  <span className={`badge ${movementModalData.type === 'in' ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem', fontWeight: 'bold' }}>
+                    {movementModalData.type === 'in' ? '📥 ENTRADAS VINCULADAS' : '📤 SALIDAS VINCULADAS'}
+                  </span>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--color-text)', margin: 0 }}>
+                    {movementModalData.dateTitle}
+                  </h2>
+                </div>
+                <p style={{ fontSize: '0.825rem', color: 'var(--color-text-light)', margin: '0.35rem 0 0 0' }}>
+                  {movementModalData.category === 'congelados'
+                    ? 'Almacenamiento Producto Congelado (-18°C) · Tarifa: $0.001 / libra / día'
+                    : 'Almacenamiento Productos Preparados · Tarifa: $0.038 / cesta / día'}
+                </p>
+              </div>
+              <button 
+                type="button" 
+                className="btn btn-ghost" 
+                onClick={() => setMovementModalData(null)}
+                style={{ padding: '0.4rem', borderRadius: '50%' }}
+                title="Cerrar ventana"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* KPI Cards de Resumen */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
+              <div className="card" style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--color-surface)', borderLeft: `4px solid ${movementModalData.type === 'in' ? 'var(--color-success)' : 'var(--color-danger)'}` }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>
+                  Sumatoria en Cuadro
+                </span>
+                <div style={{ fontSize: '1.35rem', fontWeight: 800, color: movementModalData.type === 'in' ? 'var(--color-success)' : 'var(--color-danger)', marginTop: '0.2rem' }}>
+                  {movementModalData.expectedTotal.toLocaleString('en-US')} {movementModalData.category === 'congelados' ? 'Lbs' : 'Cst'}
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--color-surface)', borderLeft: '4px solid var(--color-primary)' }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>
+                  Documentos / Registros
+                </span>
+                <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--color-primary)', marginTop: '0.2rem' }}>
+                  {movementModalData.movementCount} {movementModalData.movementCount === 1 ? 'movimiento' : 'movimientos'}
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--color-surface)', borderLeft: '4px solid var(--color-border)' }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>
+                  Productos / Lotes
+                </span>
+                <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--color-text)', marginTop: '0.2rem' }}>
+                  {movementModalData.items.length} {movementModalData.items.length === 1 ? 'línea' : 'líneas'}
+                </div>
+              </div>
+            </div>
+
+            {/* Buscador dentro del Modal */}
+            {movementModalData.items.length > 0 && (
+              <div style={{ marginBottom: '0.85rem', position: 'relative' }}>
+                <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Filtrar por producto, SKU, # Documento, cliente o motivo..."
+                  value={movementSearch}
+                  onChange={(e) => setMovementSearch(e.target.value)}
+                  style={{ paddingLeft: '2.2rem', marginBottom: 0, fontSize: '0.85rem' }}
+                />
+              </div>
+            )}
+
+            {/* Tabla Detallada de Movimientos */}
+            <div className="modal-body" style={{ maxHeight: '48vh', overflowY: 'auto', padding: 0, borderRadius: 'var(--radius)', border: '1px solid var(--color-border)' }}>
+              {movementModalData.items.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2.5rem', backgroundColor: 'var(--color-bg)' }}>
+                  <Layers size={36} style={{ color: 'var(--color-text-muted)', margin: '0 auto 0.5rem', opacity: 0.4 }} />
+                  <p style={{ fontWeight: '600', color: 'var(--color-text)', marginBottom: '0.25rem' }}>No se encontraron movimientos registrados en vivo</p>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', maxWidth: '480px', margin: '0 auto' }}>
+                    {movementModalData.expectedTotal > 0 
+                      ? 'Esta cifra proviene de una edición manual directa o de un balance archivado en el corte.'
+                      : 'No hubo movimientos registrados en esta fecha.'}
+                  </p>
+                </div>
+              ) : filteredMovementItems.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>
+                  No se encontraron ítems que coincidan con "{movementSearch}".
+                </div>
+              ) : (
+                <div className="table-container" style={{ margin: 0, border: 'none', boxShadow: 'none' }}>
+                  <table style={{ width: '100%', minWidth: '820px' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: 'var(--color-bg)' }}>
+                        <th style={{ width: '110px' }}># DOC / REF</th>
+                        <th style={{ width: '70px' }}>HORA</th>
+                        <th>PRODUCTO / DESCRIPCIÓN</th>
+                        <th style={{ width: '105px' }}>CATEGORÍA</th>
+                        <th style={{ textAlign: 'right', width: '90px' }}>UNIDADES</th>
+                        <th style={{ textAlign: 'right', width: '115px' }}>
+                          {movementModalData.category === 'congelados' ? 'LIBRAS (LB)' : 'CESTAS (CST)'}
+                        </th>
+                        <th>CLIENTE / DESTINO</th>
+                        <th>MOTIVO</th>
+                        <th style={{ width: '100px' }}>OPERADOR</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredMovementItems.map((it, idx) => (
+                        <tr key={idx}>
+                          <td style={{ fontWeight: '600', whiteSpace: 'nowrap' }}>
+                            <span className="badge badge-gray" style={{ fontSize: '0.75rem', fontFamily: 'monospace' }}>
+                              {it.ref}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
+                            {it.time || '-'}
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: '600', color: 'var(--color-text)' }}>{it.productName}</div>
+                            {it.sku && it.sku !== '-' && (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', fontFamily: 'monospace' }}>SKU: {it.sku}</div>
+                            )}
+                          </td>
+                          <td>
+                            <span className="badge badge-outline" style={{ fontSize: '0.7rem' }}>
+                              {it.category}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: '500' }}>
+                            {it.quantity.toLocaleString('en-US')}
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 'bold', color: movementModalData.type === 'in' ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                            {(movementModalData.category === 'congelados' ? it.qtyPounds : it.qtyBaskets).toLocaleString('en-US')}
+                          </td>
+                          <td style={{ fontSize: '0.825rem' }}>
+                            {it.client}
+                          </td>
+                          <td style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                            {it.reason}
+                          </td>
+                          <td style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                            {it.user}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ backgroundColor: 'var(--color-surface)', fontWeight: 'bold' }}>
+                        <td colSpan={4}>Total de Movimientos Mostrados</td>
+                        <td style={{ textAlign: 'right' }}>
+                          {filteredMovementItems.reduce((acc, it) => acc + it.quantity, 0).toLocaleString('en-US')}
+                        </td>
+                        <td style={{ textAlign: 'right', color: movementModalData.type === 'in' ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                          {filteredMovementItems.reduce((acc, it) => acc + (movementModalData.category === 'congelados' ? it.qtyPounds : it.qtyBaskets), 0).toLocaleString('en-US')}
+                        </td>
+                        <td colSpan={3}></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Footer del Modal */}
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--color-border)', paddingTop: '0.85rem', marginTop: '1rem' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                💡 Puedes hacer <strong>doble clic</strong> o clic en el ícono 👁️ sobre cualquier celda de Entrada o Salida para abrir este detalle.
+              </div>
+              <button 
+                type="button" 
+                className="btn btn-outline" 
+                onClick={() => setMovementModalData(null)}
+              >
                 Cerrar
               </button>
             </div>

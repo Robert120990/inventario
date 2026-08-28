@@ -1,6 +1,24 @@
 // Registro cronológico maestro y automático de versiones del sistema generado desde Git
 export const SYSTEM_CHANGELOG = [
   {
+    "id": "b4debfd",
+    "version": "v2.7.106",
+    "commit": "b4debfd",
+    "fullCommit": "b4debfd6137683536f07511cc4a2442c264bca29",
+    "description": "Sincronizar commit hash y build 105 en version.json",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-08-28",
+    "time": "08:25",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "improvement",
+        "text": "Sincronizar commit hash y build 105 en version.json"
+      }
+    ]
+  },
+  {
     "id": "47d074b",
     "version": "v2.7.105",
     "commit": "47d074b",
@@ -171,7 +189,7 @@ export const SYSTEM_CHANGELOG = [
     "author": "Ing. Raúl Sosa",
     "date": "2026-08-27",
     "time": "16:56",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
