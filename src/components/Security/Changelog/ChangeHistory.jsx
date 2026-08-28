@@ -22,8 +22,9 @@ const ChangeHistory = () => {
   ]);
   const [saving, setSaving] = useState(false);
 
-  const allowCreate = currentUser?.role === 'admin' || canCreate('security-changelog');
-  const allowDelete = currentUser?.role === 'admin' || canDelete('security-changelog');
+  const allowCreate = canCreate('security-changelog');
+  const allowDelete = canDelete('security-changelog');
+
 
   // Filtrado reactivo de versiones y cambios
   const filteredVersions = useMemo(() => {

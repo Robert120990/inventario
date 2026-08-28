@@ -11,7 +11,7 @@ const NOTIF_ICONS = {
 };
 
 const NotificationCenter = () => {
-  const { notifications, fetchNotifications, markNotificationAsRead, markAllNotificationsAsRead, addNotification, currentUser } = useInventory();
+  const { notifications, fetchNotifications, markNotificationAsRead, markAllNotificationsAsRead, addNotification, currentUser, canCreate } = useInventory();
   const [filter, setFilter] = useState('all'); // 'all' or 'unread'
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [title, setTitle] = useState('');
@@ -57,7 +57,7 @@ const NotificationCenter = () => {
     }
   };
 
-  const isAdmin = currentUser?.role === 'admin';
+  const allowCreate = canCreate('security-notifications');
 
   return (
     <div>
@@ -74,13 +74,14 @@ const NotificationCenter = () => {
           <button className="btn btn-outline" onClick={handleMarkAll}>
             <CheckCheck size={16} /> Marcar Todas Leídas
           </button>
-          {isAdmin && (
+          {allowCreate && (
             <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
               <Plus size={16} /> Nueva Notificación
             </button>
           )}
         </div>
       </div>
+
 
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
         <button

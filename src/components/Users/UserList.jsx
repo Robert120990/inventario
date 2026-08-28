@@ -10,10 +10,11 @@ const UserList = ({ onConfigureAccess }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
 
-  const allowCreate = currentUser?.role === 'admin' || canCreate('security-users');
-  const allowEdit = currentUser?.role === 'admin' || canEdit('security-users');
-  const allowDelete = currentUser?.role === 'admin' || canDelete('security-users');
-  const allowAccessMatrix = currentUser?.role === 'admin' || canView('security-access');
+  const allowCreate = canCreate('security-users');
+  const allowEdit = canEdit('security-users');
+  const allowDelete = canDelete('security-users');
+  const allowAccessMatrix = canView('security-access');
+
 
   const handleToggleActive = (user) => {
     if (String(user.id) === String(currentUser?.id)) {

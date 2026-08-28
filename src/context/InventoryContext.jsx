@@ -280,9 +280,7 @@ export const InventoryProvider = ({ children }) => {
   const hasPermission = (module, action = 'view') => {
     if (!currentUser) return false;
 
-    const isAdmin = isUserAdmin(currentUser);
-
-    // 1. If currentUser has explicit custom permissions for this module, check them
+    // 1. Matriz de permisos personalizada a nivel de usuario (Prioridad Máxima)
     if (currentUser.permissions && typeof currentUser.permissions === 'object') {
       const userMod = currentUser.permissions[module];
       if (userMod !== undefined && userMod !== null) {
@@ -308,10 +306,7 @@ export const InventoryProvider = ({ children }) => {
       }
     }
 
-    // 2. Administrator users have full access to all modules and actions by default
-    if (isAdmin) return true;
-
-    // 3. Fallback to assigned role permissions
+    // 2. Permisos configurados en el Rol asignado al usuario
     if (roles && roles.length > 0) {
       const userRole = roles.find(r => 
         (currentUser.role_id && r.id === currentUser.role_id) || 
@@ -321,40 +316,38 @@ export const InventoryProvider = ({ children }) => {
         ))
       );
 
-      if (userRole) {
-        const roleName = String(userRole.name || '').toLowerCase();
-        if (roleName === 'administrador' || roleName === 'admin') {
-          return true;
+      if (userRole && userRole.permissions && typeof userRole.permissions === 'object') {
+        const roleMod = userRole.permissions[module];
+        if (roleMod !== undefined && roleMod !== null) {
+          if (typeof roleMod === 'object' && roleMod[action] !== undefined) {
+            return Boolean(roleMod[action]);
+          }
+          if (typeof roleMod === 'boolean') {
+            return roleMod;
+          }
         }
 
-        if (userRole.permissions && typeof userRole.permissions === 'object') {
-          const roleMod = userRole.permissions[module];
-          if (roleMod !== undefined && roleMod !== null) {
-            if (typeof roleMod === 'object' && roleMod[action] !== undefined) {
-              return Boolean(roleMod[action]);
+        if (module.startsWith('security-')) {
+          const roleSecMod = userRole.permissions['security'];
+          if (roleSecMod !== undefined && roleSecMod !== null) {
+            if (typeof roleSecMod === 'object' && roleSecMod[action] !== undefined) {
+              return Boolean(roleSecMod[action]);
             }
-            if (typeof roleMod === 'boolean') {
-              return roleMod;
-            }
-          }
-
-          if (module.startsWith('security-')) {
-            const roleSecMod = userRole.permissions['security'];
-            if (roleSecMod !== undefined && roleSecMod !== null) {
-              if (typeof roleSecMod === 'object' && roleSecMod[action] !== undefined) {
-                return Boolean(roleSecMod[action]);
-              }
-              if (typeof roleSecMod === 'boolean') {
-                return roleSecMod;
-              }
+            if (typeof roleSecMod === 'boolean') {
+              return roleSecMod;
             }
           }
         }
       }
     }
 
+    // 3. Fallback: Si no hay restricción explícita en usuario ni en rol, los administradores por defecto tienen acceso total
+    const isAdmin = isUserAdmin(currentUser);
+    if (isAdmin) return true;
+
     return false;
   };
+
 
   const canView = (module) => hasPermission(module, 'view');
   const canCreate = (module) => hasPermission(module, 'create');

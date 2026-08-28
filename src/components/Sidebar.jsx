@@ -22,7 +22,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
     }
   }, [isSecurityView]);
 
-  const hasAnySecurityAccess = isAdmin ||
+  const hasAnySecurityAccess =
     canView('security-users') ||
     canView('security-access') ||
     canView('security-roles') ||
@@ -80,7 +80,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
 
       {/* Nav Items List (Independently Scrollable with Stitch Pills) */}
       <nav className="sidebar-nav">
-        {(isAdmin || canView('dashboard')) && (
+        {canView('dashboard') && (
           <button
             className={`nav-link ${currentView === 'dashboard' ? 'active' : ''}`}
             onClick={() => setCurrentView('dashboard')}
@@ -91,7 +91,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
           </button>
         )}
 
-        {(isAdmin || canView('products')) && (
+        {canView('products') && (
           <button
             className={`nav-link ${currentView === 'products' ? 'active' : ''}`}
             onClick={() => setCurrentView('products')}
@@ -102,7 +102,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
           </button>
         )}
 
-        {(isAdmin || canView('inventory-count')) && (
+        {canView('inventory-count') && (
           <button
             className={`nav-link ${currentView === 'inventory-count' ? 'active' : ''}`}
             onClick={() => setCurrentView('inventory-count')}
@@ -113,7 +113,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
           </button>
         )}
 
-        {(isAdmin || canView('movements')) && (
+        {canView('movements') && (
           <button
             className={`nav-link ${currentView === 'movements' ? 'active' : ''}`}
             onClick={() => setCurrentView('movements')}
@@ -124,7 +124,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
           </button>
         )}
 
-        {(isAdmin || canView('insurance')) && (
+        {canView('insurance') && (
           <button
             className={`nav-link ${currentView === 'insurance' ? 'active' : ''}`}
             onClick={() => setCurrentView('insurance')}
@@ -135,7 +135,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
           </button>
         )}
 
-        {(isAdmin || canView('summary')) && (
+        {canView('summary') && (
           <button
             className={`nav-link ${currentView === 'summary' ? 'active' : ''}`}
             onClick={() => setCurrentView('summary')}
@@ -146,7 +146,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
           </button>
         )}
 
-        {(isAdmin || canView('summary2')) && (
+        {canView('summary2') && (
           <button
             className={`nav-link ${currentView === 'summary2' ? 'active' : ''}`}
             onClick={() => setCurrentView('summary2')}
@@ -196,7 +196,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
 
             {(!isCollapsed && isSecurityOpen) && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', paddingLeft: '0.5rem', marginTop: '0.25rem', borderLeft: '2px solid rgba(255, 255, 255, 0.08)', marginLeft: '0.5rem' }}>
-                {(isAdmin || canView('security-users')) && (
+                {canView('security-users') && (
                   <button
                     className={`nav-link ${currentView === 'security-users' || currentView === 'users' ? 'active' : ''}`}
                     onClick={() => setCurrentView('security-users')}
@@ -207,7 +207,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
                   </button>
                 )}
 
-                {(isAdmin || canView('security-access')) && (
+                {canView('security-access') && (
                   <button
                     className={`nav-link ${currentView === 'security-access' ? 'active' : ''}`}
                     onClick={() => setCurrentView('security-access')}
@@ -218,7 +218,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
                   </button>
                 )}
 
-                {(isAdmin || canView('security-roles')) && (
+                {canView('security-roles') && (
                   <button
                     className={`nav-link ${currentView === 'security-roles' ? 'active' : ''}`}
                     onClick={() => setCurrentView('security-roles')}
@@ -229,7 +229,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
                   </button>
                 )}
 
-                {(isAdmin || canView('security-logs')) && (
+                {canView('security-logs') && (
                   <button
                     className={`nav-link ${currentView === 'security-logs' ? 'active' : ''}`}
                     onClick={() => setCurrentView('security-logs')}
@@ -240,7 +240,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
                   </button>
                 )}
 
-                {(isAdmin || canView('security-sessions')) && (
+                {canView('security-sessions') && (
                   <button
                     className={`nav-link ${currentView === 'security-sessions' ? 'active' : ''}`}
                     onClick={() => setCurrentView('security-sessions')}
@@ -251,7 +251,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
                   </button>
                 )}
 
-                {(isAdmin || canView('security-changelog')) && (
+                {canView('security-changelog') && (
                   <button
                     className={`nav-link ${currentView === 'security-changelog' ? 'active' : ''}`}
                     onClick={() => setCurrentView('security-changelog')}
@@ -262,7 +262,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
                   </button>
                 )}
 
-                {(isAdmin || canView('security-notifications')) && (
+                {canView('security-notifications') && (
                   <button
                     className={`nav-link ${currentView === 'security-notifications' ? 'active' : ''}`}
                     onClick={() => setCurrentView('security-notifications')}
@@ -280,7 +280,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
                   </button>
                 )}
 
-                {(isAdmin || canView('security-manual')) && (
+                {canView('security-manual') && (
                   <button
                     className={`nav-link ${currentView === 'security-manual' ? 'active' : ''}`}
                     onClick={() => setCurrentView('security-manual')}
@@ -295,7 +295,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
           </div>
         )}
 
-        {(isAdmin || canView('settings')) && (
+        {canView('settings') && (
           <button
             className={`nav-link ${currentView === 'settings' ? 'active' : ''}`}
             onClick={() => setCurrentView('settings')}
@@ -307,6 +307,7 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
           </button>
         )}
       </nav>
+
 
       {/* Footer Anchored at Bottom */}
       <div className="sidebar-footer">
