@@ -1,6 +1,24 @@
 // Registro cronológico maestro y automático de versiones del sistema generado desde Git
 export const SYSTEM_CHANGELOG = [
   {
+    "id": "b18277a",
+    "version": "v2.7.113",
+    "commit": "b18277a",
+    "fullCommit": "b18277ace97ea401a5775b8f3a2a699e6f3d04a3",
+    "description": "Eliminar banner modo en vivo, inicializar fecha de inicio al dia siguiente del ultimo corte y eliminar icono nativo duplicado de calendario",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-08-28",
+    "time": "09:15",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "feature",
+        "text": "Eliminar banner modo en vivo, inicializar fecha de inicio al dia siguiente del ultimo corte y eliminar icono nativo duplicado de calendario"
+      }
+    ]
+  },
+  {
     "id": "b4809a3",
     "version": "v2.7.112",
     "commit": "b4809a3",
@@ -171,7 +189,7 @@ export const SYSTEM_CHANGELOG = [
     "author": "Ing. Raúl Sosa",
     "date": "2026-08-28",
     "time": "22:43",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
