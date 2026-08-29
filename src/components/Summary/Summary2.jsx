@@ -467,7 +467,24 @@ const Summary2 = () => {
     }, 600);
   };
 
-  // Edición en línea de celdas (INV-INICIAL, ENTRADA, SALIDA, TOTAL)
+  // Garantizar integridad matemática en cascada: Saldo Inicial (Día N) === Saldo Final (Día N-1)
+  const ensureCascadingIntegrity = (rows, defaultRate = 0.001) => {
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+    const normalized = rows.map(r => ({ ...r }));
+    for (let i = 0; i < normalized.length; i++) {
+      if (i > 0) {
+        normalized[i].stockInicial = Number(normalized[i - 1].stockFinal) || 0;
+      }
+      const init = Number(normalized[i].stockInicial) || 0;
+      const ent = Number(normalized[i].entradas) || 0;
+      const sal = Number(normalized[i].salidas) || 0;
+      normalized[i].stockFinal = init + ent - sal;
+      normalized[i].totalMonto = normalized[i].stockFinal * Number(normalized[i].precio || defaultRate);
+    }
+    return normalized;
+  };
+
+  // Edición en línea de celdas (INV-INICIAL, ENTRADA, SALIDA, TOTAL) con encadenamiento automático
   const handleCellEdit = (tableType, index, field, rawValue) => {
     if (isLocked && activeCut) {
       toast('Desbloquea el corte para poder editar las lecturas.', { icon: '🔒' });
@@ -477,35 +494,39 @@ const Summary2 = () => {
     const numVal = rawValue === '' ? 0 : Number(rawValue);
 
     if (tableType === 'congelados') {
-      const newRows = [...congeladosRows];
-      const row = { ...newRows[index] };
-      row[field] = numVal;
+      const newRows = congeladosRows.map(r => ({ ...r }));
+      newRows[index][field] = numVal;
 
-      if (field === 'stockInicial' || field === 'entradas' || field === 'salidas') {
-        const init = Number(field === 'stockInicial' ? numVal : row.stockInicial) || 0;
-        const ent = Number(field === 'entradas' ? numVal : row.entradas) || 0;
-        const sal = Number(field === 'salidas' ? numVal : row.salidas) || 0;
-        row.stockFinal = init + ent - sal;
+      // Recalcular en cascada desde la fila editada (index) hasta el final del corte
+      for (let k = index; k < newRows.length; k++) {
+        if (k > 0) {
+          newRows[k].stockInicial = Number(newRows[k - 1].stockFinal) || 0;
+        }
+        const init = Number(newRows[k].stockInicial) || 0;
+        const ent = Number(newRows[k].entradas) || 0;
+        const sal = Number(newRows[k].salidas) || 0;
+        newRows[k].stockFinal = init + ent - sal;
+        newRows[k].totalMonto = Number(newRows[k].stockFinal) * Number(newRows[k].precio || 0.001);
       }
 
-      row.totalMonto = Number(row.stockFinal || 0) * Number(row.precio || 0.001);
-      newRows[index] = row;
       setCustomCongelados(newRows);
       triggerAutoSave(newRows, null, null);
     } else if (tableType === 'preparados') {
-      const newRows = [...preparadosRows];
-      const row = { ...newRows[index] };
-      row[field] = numVal;
+      const newRows = preparadosRows.map(r => ({ ...r }));
+      newRows[index][field] = numVal;
 
-      if (field === 'stockInicial' || field === 'entradas' || field === 'salidas') {
-        const init = Number(field === 'stockInicial' ? numVal : row.stockInicial) || 0;
-        const ent = Number(field === 'entradas' ? numVal : row.entradas) || 0;
-        const sal = Number(field === 'salidas' ? numVal : row.salidas) || 0;
-        row.stockFinal = init + ent - sal;
+      // Recalcular en cascada desde la fila editada (index) hasta el final del corte
+      for (let k = index; k < newRows.length; k++) {
+        if (k > 0) {
+          newRows[k].stockInicial = Number(newRows[k - 1].stockFinal) || 0;
+        }
+        const init = Number(newRows[k].stockInicial) || 0;
+        const ent = Number(newRows[k].entradas) || 0;
+        const sal = Number(newRows[k].salidas) || 0;
+        newRows[k].stockFinal = init + ent - sal;
+        newRows[k].totalMonto = Number(newRows[k].stockFinal) * Number(newRows[k].precio || 0.038);
       }
 
-      row.totalMonto = Number(row.stockFinal || 0) * Number(row.precio || 0.038);
-      newRows[index] = row;
       setCustomPreparados(newRows);
       triggerAutoSave(null, newRows, null);
     }
@@ -669,8 +690,8 @@ const Summary2 = () => {
         const fullCut = await fetchDailyCutById(res.id);
         if (fullCut) {
           setActiveCut(fullCut);
-          setCustomCongelados(fullCut.congeladosData);
-          setCustomPreparados(fullCut.preparadosData);
+          setCustomCongelados(ensureCascadingIntegrity(fullCut.congeladosData, 0.001));
+          setCustomPreparados(ensureCascadingIntegrity(fullCut.preparadosData, 0.038));
           setCustomServices(fullCut.servicesData);
           setIsLocked(true);
         }
@@ -797,8 +818,8 @@ const Summary2 = () => {
         setEndDate(fullCut.endDate.split('T')[0]);
         setClientName(fullCut.clientName || CONTRACT_INFO.clientName);
         setActiveCut(fullCut);
-        setCustomCongelados(fullCut.congeladosData);
-        setCustomPreparados(fullCut.preparadosData);
+        setCustomCongelados(ensureCascadingIntegrity(fullCut.congeladosData, 0.001));
+        setCustomPreparados(ensureCascadingIntegrity(fullCut.preparadosData, 0.038));
         setCustomServices(fullCut.servicesData);
         setIsLocked(Boolean(fullCut.isLocked));
         setSaveStatus(null);
@@ -1336,16 +1357,19 @@ const Summary2 = () => {
                         <td style={{ fontWeight: '500' }}>{formatDate(r.fecha)}</td>
                         <td>{r.descripcion}</td>
                         <td style={{ textAlign: 'right' }}>
-                          {activeCut && !isLocked ? (
+                          {activeCut && !isLocked && idx === 0 ? (
                             <input
                               type="number"
                               className="form-input"
-                              style={{ width: '100px', textAlign: 'right', margin: 0, padding: '0.35rem 0.5rem' }}
+                              style={{ width: '100px', textAlign: 'right', margin: 0, padding: '0.35rem 0.5rem', border: '1px solid #3b82f6' }}
                               value={r.stockInicial ?? ''}
                               onChange={(e) => handleCellEdit('congelados', idx, 'stockInicial', e.target.value)}
+                              title="Saldo inicial del corte (editable)"
                             />
                           ) : (
-                            Number(r.stockInicial || 0).toLocaleString('en-US')
+                            <span title={idx > 0 ? "Arrastrado automáticamente del Total del día anterior" : ""}>
+                              {Number(r.stockInicial || 0).toLocaleString('en-US')}
+                            </span>
                           )}
                         </td>
                         <td 
@@ -1586,16 +1610,19 @@ const Summary2 = () => {
                         <td style={{ fontWeight: '500' }}>{formatDate(r.fecha)}</td>
                         <td>{r.descripcion}</td>
                         <td style={{ textAlign: 'right' }}>
-                          {activeCut && !isLocked ? (
+                          {activeCut && !isLocked && idx === 0 ? (
                             <input
                               type="number"
                               className="form-input"
-                              style={{ width: '100px', textAlign: 'right', margin: 0, padding: '0.35rem 0.5rem' }}
+                              style={{ width: '100px', textAlign: 'right', margin: 0, padding: '0.35rem 0.5rem', border: '1px solid #3b82f6' }}
                               value={r.stockInicial ?? ''}
                               onChange={(e) => handleCellEdit('preparados', idx, 'stockInicial', e.target.value)}
+                              title="Saldo inicial del corte (editable)"
                             />
                           ) : (
-                            Number(r.stockInicial || 0).toLocaleString('en-US')
+                            <span title={idx > 0 ? "Arrastrado automáticamente del Total del día anterior" : ""}>
+                              {Number(r.stockInicial || 0).toLocaleString('en-US')}
+                            </span>
                           )}
                         </td>
                         <td 
