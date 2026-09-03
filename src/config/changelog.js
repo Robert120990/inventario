@@ -1,6 +1,24 @@
 // Registro cronológico maestro y automático de versiones del sistema generado desde Git
 export const SYSTEM_CHANGELOG = [
   {
+    "id": "b6a6238",
+    "version": "v2.7.119",
+    "commit": "b6a6238",
+    "fullCommit": "b6a62381b4e0d0967359bd47ff60c6ad90711f16",
+    "description": "Corregir descripcion de producto segun sku y agregar lapicito para editar movimiento vinculado",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-09-03",
+    "time": "09:40",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "feature",
+        "text": "Corregir descripcion de producto segun sku y agregar lapicito para editar movimiento vinculado"
+      }
+    ]
+  },
+  {
     "id": "fd006d6",
     "version": "v2.7.118",
     "commit": "fd006d6",
@@ -171,7 +189,7 @@ export const SYSTEM_CHANGELOG = [
     "author": "Ing. Raúl Sosa",
     "date": "2026-08-28",
     "time": "08:38",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
