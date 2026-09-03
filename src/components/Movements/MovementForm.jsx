@@ -20,10 +20,15 @@ const MovementForm = ({ onCancel, initialData }) => {
           value: s.value || ''
         })),
         items: initialData.items.map(it => {
-          const p = products.find(prod => prod.id === it.productId);
+          const p = products.find(prod => 
+            prod.id === it.productId || 
+            String(prod.id) === String(it.productId) || 
+            prod.sku === it.productId ||
+            (it.sku && prod.sku === it.sku)
+          );
           return {
             ...it,
-            searchQuery: p ? `${p.sku} - ${p.description}` : '',
+            searchQuery: p ? `${p.sku} - ${p.description}` : (it.sku ? `${it.sku}` : ''),
             showDropdown: false
           };
         })

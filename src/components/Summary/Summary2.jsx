@@ -12,6 +12,7 @@ import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils
 import { CONTRACT_INFO, resolveServiceDetails } from '../../utils/contractRates';
 import { toast } from 'react-hot-toast';
 import { DatePicker, DateQuickPresets, getLocalDateStr } from '../Common/DatePicker';
+import MovementForm from '../Movements/MovementForm';
 
 const Summary2 = () => {
   const { 
@@ -19,6 +20,7 @@ const Summary2 = () => {
     movements, 
     categoryUnits, 
     canExport, 
+    canEdit,
     currentUser,
     dailyCuts,
     fetchDailyCuts, 
@@ -30,6 +32,7 @@ const Summary2 = () => {
   } = useInventory();
   
   const allowExport = canExport('summary2');
+  const allowEditMovement = canEdit ? canEdit('movements') : true;
   
   // Rango de fechas por defecto: Mes actual (1 al día actual)
   const [startDate, setStartDate] = useState(() => {
@@ -60,8 +63,9 @@ const Summary2 = () => {
   const [saveStatus, setSaveStatus] = useState(null); // 'saving' | 'saved' | null
   
   // Estado para el modal de desglose de movimientos vinculados (Doble clic / botón en entradas y salidas)
-  const [movementModalData, setMovementModalData] = useState(null);
+  const [movementModalParams, setMovementModalParams] = useState(null);
   const [movementSearch, setMovementSearch] = useState('');
+  const [editingMovement, setEditingMovement] = useState(null);
   
   const autoSaveTimerRef = useRef(null);
 
@@ -561,6 +565,19 @@ const Summary2 = () => {
   // Abrir desglose detallado de movimientos vinculados a una sumatoria de Entrada o Salida
   const handleOpenMovementDetails = (dateStr, type, category, expectedTotal) => {
     if (!dateStr) return;
+    setMovementSearch('');
+    setMovementModalParams({
+      dateStr,
+      type, // 'in' | 'out'
+      category, // 'congelados' | 'preparados'
+      expectedTotal: Number(expectedTotal || 0)
+    });
+  };
+
+  // Desglose reactivo de movimientos vinculados (se recalcula automáticamente si se edita un movimiento)
+  const movementModalData = useMemo(() => {
+    if (!movementModalParams) return null;
+    const { dateStr, type, category, expectedTotal } = movementModalParams;
 
     const relevantMovements = [];
     const itemRows = [];
@@ -576,50 +593,73 @@ const Summary2 = () => {
 
       if (m.items && Array.isArray(m.items)) {
         m.items.forEach(it => {
-          const prod = products.find(p => p.id === it.productId);
+          // Búsqueda exhaustiva del producto por ID o SKU
+          const prod = products.find(p => 
+            (it.productId && (String(p.id) === String(it.productId) || String(p.sku) === String(it.productId))) ||
+            (it.sku && (String(p.sku) === String(it.sku) || String(p.id) === String(it.sku)))
+          );
+
           let belongs = false;
 
           if (isCong) {
-            belongs = prod?.category === 'Congelados' || categoryUnits[prod?.category] === 'pounds';
+            belongs = prod?.category === 'Congelados' || categoryUnits[prod?.category] === 'pounds' || (Number(it.qtyPounds) > 0 && !Number(it.qtyBaskets));
           } else {
-            belongs = prod?.category === 'Preparados' || categoryUnits[prod?.category] === 'baskets';
+            belongs = prod?.category === 'Preparados' || categoryUnits[prod?.category] === 'baskets' || (Number(it.qtyBaskets) > 0 && !Number(it.qtyPounds));
           }
 
           if (belongs) {
             relevantMovements.push(m);
+            const resolvedSku = it.sku || prod?.sku || (it.productId && !String(it.productId).includes('-') ? it.productId : '-');
+            const resolvedName = (it.productName && it.productName !== 'Producto sin nombre')
+              ? it.productName
+              : (prod?.description || prod?.name || (resolvedSku !== '-' ? `SKU: ${resolvedSku}` : 'Producto sin nombre'));
+
             itemRows.push({
               movementId: m.id,
               ref: m.refNumber ? `${m.refType || 'Doc'} #${m.refNumber}` : `#${m.id}`,
               date: mDateStr,
-              time: m.time || (m.date?.includes('T') ? m.date.split('T')[1]?.slice(0, 5) : ''),
+              time: m.time || m.timeStart || (m.date?.includes('T') ? m.date.split('T')[1]?.slice(0, 5) : ''),
               type: m.type,
               productId: it.productId,
-              productName: it.productName || prod?.name || 'Producto sin nombre',
-              sku: it.sku || prod?.sku || '-',
+              productName: resolvedName,
+              sku: resolvedSku,
               category: prod?.category || (isCong ? 'Congelados' : 'Preparados'),
-              quantity: Number(it.quantity || 0),
+              quantity: Number(it.qtyUnits ?? it.quantity ?? 0),
               qtyPounds: Number(it.qtyPounds || 0),
               qtyBaskets: Number(it.qtyBaskets || 0),
               batch: it.batch || it.lote || m.batch || '-',
-              client: m.clientName || m.client || m.supplier || m.entityName || '-',
+              client: m.clientName || m.client || m.supplier || m.carrier || m.entityName || '-',
               reason: m.reason || m.comments || m.notes || '-',
-              user: m.userName || m.user || m.author || m.createdBy || 'Sistema'
+              user: m.auditUser || m.userName || m.user || m.author || m.createdBy || 'Sistema'
             });
           }
         });
       }
     });
 
-    setMovementSearch('');
-    setMovementModalData({
+    return {
       dateTitle: isAll ? `Período Completo (${formatDate(startDate)} al ${formatDate(endDate)})` : formatDate(dateStr),
       rawDate: dateStr,
       type, // 'in' | 'out'
       category, // 'congelados' | 'preparados'
-      expectedTotal: Number(expectedTotal || 0),
+      expectedTotal,
       items: itemRows,
       movementCount: new Set(relevantMovements.map(m => m.id)).size
-    });
+    };
+  }, [movementModalParams, movements, products, categoryUnits, startDate, endDate]);
+
+  // Abrir edición del movimiento vinculado desde el visor
+  const handleEditMovementById = (movementId) => {
+    if (!movementId) {
+      toast.error('Identificador de movimiento no válido.');
+      return;
+    }
+    const mov = movements.find(m => String(m.id) === String(movementId));
+    if (!mov) {
+      toast.error('No se encontró el movimiento original en los registros activos.');
+      return;
+    }
+    setEditingMovement(mov);
   };
 
   // Filtrado reactivo de ítems dentro del modal de movimientos
@@ -2189,7 +2229,7 @@ const Summary2 = () => {
               <button 
                 type="button" 
                 className="btn btn-ghost" 
-                onClick={() => setMovementModalData(null)}
+                onClick={() => setMovementModalParams(null)}
                 style={{ padding: '0.4rem', borderRadius: '50%' }}
                 title="Cerrar ventana"
               >
@@ -2260,7 +2300,7 @@ const Summary2 = () => {
                 </div>
               ) : (
                 <div className="table-container" style={{ margin: 0, border: 'none', boxShadow: 'none' }}>
-                  <table style={{ width: '100%', minWidth: '820px' }}>
+                  <table style={{ width: '100%', minWidth: '880px' }}>
                     <thead>
                       <tr style={{ backgroundColor: 'var(--color-bg)' }}>
                         <th style={{ width: '110px' }}># DOC / REF</th>
@@ -2274,6 +2314,7 @@ const Summary2 = () => {
                         <th>CLIENTE / DESTINO</th>
                         <th>MOTIVO</th>
                         <th style={{ width: '100px' }}>OPERADOR</th>
+                        <th style={{ width: '85px', textAlign: 'center' }}>ACCIONES</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2288,10 +2329,28 @@ const Summary2 = () => {
                             {it.time || '-'}
                           </td>
                           <td>
-                            <div style={{ fontWeight: '600', color: 'var(--color-text)' }}>{it.productName}</div>
-                            {it.sku && it.sku !== '-' && (
-                              <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', fontFamily: 'monospace' }}>SKU: {it.sku}</div>
-                            )}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                              <div>
+                                <div style={{ fontWeight: '600', color: 'var(--color-text)' }}>{it.productName}</div>
+                                {it.sku && it.sku !== '-' && (
+                                  <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', fontFamily: 'monospace' }}>SKU: {it.sku}</div>
+                                )}
+                              </div>
+                              {allowEditMovement && (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditMovementById(it.movementId);
+                                  }}
+                                  style={{ padding: '0.3rem', borderRadius: '4px', color: 'var(--color-primary)', flexShrink: 0 }}
+                                  title="Editar movimiento vinculado"
+                                >
+                                  <Pencil size={14} />
+                                </button>
+                              )}
+                            </div>
                           </td>
                           <td>
                             <span className="badge badge-outline" style={{ fontSize: '0.7rem' }}>
@@ -2313,6 +2372,27 @@ const Summary2 = () => {
                           <td style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
                             {it.user}
                           </td>
+                          <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            {allowEditMovement && (
+                              <button
+                                type="button"
+                                className="btn btn-outline"
+                                onClick={() => handleEditMovementById(it.movementId)}
+                                style={{ 
+                                  padding: '0.25rem 0.5rem', 
+                                  fontSize: '0.75rem', 
+                                  display: 'inline-flex', 
+                                  alignItems: 'center', 
+                                  gap: '0.3rem',
+                                  borderRadius: 'var(--radius)'
+                                }}
+                                title="Editar este movimiento vinculado"
+                              >
+                                <Pencil size={13} />
+                                <span>Editar</span>
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -2325,7 +2405,7 @@ const Summary2 = () => {
                         <td style={{ textAlign: 'right', color: movementModalData.type === 'in' ? 'var(--color-success)' : 'var(--color-danger)' }}>
                           {filteredMovementItems.reduce((acc, it) => acc + (movementModalData.category === 'congelados' ? it.qtyPounds : it.qtyBaskets), 0).toLocaleString('en-US')}
                         </td>
-                        <td colSpan={3}></td>
+                        <td colSpan={4}></td>
                       </tr>
                     </tfoot>
                   </table>
@@ -2341,11 +2421,35 @@ const Summary2 = () => {
               <button 
                 type="button" 
                 className="btn btn-outline" 
-                onClick={() => setMovementModalData(null)}
+                onClick={() => setMovementModalParams(null)}
               >
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: EDITAR MOVIMIENTO VINCULADO (LAPICITO EN EL VISOR)
+          ========================================================================= */}
+      {editingMovement && (
+        <div className="modal-overlay" style={{ zIndex: 1300 }}>
+          <div 
+            className="modal-content" 
+            style={{ 
+              maxWidth: '1050px', 
+              width: '95%', 
+              maxHeight: '92vh', 
+              overflowY: 'auto', 
+              padding: '1.75rem',
+              backgroundColor: 'var(--color-bg)'
+            }}
+          >
+            <MovementForm
+              initialData={editingMovement}
+              onCancel={() => setEditingMovement(null)}
+            />
           </div>
         </div>
       )}
