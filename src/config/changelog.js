@@ -1,8 +1,44 @@
 // Registro cronológico maestro y automático de versiones del sistema generado desde Git
 export const SYSTEM_CHANGELOG = [
   {
-    "id": "55454a7",
+    "id": "8296a38",
+    "version": "v2.7.121",
+    "commit": "8296a38",
+    "fullCommit": "8296a38d0bea6d10876951272c3385b382af5b23",
+    "description": "Solucionar pantalla en blanco con shim de stream para vite y carga dinamica de exportador excel",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-09-04",
+    "time": "11:25",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "fix",
+        "text": "Solucionar pantalla en blanco con shim de stream para vite y carga dinamica de exportador excel"
+      }
+    ]
+  },
+  {
+    "id": "7866ab3",
     "version": "v2.7.120",
+    "commit": "7866ab3",
+    "fullCommit": "7866ab3087642c93ee038fcf16795dea93cd7f97",
+    "description": "Actualizar version v2.7.120 con commit 55454a7",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-09-04",
+    "time": "11:10",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "improvement",
+        "text": "Actualizar version v2.7.120 con commit 55454a7"
+      }
+    ]
+  },
+  {
+    "id": "55454a7",
+    "version": "v2.7.119",
     "commit": "55454a7",
     "fullCommit": "55454a743fcc25f0b2e554654d2eeb901dc743a9",
     "description": "Modernizar diseno corporativo y estilos contables en reporte excel de inventario",
@@ -20,7 +56,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "7c29928",
-    "version": "v2.7.119",
+    "version": "v2.7.118",
     "commit": "7c29928",
     "fullCommit": "7c29928ac33d256b4ca092cd99c744c58f546016",
     "description": "Actualizar version v2.7.119 con commit b6a6238",
@@ -38,7 +74,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "b6a6238",
-    "version": "v2.7.118",
+    "version": "v2.7.117",
     "commit": "b6a6238",
     "fullCommit": "b6a62381b4e0d0967359bd47ff60c6ad90711f16",
     "description": "Corregir descripcion de producto segun sku y agregar lapicito para editar movimiento vinculado",
@@ -56,7 +92,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "fd006d6",
-    "version": "v2.7.117",
+    "version": "v2.7.116",
     "commit": "fd006d6",
     "fullCommit": "fd006d6e4486ef56d2da93fe06981bfc906bbd4b",
     "description": "Garantizar arrastre estricto y continuo del saldo final al inventario inicial del dia siguiente en tablas de congelados y preparados",
@@ -74,7 +110,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "163fc82",
-    "version": "v2.7.116",
+    "version": "v2.7.115",
     "commit": "163fc82",
     "fullCommit": "163fc8252640c0326c8a31da51a79973912c5191",
     "description": "Actualizar version v2.7.115 con commit 87e6b15",
@@ -92,7 +128,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "87e6b15",
-    "version": "v2.7.115",
+    "version": "v2.7.114",
     "commit": "87e6b15",
     "fullCommit": "87e6b15809699da48eedfe6fe7769df18c700f97",
     "description": "Implementar cortes de seguro congelados, bloqueo/desbloqueo, historial y fecha inicio automatica al dia siguiente",
@@ -110,7 +146,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "facb5be",
-    "version": "v2.7.114",
+    "version": "v2.7.113",
     "commit": "facb5be",
     "fullCommit": "facb5be4a02555b3b002f08466114f1e182c101f",
     "description": "Actualizar version v2.7.113 con commit b18277a",
@@ -128,7 +164,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "b18277a",
-    "version": "v2.7.113",
+    "version": "v2.7.112",
     "commit": "b18277a",
     "fullCommit": "b18277ace97ea401a5775b8f3a2a699e6f3d04a3",
     "description": "Eliminar banner modo en vivo, inicializar fecha de inicio al dia siguiente del ultimo corte y eliminar icono nativo duplicado de calendario",
@@ -146,14 +182,14 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "b4809a3",
-    "version": "v2.7.112",
+    "version": "v2.7.111",
     "commit": "b4809a3",
     "fullCommit": "b4809a363db1faaff1850d4aae4589272f64aa55",
     "description": "Actualizar version v2.7.111 con commit 542caf0",
     "author": "Ing. Raúl Sosa",
     "date": "2026-08-28",
     "time": "08:54",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
@@ -164,14 +200,14 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "542caf0",
-    "version": "v2.7.111",
+    "version": "v2.7.110",
     "commit": "542caf0",
     "fullCommit": "542caf026c7204291336c9e40d54e6fd0f8d818a",
     "description": "Asegurar umbral estricto > -14.0 C sin contar -14.0 y formatear decimales con precision",
     "author": "Ing. Raúl Sosa",
     "date": "2026-08-28",
     "time": "08:54",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
@@ -182,7 +218,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "1cd11e9",
-    "version": "v2.7.110",
+    "version": "v2.7.109",
     "commit": "1cd11e9",
     "fullCommit": "1cd11e927dfd4cba54e9b6e64b1f73f85d98ecdf",
     "description": "Actualizar version v2.7.109 con commit ec6e8e6",
@@ -200,7 +236,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "ec6e8e6",
-    "version": "v2.7.109",
+    "version": "v2.7.108",
     "commit": "ec6e8e6",
     "fullCommit": "ec6e8e6706f6e793e8a2d956ed672f6cd4b66ff7",
     "description": "Calcular cobro por temperatura promedio fuera de rango (> -14°C) sobre libras totales y recálculo retroactivo en BD",
@@ -218,7 +254,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "c871bff",
-    "version": "v2.7.108",
+    "version": "v2.7.107",
     "commit": "c871bff",
     "fullCommit": "c871bff460deca59d8d536832523e69bee4c94af",
     "description": "Actualizar version v2.7.107 con commit 74c4a78",
@@ -236,7 +272,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "74c4a78",
-    "version": "v2.7.107",
+    "version": "v2.7.106",
     "commit": "74c4a78",
     "fullCommit": "74c4a789186b27588601187dc6e48b95437138ee",
     "description": "Desglose interactivo de movimientos en entradas y salidas mediante doble clic o boton de vista",
@@ -254,7 +290,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "b4debfd",
-    "version": "v2.7.106",
+    "version": "v2.7.105",
     "commit": "b4debfd",
     "fullCommit": "b4debfd6137683536f07511cc4a2442c264bca29",
     "description": "Sincronizar commit hash y build 105 en version.json",
@@ -272,7 +308,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "47d074b",
-    "version": "v2.7.105",
+    "version": "v2.7.104",
     "commit": "47d074b",
     "fullCommit": "47d074bd799f42f707c13ab202bb729d7b58397b",
     "description": "Sincronizacion automatica de commits de GitHub y auto-incremento de version",
@@ -290,7 +326,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "e9372c6",
-    "version": "v2.7.104",
+    "version": "v2.7.103",
     "commit": "e9372c6",
     "fullCommit": "e9372c65d10ca7a6c33162b261c79442ef455726",
     "description": "Rediseño del sistema de temas inspirado en Windows 11 (Fluent / Mica)",
@@ -308,7 +344,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "e6a1fc5",
-    "version": "v2.7.103",
+    "version": "v2.7.102",
     "commit": "e6a1fc5",
     "fullCommit": "e6a1fc5694c1fed82c948c3e0886c8291b8940ac",
     "description": "Bloquear edicion directa de total en servicios y calcular automaticamente por cantidad y precio",
@@ -326,7 +362,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "bfb9e2b",
-    "version": "v2.7.102",
+    "version": "v2.7.101",
     "commit": "bfb9e2b",
     "fullCommit": "bfb9e2bb34bc389706e411bb50d8248faaf4b9a7",
     "description": "Remover etiqueta NUEVA, corregir incremento correlativo de version y purgar cache en actualizacion",
@@ -344,7 +380,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "03cdce6",
-    "version": "v2.7.101",
+    "version": "v2.7.100",
     "commit": "03cdce6",
     "fullCommit": "03cdce674feee21cbf9267370ffe760962f83c88",
     "description": "Aplicar matriz de accesos y permisos estrictamente ocultando pantallas y rutas deshabilitadas",
@@ -362,7 +398,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "8f97b97",
-    "version": "v2.7.100",
+    "version": "v2.7.99",
     "commit": "8f97b97",
     "fullCommit": "8f97b97835b0ede59883b92dc7b886e6c0499183",
     "description": "Incluir congeladosData y preparadosData en endpoint daily-cuts y sincronizar inventario inicial con corte previo",
@@ -380,7 +416,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "e22ce4f",
-    "version": "v2.7.99",
+    "version": "v2.7.98",
     "commit": "e22ce4f",
     "fullCommit": "e22ce4fa6ded975dd260fef3c6361675d57fd20b",
     "description": "Sincronizar fechas al cerrar corte, cuadre continuo con cortes previos, resolucion y edicion de libras en servicios extraordinarios",
@@ -398,7 +434,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "0148c9e",
-    "version": "v2.7.98",
+    "version": "v2.7.97",
     "commit": "0148c9e",
     "fullCommit": "0148c9e3ce562af6c031b9d2c104414f7d8285f7",
     "description": "Agregar congelamiento de cortes, historial, bloqueo/desbloqueo y edicion en linea con autoguardado",
@@ -416,7 +452,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "e3f37fd",
-    "version": "v2.7.97",
+    "version": "v2.7.96",
     "commit": "e3f37fd",
     "fullCommit": "e3f37fd884a7195498a5f6ca4331184a7889e4ee",
     "description": "Prevenir bucle de autorefresco en respuestas 401 y estabilizar inicio de sesion",
@@ -434,7 +470,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "9c91b62",
-    "version": "v2.7.96",
+    "version": "v2.7.95",
     "commit": "9c91b62",
     "fullCommit": "9c91b624bc83095e043d82ecf8b3d5dfd4cb790b",
     "description": "Actualizar version y build tras compilacion",
@@ -452,7 +488,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "a3bc301",
-    "version": "v2.7.95",
+    "version": "v2.7.94",
     "commit": "a3bc301",
     "fullCommit": "a3bc30131a6e6139b005ce0b304ac5ce5c9af7c9",
     "description": "Separar liquidacion diaria en Preparados (\\.038/cst) y Congelados (\\.001/lb) mas servicios extraordinarios",
@@ -470,7 +506,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "4e29f35",
-    "version": "v2.7.94",
+    "version": "v2.7.93",
     "commit": "4e29f35",
     "fullCommit": "4e29f352cf1d61d9c1d35c0b21c4401d0483cb1c",
     "description": "Actualizar version y build tras compilacion",
@@ -488,7 +524,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "0c5cc2b",
-    "version": "v2.7.93",
+    "version": "v2.7.92",
     "commit": "0c5cc2b",
     "fullCommit": "0c5cc2b89d924f928b5e704de023c0c3d57af62e",
     "description": "Implementar jwt y bcrypt para proteccion de backend",
@@ -506,7 +542,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "7e2ccc0",
-    "version": "v2.7.92",
+    "version": "v2.7.91",
     "commit": "7e2ccc0",
     "fullCommit": "7e2ccc089f760a422ddec7a30b1d819f20c5a44d",
     "description": "Actualizar version y build tras compilacion",
@@ -524,7 +560,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "a26e43d",
-    "version": "v2.7.91",
+    "version": "v2.7.90",
     "commit": "a26e43d",
     "fullCommit": "a26e43d7708055b454e45d71eaf3557983b60806",
     "description": "Optimizar grid a ultimos 10, fix(layout): corregir sidebar en pantallas medianas y fix(security): activar menu seguridad administrador",
@@ -546,7 +582,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "c20edf4",
-    "version": "v2.7.90",
+    "version": "v2.7.89",
     "commit": "c20edf4",
     "fullCommit": "c20edf420fcca823c76f28445e9e61268b4bfa11",
     "description": "Asegurar auto-incremento real del correlativo v1.3.x y sincronizacion automatica de build en cada commit",
@@ -564,7 +600,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "adfadfb",
-    "version": "v2.7.89",
+    "version": "v2.7.88",
     "commit": "adfadfb",
     "fullCommit": "adfadfb473d81b2f88f8546190965300f860b88e",
     "description": "Registrar version v2.6.0 con rediseño Stitch UI y auto-actualizador en tiempo real",
@@ -582,7 +618,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "14e7178",
-    "version": "v2.7.88",
+    "version": "v2.7.87",
     "commit": "14e7178",
     "fullCommit": "14e71785a42f457c12245c9342e90a18877595cb",
     "description": "Detector automatico de versiones en tiempo real con notificacion toast interactiva para actualizacion con un clic",
@@ -600,7 +636,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "2686e6a",
-    "version": "v2.7.87",
+    "version": "v2.7.86",
     "commit": "2686e6a",
     "fullCommit": "2686e6a8ea179274b72dad18f315d5b309e73c29",
     "description": "Ocultar boton de cierre 'X' en modo escritorio y mostrarlo unicamente en dispositivos moviles",
@@ -618,7 +654,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "e6d809f",
-    "version": "v2.7.86",
+    "version": "v2.7.85",
     "commit": "e6d809f",
     "fullCommit": "e6d809ff061b32d3edd065f74bbac482c90ee07c",
     "description": "Mover indicador de version al footer con capsula interactiva auto-incrementable basada en commits",
@@ -636,7 +672,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "5d2fc2b",
-    "version": "v2.7.85",
+    "version": "v2.7.84",
     "commit": "5d2fc2b",
     "fullCommit": "5d2fc2b29f73084b379819a61c9512ab2d744ae7",
     "description": "Habilitar desplazamiento vertical (scroll down) en dispositivos moviles y pantallas pequenas",
@@ -654,7 +690,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "dda09cf",
-    "version": "v2.7.84",
+    "version": "v2.7.83",
     "commit": "dda09cf",
     "fullCommit": "dda09cf06e8d28167be2c7177f627dd6b785cbdf",
     "description": "Implementar sistema de diseño Stitch (The Luminous Engine) con tipografia Space Grotesk/Inter, arquitectura tonal, nuevo Dashboard bento y glassmorphism",
@@ -672,7 +708,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "038ea65",
-    "version": "v2.7.83",
+    "version": "v2.7.82",
     "commit": "038ea65",
     "fullCommit": "038ea6502242c3df59f4cb0339427df2e520fafa",
     "description": "Implementar lazy loading con React.lazy (reduccion de 96% en bundle inicial), optimizacion con manualChunks, paginacion e indices en base de datos",
@@ -690,7 +726,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "442d3d7",
-    "version": "v2.7.82",
+    "version": "v2.7.81",
     "commit": "442d3d7",
     "fullCommit": "442d3d700d1ef4937ba410e325b9a4bb76ccf509",
     "description": "Optimizar formato e impresion directa para impresoras termicas de ticket de 72mm",
@@ -708,7 +744,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "e8966cd",
-    "version": "v2.7.81",
+    "version": "v2.7.80",
     "commit": "e8966cd",
     "fullCommit": "e8966cd46caed27fddcbfbabc0e1d3d3a65847d5",
     "description": "Agregar contorno/margen solido y remover precio en etiqueta para mostrar unicamente informacion de producto",
@@ -726,7 +762,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "e69c044",
-    "version": "v2.7.80",
+    "version": "v2.7.79",
     "commit": "e69c044",
     "fullCommit": "e69c04440a86eaa47764a9141d0385c34c3222e5",
     "description": "Agregar impresion de etiquetas con precio, codigo de barras y fecha de etiquetado",
@@ -744,7 +780,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "8e981a9",
-    "version": "v2.7.79",
+    "version": "v2.7.78",
     "commit": "8e981a9",
     "fullCommit": "8e981a94130939d52c9f0a25d2348865b4c8ea70",
     "description": "Carga automatica del historial de versiones y novedades del sistema con filtros y busqueda",
@@ -762,7 +798,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "c927893",
-    "version": "v2.7.78",
+    "version": "v2.7.77",
     "commit": "c927893",
     "fullCommit": "c927893eb42f484bd43480f830e11b673ed28fce",
     "description": "Agregar permiso de exportar/descargar archivos en matriz de accesos y roles",
@@ -780,7 +816,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "06adf01",
-    "version": "v2.7.77",
+    "version": "v2.7.76",
     "commit": "06adf01",
     "fullCommit": "06adf01f6b7a91a370eb66d4362581c88e11c4e9",
     "description": "Eliminar bucle infinito de peticiones en App y refreshData",
@@ -798,7 +834,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "b47a21c",
-    "version": "v2.7.76",
+    "version": "v2.7.75",
     "commit": "b47a21c",
     "fullCommit": "b47a21cbd17e994cbdb5cf3c09b48e28b0e43dde",
     "description": "Corregir variable totalServicios y asegurar try/catch en todas las exportaciones",
@@ -816,7 +852,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "11c359d",
-    "version": "v2.7.75",
+    "version": "v2.7.74",
     "commit": "11c359d",
     "fullCommit": "11c359d77f2ac410afe976fe116a62f1f930d82f",
     "description": "Asegurar descarga universal de Excel, toast de confirmacion y evitar timeouts de api",
@@ -834,7 +870,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "f16fe59",
-    "version": "v2.7.74",
+    "version": "v2.7.73",
     "commit": "f16fe59",
     "fullCommit": "f16fe59337d7626b88dfedefe8691397c08f6f9f",
     "description": "Actualizar service worker a v2 con network-first para invalidar cache antigua",
@@ -852,7 +888,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "d3fc610",
-    "version": "v2.7.73",
+    "version": "v2.7.72",
     "commit": "d3fc610",
     "fullCommit": "d3fc610532c477750f5693699e19e933f0c12e73",
     "description": "Agregar exportacion a Excel (.xlsx) y CSV estructurado segun Contrato 2025-2026 y formato Cuadro Cliente Cuarto Frio",
@@ -870,7 +906,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "e03e483",
-    "version": "v2.7.72",
+    "version": "v2.7.71",
     "commit": "e03e483",
     "fullCommit": "e03e483090c2b32d025f394045c997ef392f0e18",
     "description": "Quitar modulo de correo y reestructurar matriz de permisos por pantalla para todas las secciones del sistema",
@@ -888,7 +924,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "d80d238",
-    "version": "v2.7.71",
+    "version": "v2.7.70",
     "commit": "d80d238",
     "fullCommit": "d80d2380bc20d9364e9985ad1ccb80c00310d84e",
     "description": "Integrar modulo de Correo Corporativo sincronizado con cPanel y Roundcube Webmail",
@@ -906,7 +942,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "9ae49db",
-    "version": "v2.7.70",
+    "version": "v2.7.69",
     "commit": "9ae49db",
     "fullCommit": "9ae49db25559f56ff37aab4766dfcd4b7c77ef17",
     "description": "Corregir registro automatico de sesiones activas y heartbeat continuo de usuarios en linea",
@@ -924,7 +960,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "f8e03fb",
-    "version": "v2.7.69",
+    "version": "v2.7.68",
     "commit": "f8e03fb",
     "fullCommit": "f8e03fbbbe9a9eba386efabe3ff46732511b097b",
     "description": "Agregar modulo de importacion y actualizacion masiva de precios desde Excel",
@@ -942,7 +978,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "8cdc318",
-    "version": "v2.7.68",
+    "version": "v2.7.67",
     "commit": "8cdc318",
     "fullCommit": "8cdc318465e07eb7ff23fb25a2150c6ad9768a4b",
     "description": "Corregir aplicacion inmediata de permisos, scrollbar independiente de menu y agregar control de temas visuales",
@@ -960,7 +996,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "38fecd1",
-    "version": "v2.7.67",
+    "version": "v2.7.66",
     "commit": "38fecd1",
     "fullCommit": "38fecd16cbaea08aca2d006e36a04954ba565783",
     "description": "Implementar modulo completo de Seguridad, RBAC, autenticacion segura y changelog",
@@ -978,7 +1014,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "757b0b6",
-    "version": "v2.7.66",
+    "version": "v2.7.65",
     "commit": "757b0b6",
     "fullCommit": "757b0b64fcc174a7f2836a08d02ed528e88e76f4",
     "description": "Mejorar inicio de sesion: validacion async, trim y reintento de conexion",
@@ -996,7 +1032,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "95c487c",
-    "version": "v2.7.65",
+    "version": "v2.7.64",
     "commit": "95c487c",
     "fullCommit": "95c487ca82dade4f5adbaaada4dbf9ab56fde69c",
     "description": "Mostrar numero de version en pantalla de login",
@@ -1014,7 +1050,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "abbe1b3",
-    "version": "v2.7.64",
+    "version": "v2.7.63",
     "commit": "abbe1b3",
     "fullCommit": "abbe1b30c9d1d8ed65323bd889cff9e8d32bdb7a",
     "description": "Display Git commit version in app header",
@@ -1032,7 +1068,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "38f2cc0",
-    "version": "v2.7.63",
+    "version": "v2.7.62",
     "commit": "38f2cc0",
     "fullCommit": "38f2cc0f63d38c91a3170774551fc1134dfd1821",
     "description": "Implement responsive layout and PWA support",
@@ -1050,7 +1086,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "f17d07a",
-    "version": "v2.7.62",
+    "version": "v2.7.61",
     "commit": "f17d07a",
     "fullCommit": "f17d07a4d425948365cd0cc2e382d633b59e2f3c",
     "description": "Exclude products without stock or price from insurance cutoff report",
@@ -1068,7 +1104,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "fbc0ab8",
-    "version": "v2.7.61",
+    "version": "v2.7.60",
     "commit": "fbc0ab8",
     "fullCommit": "fbc0ab8a24c547b30c487d126df613545f71d87b",
     "description": "Merge: toma de inventario puntual",
@@ -1086,7 +1122,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "0a3382b",
-    "version": "v2.7.60",
+    "version": "v2.7.59",
     "commit": "0a3382b",
     "fullCommit": "0a3382b1dbf0d65ad1207541775a7d426303f134",
     "description": "Agrega Toma de Inventario al menú",
@@ -1104,7 +1140,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "277afbb",
-    "version": "v2.7.59",
+    "version": "v2.7.58",
     "commit": "277afbb",
     "fullCommit": "277afbb1212d4534334c29834132bb9769ab5211",
     "description": "Registra la vista de toma de inventario",
@@ -1122,7 +1158,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "b354bdf",
-    "version": "v2.7.58",
+    "version": "v2.7.57",
     "commit": "b354bdf",
     "fullCommit": "b354bdf33a312321ec5fe0395a28bcb4192ca312",
     "description": "Conecta ajustes de inventario con la API",
@@ -1140,7 +1176,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "2454d66",
-    "version": "v2.7.57",
+    "version": "v2.7.56",
     "commit": "2454d66",
     "fullCommit": "2454d66abd224d49a8d63d17723f1c6d58b68305",
     "description": "Agrega endpoint transaccional de inventario",
@@ -1158,7 +1194,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "4ec4a5b",
-    "version": "v2.7.56",
+    "version": "v2.7.55",
     "commit": "4ec4a5b",
     "fullCommit": "4ec4a5b0f3b6418846e42c7301af2c63e896d478",
     "description": "Agrega auditoría de ajustes de inventario",
@@ -1176,7 +1212,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "e5de137",
-    "version": "v2.7.55",
+    "version": "v2.7.54",
     "commit": "e5de137",
     "fullCommit": "e5de137cb0712fc72aaad8df92aa903a89723bbe",
     "description": "Agrega pantalla de toma de inventario",
@@ -1194,7 +1230,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "a80469c",
-    "version": "v2.7.54",
+    "version": "v2.7.53",
     "commit": "a80469c",
     "fullCommit": "a80469c64522b9995e84cc097d6104e060c5c0d0",
     "description": "Add version log with unique numbering (V1, V2...) and show current version in sidebar and login",
@@ -1212,7 +1248,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "1578da9",
-    "version": "v2.7.53",
+    "version": "v2.7.52",
     "commit": "1578da9",
     "fullCommit": "1578da90406c8b321bf60c379d71336b1fe34c12",
     "description": "Merge: búsqueda parcial y menú de seguro",
@@ -1230,7 +1266,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "672afec",
-    "version": "v2.7.52",
+    "version": "v2.7.51",
     "commit": "672afec",
     "fullCommit": "672afec67a575a8eee25a24b994486219f849678",
     "description": "Destaca el reporte de corte de seguro en el menú",
@@ -1248,7 +1284,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "eb702ca",
-    "version": "v2.7.51",
+    "version": "v2.7.50",
     "commit": "eb702ca",
     "fullCommit": "eb702ca2fa6f91588ab783a289e3f7eeb079cb87",
     "description": "Mejora la búsqueda por palabras parciales",
@@ -1266,7 +1302,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "6f8d373",
-    "version": "v2.7.50",
+    "version": "v2.7.49",
     "commit": "6f8d373",
     "fullCommit": "6f8d373eadeea9ce213150bd4e2528422d913399",
     "description": "Merge: búsqueda avanzada de productos",
@@ -1284,7 +1320,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "820e204",
-    "version": "v2.7.49",
+    "version": "v2.7.48",
     "commit": "820e204",
     "fullCommit": "820e2043e2c14213aa5fa4f755a86cf1f8b29b9c",
     "description": "Mejora la búsqueda avanzada de productos",
@@ -1302,7 +1338,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "53fa3d0",
-    "version": "v2.7.48",
+    "version": "v2.7.47",
     "commit": "53fa3d0",
     "fullCommit": "53fa3d0975de4e1e5b8d5cab8fd77d1b504ef2fb",
     "description": "Merge: reporte de corte de seguro",
@@ -1320,7 +1356,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "6a7644f",
-    "version": "v2.7.47",
+    "version": "v2.7.46",
     "commit": "6a7644f",
     "fullCommit": "6a7644fb8acdd6bd3e50a9505096f869f54848e2",
     "description": "Add insurance report menu item",
@@ -1338,7 +1374,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "800625c",
-    "version": "v2.7.46",
+    "version": "v2.7.45",
     "commit": "800625c",
     "fullCommit": "800625c86d02a17c1d123d6c133a305d9a297001",
     "description": "Register insurance report view",
@@ -1356,7 +1392,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "2c0ae2e",
-    "version": "v2.7.45",
+    "version": "v2.7.44",
     "commit": "2c0ae2e",
     "fullCommit": "2c0ae2e62a8f87c95ed3bede3e7928d00442da85",
     "description": "Add insurance cutoff report",
@@ -1374,7 +1410,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "7973621",
-    "version": "v2.7.44",
+    "version": "v2.7.43",
     "commit": "7973621",
     "fullCommit": "7973621a8158872df2148e5c2a5fc18057a61810",
     "description": "Fix dashboard movement date timezone",
@@ -1392,7 +1428,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "5a2fea6",
-    "version": "v2.7.43",
+    "version": "v2.7.42",
     "commit": "5a2fea6",
     "fullCommit": "5a2fea66f3efe74a873adc61185aa9b85bd5b11a",
     "description": "Show total pounds in movement list",
@@ -1410,7 +1446,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "1550028",
-    "version": "v2.7.42",
+    "version": "v2.7.41",
     "commit": "1550028",
     "fullCommit": "155002838f3a08465d9828fda3901d43f287e468",
     "description": "Merge: actualización atómica de movimientos",
@@ -1428,7 +1464,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "577eea9",
-    "version": "v2.7.41",
+    "version": "v2.7.40",
     "commit": "577eea9",
     "fullCommit": "577eea9e7d9021205fac018becf6a8150bb93613",
     "description": "Use atomic movement update endpoint",
@@ -1446,7 +1482,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "fd05fc3",
-    "version": "v2.7.40",
+    "version": "v2.7.39",
     "commit": "fd05fc3",
     "fullCommit": "fd05fc3d5be5596134ac7ea223a06eff06e557db",
     "description": "Add atomic movement update endpoint",
@@ -1464,7 +1500,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "bb57e76",
-    "version": "v2.7.39",
+    "version": "v2.7.38",
     "commit": "bb57e76",
     "fullCommit": "bb57e76b91c046ab6f66d81ebfb0fc30135e17ac",
     "description": "Change DB_HOST and DB_PASS values",
@@ -1482,7 +1518,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "0412712",
-    "version": "v2.7.38",
+    "version": "v2.7.37",
     "commit": "0412712",
     "fullCommit": "0412712ca3589c23ce55145a4f0263529c71452a",
     "description": "Ux: add retry button to loading screen",
@@ -1500,7 +1536,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "07df411",
-    "version": "v2.7.37",
+    "version": "v2.7.36",
     "commit": "07df411",
     "fullCommit": "07df4119413063cacda05796bc4dd1ccc55a7ece",
     "description": "Reduce connection timeouts for faster fail-fast behavior",
@@ -1518,7 +1554,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "e49fb78",
-    "version": "v2.7.36",
+    "version": "v2.7.35",
     "commit": "e49fb78",
     "fullCommit": "e49fb781b41238cf7f687524e3bc5150f59c4f98",
     "description": "Replace polling with refresh-on-view-change strategy",
@@ -1536,7 +1572,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "e76dd6f",
-    "version": "v2.7.35",
+    "version": "v2.7.34",
     "commit": "e76dd6f",
     "fullCommit": "e76dd6f1e9600dee421368dfd31d36744ec22c7a",
     "description": "Add 30-second auto-refresh (polling) for multi-device sync",
@@ -1554,7 +1590,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "fdf0877",
-    "version": "v2.7.34",
+    "version": "v2.7.33",
     "commit": "fdf0877",
     "fullCommit": "fdf0877e39cea3f1322d34147895b59e3fbc085f",
     "description": "Make login username comparison case-insensitive and handle MySQL 0 for isActive",
@@ -1572,7 +1608,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "8dcb29d",
-    "version": "v2.7.33",
+    "version": "v2.7.32",
     "commit": "8dcb29d",
     "fullCommit": "8dcb29dc1289eb2bcf6b98a97a0986e638254e07",
     "description": "Prevent 504 timeout by locking schema initialization; debug: add user count to health check",
@@ -1590,7 +1626,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "38acc9f",
-    "version": "v2.7.32",
+    "version": "v2.7.31",
     "commit": "38acc9f",
     "fullCommit": "38acc9f51a3ba03de5d8d907ee0d498be79a3688",
     "description": "Optimize DB connection and movements query to prevent timeouts; add frontend loading fail-safe",
@@ -1608,7 +1644,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "8168d56",
-    "version": "v2.7.31",
+    "version": "v2.7.30",
     "commit": "8168d56",
     "fullCommit": "8168d56f6e1cd97e0e1032fd7b2a41d73962b7af",
     "description": "Debug: enhanced health check for database connection and env vars",
@@ -1626,7 +1662,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "29134ec",
-    "version": "v2.7.30",
+    "version": "v2.7.29",
     "commit": "29134ec",
     "fullCommit": "29134eca8bbb960dc1149a078a25e016d54fd52e",
     "description": "Make default data insertion conditional to prevent deleted categories from reappearing",
@@ -1644,7 +1680,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "17abc8f",
-    "version": "v2.7.29",
+    "version": "v2.7.28",
     "commit": "17abc8f",
     "fullCommit": "17abc8f90730bd3fd74aac26b42589f7bc0f6d13",
     "description": "Resolve white screen on Usuarios by adding isActive column and robust data fetching",
@@ -1662,7 +1698,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "94089b1",
-    "version": "v2.7.28",
+    "version": "v2.7.27",
     "commit": "94089b1",
     "fullCommit": "94089b17e03484efedd819068d04c6caa06c0641",
     "description": "Full DB persistence audit - users isActive, updateUser API, updateCategoryUnit API",
@@ -1680,7 +1716,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "4fe04d3",
-    "version": "v2.7.27",
+    "version": "v2.7.26",
     "commit": "4fe04d3",
     "fullCommit": "4fe04d3ed9fbd44da9d767e2440c29cc7d1e28d2",
     "description": "Persist categories and document types to MySQL DB",
@@ -1698,7 +1734,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "478c984",
-    "version": "v2.7.26",
+    "version": "v2.7.25",
     "commit": "478c984",
     "fullCommit": "478c984598469d14b97e9e00f8605b68a461cf20",
     "description": "Nueeva version",
@@ -1716,7 +1752,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "005bad6",
-    "version": "v2.7.25",
+    "version": "v2.7.24",
     "commit": "005bad6",
     "fullCommit": "005bad602bedf6764c2252aa4ccc42d1070d21bc",
     "description": "Solucion a problemas",
@@ -1734,7 +1770,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "7bf55c1",
-    "version": "v2.7.24",
+    "version": "v2.7.23",
     "commit": "7bf55c1",
     "fullCommit": "7bf55c197576ac1b7254fb7688cf978a3dd78625",
     "description": "Cambios usuarios",
@@ -1752,7 +1788,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "deae8c1",
-    "version": "v2.7.23",
+    "version": "v2.7.22",
     "commit": "deae8c1",
     "fullCommit": "deae8c1f8905f865e3e07c6b26b9894db93679ad",
     "description": "Cambios de seguridad",
@@ -1770,7 +1806,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "cc1930e",
-    "version": "v2.7.22",
+    "version": "v2.7.21",
     "commit": "cc1930e",
     "fullCommit": "cc1930ebdef9f5265eb40331b00ee72273c12981",
     "description": "Cambios varios",
@@ -1788,7 +1824,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "ab446e9",
-    "version": "v2.7.21",
+    "version": "v2.7.20",
     "commit": "ab446e9",
     "fullCommit": "ab446e957f6f13189a8451c490d51cabeee9086e",
     "description": "Cambio de conexion",
@@ -1806,7 +1842,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "fc642fc",
-    "version": "v2.7.20",
+    "version": "v2.7.19",
     "commit": "fc642fc",
     "fullCommit": "fc642fc857d77ca37497000a2548de7000234984",
     "description": "Cambio de variables de entorno",
@@ -1824,7 +1860,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "245bfc8",
-    "version": "v2.7.19",
+    "version": "v2.7.18",
     "commit": "245bfc8",
     "fullCommit": "245bfc8689fee652b91d523e36730d44eed487b2",
     "description": "Cambio de conexion",
@@ -1842,7 +1878,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "ddffd56",
-    "version": "v2.7.18",
+    "version": "v2.7.17",
     "commit": "ddffd56",
     "fullCommit": "ddffd56a57e41e3f280afca1956564bad9c7fefe",
     "description": "Agregacion de busquedas",
@@ -1860,7 +1896,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "9fe5e3c",
-    "version": "v2.7.17",
+    "version": "v2.7.16",
     "commit": "9fe5e3c",
     "fullCommit": "9fe5e3cac621684b81f1a441d957c62467c100bd",
     "description": "Agregacion de nuevo resumen",
@@ -1878,7 +1914,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "a7e7f50",
-    "version": "v2.7.16",
+    "version": "v2.7.15",
     "commit": "a7e7f50",
     "fullCommit": "a7e7f50ef35514f0402b97025980636f764f974f",
     "description": "Ajuste precision de precios",
@@ -1896,7 +1932,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "9a2b1fa",
-    "version": "v2.7.15",
+    "version": "v2.7.14",
     "commit": "9a2b1fa",
     "fullCommit": "9a2b1faceb2e7eed6debea5e7dee0a1a157d51c7",
     "description": "Mejora de proteccion segun perfil de usuario",
@@ -1914,7 +1950,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "9a6ef57",
-    "version": "v2.7.14",
+    "version": "v2.7.13",
     "commit": "9a6ef57",
     "fullCommit": "9a6ef57bed15f920290af9a69457351d2ba51ea0",
     "description": "Sidebar menu, mejora en usuario conectado",
@@ -1932,7 +1968,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "b80f29a",
-    "version": "v2.7.13",
+    "version": "v2.7.12",
     "commit": "b80f29a",
     "fullCommit": "b80f29a528bac50d0df9b560fe082bbd1929085c",
     "description": "Error en resumen",
@@ -1950,7 +1986,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "524d7c5",
-    "version": "v2.7.12",
+    "version": "v2.7.11",
     "commit": "524d7c5",
     "fullCommit": "524d7c5a5353a22c0ac5f7df178dc7107a21c425",
     "description": "Mejoras en resumen",
@@ -1968,7 +2004,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "c6b299a",
-    "version": "v2.7.11",
+    "version": "v2.7.10",
     "commit": "c6b299a",
     "fullCommit": "c6b299aacb4aa1a7c6200ea84ec32033aeb1fe83",
     "description": "Actualizacion de resumen",
@@ -1986,7 +2022,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "e6a4e29",
-    "version": "v2.7.10",
+    "version": "v2.7.9",
     "commit": "e6a4e29",
     "fullCommit": "e6a4e29ceec86a6caf63bfc56c96b08af86baf33",
     "description": "Implementacion de notificaciones",
@@ -2004,7 +2040,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "c501247",
-    "version": "v2.7.9",
+    "version": "v2.7.8",
     "commit": "c501247",
     "fullCommit": "c5012476ccd406031adf0b4f56c5c2d897843abe",
     "description": "Logo y nombre",
@@ -2022,7 +2058,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "ac28c2a",
-    "version": "v2.7.8",
+    "version": "v2.7.7",
     "commit": "ac28c2a",
     "fullCommit": "ac28c2ac3c8210c8e08b7c8b43a4f3a73a05862d",
     "description": "Mejora en gestion de usuario",
@@ -2040,7 +2076,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "3994cb9",
-    "version": "v2.7.7",
+    "version": "v2.7.6",
     "commit": "3994cb9",
     "fullCommit": "3994cb93075e2c84027cc82ddcfa8d9effee092a",
     "description": "Mejora en el dhasboard",
@@ -2058,7 +2094,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "1f428b5",
-    "version": "v2.7.6",
+    "version": "v2.7.5",
     "commit": "1f428b5",
     "fullCommit": "1f428b5f4d116e410053eea851a5b7ec759a8288",
     "description": "Mejora usuarios y exportar pdf",
@@ -2076,7 +2112,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "091ea58",
-    "version": "v2.7.5",
+    "version": "v2.7.4",
     "commit": "091ea58",
     "fullCommit": "091ea58c37150827e62dfe9ac48cd4f826109a1d",
     "description": "Multiples productos",
@@ -2094,7 +2130,7 @@ export const SYSTEM_CHANGELOG = [
   },
   {
     "id": "64c5b64",
-    "version": "v2.7.4",
+    "version": "v2.7.3",
     "commit": "64c5b64",
     "fullCommit": "64c5b6470389c174f50b2ce5359c298c6b230092",
     "description": "Inicial",
