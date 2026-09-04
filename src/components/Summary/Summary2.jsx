@@ -5,7 +5,6 @@ import {
   Snowflake, Lock, Unlock, History, RotateCcw, Save, Trash2, 
   CheckCircle2, AlertCircle, RefreshCw, Search, X, Check, Eye, Pencil
 } from 'lucide-react';
-import { exportCuadroClienteCuartoFrio } from '../../utils/exportManager';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils';
@@ -894,8 +893,9 @@ const Summary2 = () => {
   // =========================================================================
 
   // Exportar Excel XLSX
-  const handleExportXLSX = () => {
+  const handleExportXLSX = async () => {
     try {
+      const { exportCuadroClienteCuartoFrio } = await import('../../utils/exportManager');
       exportCuadroClienteCuartoFrio({
         clientName,
         startDate,
@@ -919,8 +919,9 @@ const Summary2 = () => {
   };
 
   // Exportar CSV
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     try {
+      const { exportCuadroClienteCuartoFrio } = await import('../../utils/exportManager');
       exportCuadroClienteCuartoFrio({
         clientName,
         startDate,

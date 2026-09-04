@@ -63,6 +63,11 @@ export default defineConfig({
     'import.meta.env.VITE_APP_BUILD_NUMBER': JSON.stringify(buildNumber),
     'import.meta.env.VITE_APP_NUMERIC_VERSION': JSON.stringify(displayVersion),
   },
+  resolve: {
+    alias: {
+      stream: path.resolve(__dirname, 'src/shims/stream.js')
+    }
+  },
 
   server: {
     proxy: {

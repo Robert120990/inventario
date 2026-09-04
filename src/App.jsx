@@ -7,6 +7,7 @@ import { InventoryProvider, useInventory } from './context/InventoryContext';
 import Login from './components/Login/Login';
 import { ThemeToggle } from './components/Theme/ThemeToggle';
 import UpdateNotifier from './components/Common/UpdateNotifier';
+import ErrorBoundary from './components/Common/ErrorBoundary';
 import { APP_DISPLAY_VERSION, APP_BUILD_NUMBER, APP_COMMIT_HASH } from './config/version';
 import './App.css';
 
@@ -37,7 +38,7 @@ function ViewLoader() {
 }
 
 function AppContent() {
-  const { currentUser, loading, refreshData, canView, isAdmin } = useInventory();
+  const { currentUser, loading, refreshData, canView } = useInventory();
   const [currentView, setCurrentView] = useState('dashboard');
   const [targetAccessUserId, setTargetAccessUserId] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -164,9 +165,11 @@ function AppContent() {
           </div>
           <ThemeToggle />
         </div>
-        <Suspense fallback={<ViewLoader />}>
-          {renderView()}
-        </Suspense>
+        <ErrorBoundary key={currentView} onGoHome={() => setCurrentView('dashboard')}>
+          <Suspense fallback={<ViewLoader />}>
+            {renderView()}
+          </Suspense>
+        </ErrorBoundary>
         
         {/* Stitch App Page Footer with Version Pill Badge */}
         <footer className="app-page-footer">

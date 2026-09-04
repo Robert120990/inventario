@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { FileText, Download, FileSpreadsheet, FileOutput } from 'lucide-react';
-import { exportResumenCompleto } from '../../utils/exportManager';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils';
@@ -156,8 +155,9 @@ const Summary = () => {
   const reportIva = reportSubtotal * CONTRACT_INFO.ivaRate;
   const reportGrandTotal = reportSubtotal + reportIva;
 
-  const handleExportXLSX = () => {
+  const handleExportXLSX = async () => {
     try {
+      const { exportResumenCompleto } = await import('../../utils/exportManager');
       exportResumenCompleto({
         clientName,
         startDate,
@@ -181,8 +181,9 @@ const Summary = () => {
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     try {
+      const { exportResumenCompleto } = await import('../../utils/exportManager');
       exportResumenCompleto({
         clientName,
         startDate,
