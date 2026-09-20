@@ -2,6 +2,10 @@ import mysql from 'mysql2/promise';
 
 const { DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT } = process.env;
 
+const sslConfig = process.env.DB_SSL === 'true'
+    ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
+    : undefined;
+
 // Connection Pool with automatic recovery
 const pool = mysql.createPool({
     host: DB_HOST,
@@ -12,7 +16,8 @@ const pool = mysql.createPool({
     waitForConnections: true,
     connectionLimit: 10, 
     queueLimit: 0,
-    connectTimeout: 5000 // 5s timeout for remote DB
+    connectTimeout: 5000, // 5s timeout for remote DB
+    ssl: sslConfig
 });
 
 export default pool;

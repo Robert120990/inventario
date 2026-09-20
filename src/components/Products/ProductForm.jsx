@@ -108,43 +108,53 @@ const ProductForm = ({ onCancel, initialData }) => {
             />
           </div>
 
-          <h3 style={{ marginTop: '2rem', marginBottom: '1rem', fontSize: '1.125rem', color: 'var(--color-primary)' }}>Stock Inicial</h3>
-          <div className="grid grid-cols-3">
-            <div className="form-group">
-              <label className="form-label">Unidades</label>
-              <input 
-                type="number" 
-                name="stockUnits" 
-                className="form-input" 
-                value={formData.stockUnits} 
-                onChange={handleChange} 
-                min="0"
-              />
+          {!initialData ? (
+            <>
+              <h3 style={{ marginTop: '2rem', marginBottom: '1rem', fontSize: '1.125rem', color: 'var(--color-primary)' }}>Stock Inicial</h3>
+              <div className="grid grid-cols-3">
+                <div className="form-group">
+                  <label className="form-label">Unidades</label>
+                  <input 
+                    type="number" 
+                    name="stockUnits" 
+                    className="form-input" 
+                    value={formData.stockUnits} 
+                    onChange={handleChange} 
+                    min="0"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Libras (Opcional)</label>
+                  <input 
+                    type="number" 
+                    name="stockPounds" 
+                    step="0.01"
+                    className="form-input" 
+                    value={formData.stockPounds} 
+                    onChange={handleChange} 
+                    min="0"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Cestas (Opcional)</label>
+                  <input 
+                    type="number" 
+                    name="stockBaskets" 
+                    className="form-input" 
+                    value={formData.stockBaskets} 
+                    onChange={handleChange} 
+                    min="0"
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: 'var(--color-bg-secondary, #f8fafc)', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+              <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
+                ℹ️ <strong>Control de Existencias:</strong> Las existencias físicas de este producto están protegidas contra modificaciones directas. Para registrar entradas, salidas o ajustes físicos, utilice los módulos de <strong>Movimientos</strong> o <strong>Conteo de Inventario</strong>.
+              </p>
             </div>
-            <div className="form-group">
-              <label className="form-label">Libras (Opcional)</label>
-              <input 
-                type="number" 
-                name="stockPounds" 
-                step="0.01"
-                className="form-input" 
-                value={formData.stockPounds} 
-                onChange={handleChange} 
-                min="0"
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Cestas (Opcional)</label>
-              <input 
-                type="number" 
-                name="stockBaskets" 
-                className="form-input" 
-                value={formData.stockBaskets} 
-                onChange={handleChange} 
-                min="0"
-              />
-            </div>
-          </div>
+          )}
 
           <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
             <button type="button" className="btn btn-outline" onClick={onCancel}>Cancelar</button>

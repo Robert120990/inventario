@@ -3,8 +3,12 @@ import pool from '../db.js';
 
 const DEFAULT_SECRET = 'inventario_secure_dev_jwt_secret_key_2026';
 
-if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET.includes('defecto'))) {
-    throw new Error('FATAL: JWT_SECRET debe estar explícitamente configurada con una clave segura en entorno de producción.');
+const INSECURE_SECRET_PATTERNS = ['defecto', 'tu_clave', 'secret', '123456', 'cambiame'];
+if (process.env.NODE_ENV === 'production') {
+    const s = process.env.JWT_SECRET || '';
+    if (s.length < 32 || INSECURE_SECRET_PATTERNS.some(p => s.toLowerCase().includes(p))) {
+        throw new Error('FATAL: JWT_SECRET debe tener al menos 32 caracteres y no contener palabras clave de plantilla en entorno de producción.');
+    }
 }
 
 export const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_SECRET;
@@ -47,7 +51,7 @@ export const verifyToken = async (req, res, next) => {
             return res.status(401).json({ error: 'Cuenta de usuario desactivada por el administrador.' });
         }
 
-        // 2. Si el token incluye sessionId, verificar que la sesión siga activa en base de datos
+        // 2. Verificar que la sesión activa exista en base de datos
         if (decoded.sessionId) {
             const [sessions] = await pool.query(
                 'SELECT id FROM active_sessions WHERE id = ? AND userId = ?',
@@ -56,6 +60,8 @@ export const verifyToken = async (req, res, next) => {
             if (sessions.length === 0) {
                 return res.status(401).json({ error: 'Sesión revocada o finalizada. Por favor inicia sesión nuevamente.' });
             }
+        } else {
+            return res.status(401).json({ error: 'Token inválido o desactualizado (falta identificador de sesión).' });
         }
 
         // 3. Resolver matriz de permisos (prioridad: permisos personalizados del usuario -> permisos del rol)

@@ -75,7 +75,7 @@ const grandTotalBorder = {
 /**
  * Clase constructora de hojas de cálculo estilizadas y estructuradas
  */
-class StyledSheetBuilder {
+export class StyledSheetBuilder {
   constructor(xlsxInstance) {
     this.XLSX = xlsxInstance;
     this.ws = {};
@@ -103,6 +103,10 @@ class StyledSheetBuilder {
       v = '';
     } else {
       v = String(val);
+      // Prevención de inyección de fórmulas en hojas de cálculo (CSV/Formula Injection - CWE-1236)
+      if (/^[=+\-@\t\r]/.test(v)) {
+        v = `'${v}`;
+      }
     }
     const cell = { v, t };
     if (opt.z) cell.z = opt.z;

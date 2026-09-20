@@ -97,25 +97,28 @@ const logSystemEvent = async ({ userId = null, username = 'Sistema', action, mod
     }
 };
 
-// Diagnostics
+// Helper de respuesta de error sanitizada (previene fugas de SQL y detalles internos en producción)
+const sendApiError = (res, error, defaultMessage = 'Error interno en el servidor', statusCode = 500) => {
+    console.error(`[API Error] ${defaultMessage}:`, error);
+    if (process.env.NODE_ENV === 'production') {
+        return res.status(statusCode).json({ error: defaultMessage });
+    }
+    return res.status(statusCode).json({ error: error?.message || defaultMessage });
+};
+
+// Diagnostics (Sanitizado sin exposición de conteos ni errores de SQL en endpoints públicos)
 router.get('/health', async (req, res) => {
     let dbStatus = 'checking...';
-    let userCount = 0;
     try {
-        const [rows] = await pool.query('SELECT COUNT(*) as count FROM users');
-        userCount = rows[0].count;
+        await pool.query('SELECT 1');
         dbStatus = 'connected';
-    } catch (err) {
-        dbStatus = `error: ${err.message}`;
+    } catch {
+        dbStatus = 'disconnected';
     }
     res.json({ 
         status: 'ok', 
         db: dbStatus,
-        users: userCount,
-        time: new Date().toISOString(), 
-        env: process.env.NODE_ENV,
-        hasHost: !!process.env.DB_HOST,
-        hasUser: !!process.env.DB_USER
+        time: new Date().toISOString()
     });
 });
 
@@ -222,24 +225,26 @@ router.post('/products', requirePermission('products', 'create'), async (req, re
 
 router.put('/products/:id', requirePermission('products', 'edit'), async (req, res) => {
     const { id } = req.params;
-    const { sku, description, category, price, stockUnits, stockPounds, stockBaskets } = req.body;
+    const { sku, description, category, price } = req.body;
     const actor = req.user?.username || 'Sistema';
     const actorId = req.user?.id || null;
     try {
-        await pool.query('UPDATE products SET sku=?, description=?, category=?, price=?, stockUnits=?, stockPounds=?, stockBaskets=? WHERE id=?', 
-        [sku, description, category, price, stockUnits, stockPounds, stockBaskets, id]);
+        // Las existencias físicas (stockUnits, stockPounds, stockBaskets) no pueden modificarse aquí.
+        // Se gestionan exclusivamente por /api/movements y /api/inventory-adjustments auditados.
+        await pool.query('UPDATE products SET sku=?, description=?, category=?, price=? WHERE id=?', 
+        [sku, description, category, price, id]);
         
         await logSystemEvent({
             userId: actorId,
             username: actor,
             action: 'UPDATE_PRODUCT',
             module: 'products',
-            details: `Actualización de producto ID ${id} (SKU: ${sku})`
+            details: `Actualización de metadatos de producto ID ${id} (SKU: ${sku})`
         });
 
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error, 'Error al actualizar producto');
     }
 });
 
@@ -1127,27 +1132,39 @@ router.post('/users', requirePermission('security-users', 'create'), async (req,
     const { username, password, role, role_id, permissions } = req.body;
     const actor = req.user?.username || 'Sistema';
     const actorId = req.user?.id || null;
+    const cleanUser = (username || '').trim();
+    const cleanPass = (password || '').trim();
 
-    if (!username || !password) {
+    if (!cleanUser || !cleanPass) {
         return res.status(400).json({ error: 'Usuario y contraseña requeridos.' });
     }
+
+    if (cleanPass.length < 8) {
+        return res.status(400).json({ error: 'La contraseña debe contener al menos 8 caracteres.' });
+    }
+
+    // Prevención de escalamiento de privilegios: solo un administrador puede crear otro administrador
+    if (role === 'admin' && req.user?.role !== 'admin') {
+        return res.status(403).json({ error: 'Solo un administrador puede crear usuarios con rol de Administrador.' });
+    }
+
     try {
-        const hashedPassword = await bcrypt.hash(password.trim(), 10);
+        const hashedPassword = await bcrypt.hash(cleanPass, 10);
         const permJson = permissions ? JSON.stringify(permissions) : null;
         const [result] = await pool.query(
             'INSERT INTO users (username, password, role, role_id, isActive, permissions) VALUES (?, ?, ?, ?, 1, ?)',
-            [username.trim(), hashedPassword, role || 'user', role_id || null, permJson]
+            [cleanUser, hashedPassword, role || 'user', role_id || null, permJson]
         );
         await logSystemEvent({
             userId: actorId,
             username: actor,
             action: 'CREATE_USER',
             module: 'security-users',
-            details: `Creación de usuario '${username.trim()}' con rol '${role || 'user'}'`
+            details: `Creación de usuario '${cleanUser}' con rol '${role || 'user'}'`
         });
         res.json({ success: true, id: result.insertId });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error, 'Error al crear usuario');
     }
 });
 
@@ -1156,31 +1173,77 @@ router.put('/users/:id', requirePermission('security-users', 'edit'), async (req
     const { username, password, role, role_id, isActive, permissions } = req.body;
     const actor = req.user?.username || 'Sistema';
     const actorId = req.user?.id || null;
+    const cleanUser = (username || '').trim();
 
     try {
+        const [targetRows] = await pool.query('SELECT id, username, role, isActive FROM users WHERE id = ?', [id]);
+        if (targetRows.length === 0) {
+            return res.status(404).json({ error: 'Usuario no encontrado.' });
+        }
+        const targetUser = targetRows[0];
+
+        // Prevención de escalamiento de privilegios:
+        // Solo un administrador puede modificar a un usuario administrador
+        if (targetUser.role === 'admin' && req.user?.role !== 'admin') {
+            return res.status(403).json({ error: 'Solo un administrador puede modificar una cuenta de Administrador.' });
+        }
+        // Solo un administrador puede promover a un usuario al rol de administrador
+        if (role === 'admin' && targetUser.role !== 'admin' && req.user?.role !== 'admin') {
+            return res.status(403).json({ error: 'Solo un administrador puede asignar el rol de Administrador.' });
+        }
+
+        // Prevención de bloqueo administrativo (Lockout):
+        const willBeInactive = isActive === false || isActive === 0 || isActive === '0';
+        if (willBeInactive) {
+            if (Number(id) === Number(req.user?.id)) {
+                return res.status(409).json({ error: 'No puedes desactivar tu propia cuenta de usuario activa.' });
+            }
+            if (targetUser.role === 'admin') {
+                const [adminRows] = await pool.query('SELECT COUNT(*) as count FROM users WHERE role = "admin" AND isActive = 1 AND id != ?', [id]);
+                if (adminRows[0].count === 0) {
+                    return res.status(409).json({ error: 'No es posible desactivar al único administrador activo del sistema.' });
+                }
+            }
+        }
+
         const permJson = permissions ? JSON.stringify(permissions) : null;
+        let passwordUpdated = false;
+
         if (password && password.trim() !== '') {
-            const hashedPassword = await bcrypt.hash(password.trim(), 10);
+            const cleanPass = password.trim();
+            if (cleanPass.length < 8) {
+                return res.status(400).json({ error: 'La nueva contraseña debe contener al menos 8 caracteres.' });
+            }
+            const hashedPassword = await bcrypt.hash(cleanPass, 10);
             await pool.query(
                 'UPDATE users SET username=?, password=?, role=?, role_id=?, isActive=?, permissions=? WHERE id=?',
-                [username.trim(), hashedPassword, role || 'user', role_id || null, isActive !== false ? 1 : 0, permJson, id]
+                [cleanUser, hashedPassword, role || targetUser.role, role_id || null, willBeInactive ? 0 : 1, permJson, id]
             );
+            passwordUpdated = true;
+            // Revocar todas las sesiones activas del usuario cuya contraseña cambió
+            await pool.query('DELETE FROM active_sessions WHERE userId = ?', [id]);
         } else {
             await pool.query(
                 'UPDATE users SET username=?, role=?, role_id=?, isActive=?, permissions=? WHERE id=?',
-                [username.trim(), role || 'user', role_id || null, isActive !== false ? 1 : 0, permJson, id]
+                [cleanUser, role || targetUser.role, role_id || null, willBeInactive ? 0 : 1, permJson, id]
             );
         }
+
+        // Si el usuario fue desactivado, revocar sus sesiones de inmediato
+        if (willBeInactive) {
+            await pool.query('DELETE FROM active_sessions WHERE userId = ?', [id]);
+        }
+
         await logSystemEvent({
             userId: actorId,
             username: actor,
             action: 'UPDATE_USER',
             module: 'security-users',
-            details: `Modificación de usuario ID ${id} (${username})`
+            details: `Modificación de usuario ID ${id} (${cleanUser})${passwordUpdated ? ' (contraseña restablecida y sesiones revocadas)' : ''}`
         });
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error, 'Error al actualizar usuario');
     }
 });
 
@@ -1189,6 +1252,11 @@ router.put('/users/:id/permissions', requirePermission('security-access', 'edit'
     const { permissions } = req.body;
     const actor = req.user?.username || 'Sistema';
     const actorId = req.user?.id || null;
+
+    // Solo un administrador con rol 'admin' puede alterar matrices de permisos
+    if (req.user?.role !== 'admin') {
+        return res.status(403).json({ error: 'Solo un administrador puede modificar directamente matrices de permisos.' });
+    }
 
     try {
         const permJson = permissions ? JSON.stringify(permissions) : null;
@@ -1202,7 +1270,7 @@ router.put('/users/:id/permissions', requirePermission('security-access', 'edit'
         });
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error, 'Error al actualizar permisos');
     }
 });
 
@@ -1210,20 +1278,45 @@ router.delete('/users/:id', requirePermission('security-users', 'delete'), async
     const actor = req.user?.username || 'Sistema';
     const actorId = req.user?.id || null;
 
+    // Prevenir auto-eliminación
+    if (Number(req.params.id) === Number(req.user?.id)) {
+        return res.status(409).json({ error: 'No puedes eliminar tu propia cuenta de usuario activa.' });
+    }
+
     try {
-        const [rows] = await pool.query('SELECT username FROM users WHERE id=?', [req.params.id]);
-        const userName = rows[0]?.username || req.params.id;
+        const [rows] = await pool.query('SELECT id, username, role, isActive FROM users WHERE id=?', [req.params.id]);
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'Usuario no encontrado.' });
+        }
+        const targetUser = rows[0];
+
+        // Solo un administrador puede eliminar a otro administrador
+        if (targetUser.role === 'admin' && req.user?.role !== 'admin') {
+            return res.status(403).json({ error: 'Solo un administrador puede eliminar una cuenta de Administrador.' });
+        }
+
+        // Prevenir eliminar al último administrador activo
+        if (targetUser.role === 'admin') {
+            const [adminRows] = await pool.query('SELECT COUNT(*) as count FROM users WHERE role = "admin" AND isActive = 1 AND id != ?', [req.params.id]);
+            if (adminRows[0].count === 0) {
+                return res.status(409).json({ error: 'No es posible eliminar al único administrador activo del sistema.' });
+            }
+        }
+
+        // Revocar sesiones activas asociadas al usuario eliminado
+        await pool.query('DELETE FROM active_sessions WHERE userId = ?', [req.params.id]);
         await pool.query('DELETE FROM users WHERE id=?', [req.params.id]);
+
         await logSystemEvent({
             userId: actorId,
             username: actor,
             action: 'DELETE_USER',
             module: 'security-users',
-            details: `Eliminación de usuario '${userName}' (ID ${req.params.id})`
+            details: `Eliminación de usuario '${targetUser.username}' (ID ${req.params.id})`
         });
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error, 'Error al eliminar usuario');
     }
 });
 
@@ -1381,7 +1474,7 @@ router.post('/active-sessions/heartbeat', async (req, res) => {
     const { sessionId, userAgent } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
     const ua = userAgent || req.headers['user-agent'] || 'Navegador Web';
-    const currentSession = sessionId || req.user?.sessionId;
+    const currentSession = req.user?.sessionId || sessionId;
 
     if (!currentSession) {
         return res.status(401).json({ success: false, revoked: true, error: 'Sesión no especificada.' });
@@ -1389,22 +1482,22 @@ router.post('/active-sessions/heartbeat', async (req, res) => {
 
     try {
         const [updateResult] = await pool.query(
-            'UPDATE active_sessions SET last_activity = NOW(), user_agent = ?, ip_address = ? WHERE id = ?',
-            [ua, ip, currentSession]
+            'UPDATE active_sessions SET last_activity = NOW(), user_agent = ?, ip_address = ? WHERE id = ? AND userId = ?',
+            [ua, ip, currentSession, req.user.id]
         );
 
-        // Si la sesión fue eliminada en base de datos (revocada), no resucitarla
+        // Si la sesión fue eliminada en base de datos o no pertenece al usuario, rechazar
         if (updateResult.affectedRows === 0) {
             return res.status(401).json({ 
                 success: false, 
                 revoked: true, 
-                error: 'Sesión finalizada o revocada por el administrador.' 
+                error: 'Sesión finalizada, revocada o no pertenece al usuario autenticado.' 
             });
         }
 
         res.json({ success: true, sessionId: currentSession });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error, 'Error al actualizar sesión activa');
     }
 });
 
@@ -1462,10 +1555,11 @@ router.post('/notifications', requirePermission('security-notifications', 'creat
 
 router.put('/notifications/:id/read', async (req, res) => {
     try {
-        await pool.query('UPDATE notifications SET isRead = 1 WHERE id = ?', [req.params.id]);
+        const userId = req.user?.id || null;
+        await pool.query('UPDATE notifications SET isRead = 1 WHERE id = ? AND (userId = ? OR userId IS NULL)', [req.params.id, userId]);
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error, 'Error al marcar notificación como leída');
     }
 });
 
@@ -2219,6 +2313,11 @@ app.use('/api', apiLimiter, (req, res, next) => {
     // Proteger todas las demás rutas con verificación de token y sesión activa
     verifyToken(req, res, next);
 }, router);
+
+// Middleware centralizado de manejo de errores (captura excepciones no controladas y sanitiza en producción)
+app.use((err, req, res, _next) => {
+    sendApiError(res, err, 'Error interno en el servidor');
+});
 
 // Export for Vercel
 export default app;
