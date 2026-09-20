@@ -5,8 +5,6 @@ import {
   Snowflake, Lock, Unlock, History, RotateCcw, Save, Trash2, 
   CheckCircle2, AlertCircle, RefreshCw, Search, X, Check, Eye, Pencil
 } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils';
 import { CONTRACT_INFO, resolveServiceDetails } from '../../utils/contractRates';
 import { toast } from 'react-hot-toast';
@@ -896,7 +894,7 @@ const Summary2 = () => {
   const handleExportXLSX = async () => {
     try {
       const { exportCuadroClienteCuartoFrio } = await import('../../utils/exportManager');
-      exportCuadroClienteCuartoFrio({
+      await exportCuadroClienteCuartoFrio({
         clientName,
         startDate,
         endDate,
@@ -922,7 +920,7 @@ const Summary2 = () => {
   const handleExportCSV = async () => {
     try {
       const { exportCuadroClienteCuartoFrio } = await import('../../utils/exportManager');
-      exportCuadroClienteCuartoFrio({
+      await exportCuadroClienteCuartoFrio({
         clientName,
         startDate,
         endDate,
@@ -945,8 +943,13 @@ const Summary2 = () => {
   };
 
   // Exportar PDF
-  const handleExportPDF = () => {
-    const doc = new jsPDF('p', 'mm', 'letter');
+  const handleExportPDF = async () => {
+    try {
+      const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+        import('jspdf'),
+        import('jspdf-autotable')
+      ]);
+      const doc = new jsPDF('p', 'mm', 'letter');
     
     // Encabezado
     doc.setFontSize(11);
@@ -1092,6 +1095,10 @@ const Summary2 = () => {
     doc.text(`TOTAL GENERAL: $${formatCurrency(reportGrandTotal)}`, 130, currentY + 21);
 
     doc.save(`Cuadro_cliente_cuarto_frio_${startDate}_al_${endDate}.pdf`);
+    } catch (err) {
+      console.error('Error al exportar PDF:', err);
+      toast.error('Error al exportar PDF: ' + err.message);
+    }
   };
 
   // Filtrado de historial

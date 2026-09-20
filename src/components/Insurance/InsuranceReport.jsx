@@ -6,8 +6,6 @@ import {
 import { useInventory } from '../../context/InventoryContext';
 import { exportCorteSeguro } from '../../utils/exportManager';
 import { formatCurrency, formatDate, formatPrice } from '../../utils/formatUtils';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { toast } from 'react-hot-toast';
 import { DatePicker, getLocalDateStr } from '../Common/DatePicker';
 
@@ -488,9 +486,9 @@ const InsuranceReport = () => {
     }
   };
 
-  const handleExportXlsx = () => {
+  const handleExportXlsx = async () => {
     try {
-      exportCorteSeguro({
+      await exportCorteSeguro({
         customerName,
         warehouseName,
         cutoffDate,
@@ -534,12 +532,17 @@ const InsuranceReport = () => {
     }
   };
 
-  const handleExportPdf = () => {
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'letter' });
-    const reportDate = formatDate(cutoffDate);
+  const handleExportPdf = async () => {
+    try {
+      const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+        import('jspdf'),
+        import('jspdf-autotable')
+      ]);
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'letter' });
+      const reportDate = formatDate(cutoffDate);
 
-    doc.setFontSize(10);
-    doc.text(`San Martín, ${reportDate}`, 14, 14);
+      doc.setFontSize(10);
+      doc.text(`San Martín, ${reportDate}`, 14, 14);
     doc.setFont(undefined, 'bold');
     doc.text('Señores', 14, 22);
     doc.text(customerName || 'Cliente', 14, 28);
@@ -621,6 +624,10 @@ const InsuranceReport = () => {
     doc.text('Ing. Raúl Sosa', 14, finalY + 21);
 
     doc.save(`corte_seguro_${cutoffDate}.pdf`);
+    } catch (err) {
+      console.error('Error al generar PDF:', err);
+      toast.error('Error al generar PDF: ' + err.message);
+    }
   };
 
   const filteredCuts = cutsList.filter(c => {

@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import * as XLSX from 'xlsx';
+import React, { useState, useRef } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { FileSpreadsheet, Upload, X, CheckCircle2, AlertCircle, RefreshCw, ArrowRight, Search, PlusCircle, Check } from 'lucide-react';
 import { toast } from 'react-hot-toast';
@@ -16,6 +15,14 @@ const ProductExcelImportModal = ({ onClose }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const xlsxRef = useRef(null);
+
+  const getXlsx = async () => {
+    if (!xlsxRef.current) {
+      xlsxRef.current = await import('xlsx');
+    }
+    return xlsxRef.current;
+  };
 
   // Map of existing products by SKU for quick lookup
   const existingMap = new Map(products.map(p => [String(p.sku).trim(), p]));
@@ -28,8 +35,9 @@ const ProductExcelImportModal = ({ onClose }) => {
     setLoading(true);
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
+        const XLSX = await getXlsx();
         const data = new Uint8Array(evt.target.result);
         const wb = XLSX.read(data, { type: 'array' });
         setWorkbookData(wb);
@@ -47,6 +55,8 @@ const ProductExcelImportModal = ({ onClose }) => {
   };
 
   const parseWorkbook = (wb, sheetSelection) => {
+    const XLSX = xlsxRef.current;
+    if (!XLSX) return;
     const itemsMap = new Map();
     const sheetsToProcess = sheetSelection === 'ALL' ? wb.SheetNames : [sheetSelection];
 

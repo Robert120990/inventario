@@ -1,6 +1,19 @@
-import XLSX from 'xlsx-js-style';
 import { formatDate, formatCurrency } from './formatUtils.js';
 import { resolveServiceDetails } from './contractRates.js';
+
+let _cachedXLSX = null;
+
+/**
+ * Carga perezosa (on-demand) del motor de Excel xlsx-js-style
+ * Evita incluir ~1.2 MB en el bundle inicial de la aplicación.
+ */
+export const getXLSX = async () => {
+  if (!_cachedXLSX) {
+    const mod = await import('xlsx-js-style');
+    _cachedXLSX = mod.default || mod;
+  }
+  return _cachedXLSX;
+};
 
 // ==========================================
 // PALETA DE COLORES Y ESTILOS CORPORATIVOS (EXCEL)
@@ -63,7 +76,8 @@ const grandTotalBorder = {
  * Clase constructora de hojas de cálculo estilizadas y estructuradas
  */
 class StyledSheetBuilder {
-  constructor() {
+  constructor(xlsxInstance) {
+    this.XLSX = xlsxInstance;
     this.ws = {};
     this.currentRow = 0;
     this.merges = [];
@@ -80,7 +94,7 @@ class StyledSheetBuilder {
   }
 
   setCell(r, c, val, opt = {}) {
-    const ref = XLSX.utils.encode_cell({ r, c });
+    const ref = this.XLSX.utils.encode_cell({ r, c });
     let t = 's';
     let v = val;
     if (typeof val === 'number') {
@@ -133,7 +147,7 @@ class StyledSheetBuilder {
   }
 
   build(maxCol = 9) {
-    this.ws['!ref'] = XLSX.utils.encode_range({
+    this.ws['!ref'] = this.XLSX.utils.encode_range({
       s: { r: 0, c: 0 },
       e: { r: Math.max(0, this.currentRow - 1), c: maxCol - 1 }
     });
@@ -173,8 +187,9 @@ const downloadFile = (blob, filename) => {
 /**
  * Exporta un libro XLSX nativo de Microsoft Excel con estilos
  */
-export const downloadXLSX = (workbook, filename) => {
+export const downloadXLSX = async (workbook, filename) => {
   try {
+    const XLSX = await getXLSX();
     const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const safeFilename = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
@@ -216,7 +231,7 @@ export const escapeCsvCell = (val) => {
  * EXPORTADOR ESPECIALIZADO: CUADRO CLIENTE CUARTO FRÍO (Resumen Diario)
  * Formato ejecutivo con diseño corporativo, métricas y liquidación diaria para cliente.
  */
-export const exportCuadroClienteCuartoFrio = ({
+export const exportCuadroClienteCuartoFrio = async ({
   clientName = 'Avícola Salvadoreña S.A. DE C.V.',
   startDate,
   endDate,
@@ -266,7 +281,8 @@ export const exportCuadroClienteCuartoFrio = ({
   const totalGeneral = totals.totalGeneral ?? (subtotal + iva);
 
   if (format === 'xlsx') {
-    const builder = new StyledSheetBuilder();
+    const XLSX = await getXLSX();
+    const builder = new StyledSheetBuilder(XLSX);
     const totalCols = 8;
     builder.setColWidths([14, 38, 16, 15, 15, 16, 14, 16]);
 
@@ -632,7 +648,7 @@ export const exportCuadroClienteCuartoFrio = ({
     const wb = XLSX.utils.book_new();
     const sheetName = (safeStart.length >= 5 && safeEnd.length >= 5 ? `${safeStart.slice(5)}_al_${safeEnd.slice(5)}` : 'Cuadro_Cliente').substring(0, 31);
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
-    downloadXLSX(wb, `Cuadro_cliente_cuarto_frio_${safeStart}_al_${safeEnd}.xlsx`);
+    await downloadXLSX(wb, `Cuadro_cliente_cuarto_frio_${safeStart}_al_${safeEnd}.xlsx`);
   } else {
     // Exportación a CSV formateado
     const lines = [];
@@ -711,7 +727,7 @@ export const exportCuadroClienteCuartoFrio = ({
  * EXPORTADOR ESPECIALIZADO: RESUMEN DE ACTIVIDAD Y VALORACIÓN DE INVENTARIO
  * Genera el reporte general con métricas KPI, inventario consolidado y servicios.
  */
-export const exportResumenCompleto = ({
+export const exportResumenCompleto = async ({
   clientName = 'Avícola Salvadoreña S.A. DE C.V.',
   startDate,
   endDate,
@@ -738,7 +754,8 @@ export const exportResumenCompleto = ({
   const sumStockFinal = summaryData.reduce((acc, d) => acc + Number(d.stockFinal || 0), 0);
 
   if (format === 'xlsx') {
-    const builder = new StyledSheetBuilder();
+    const XLSX = await getXLSX();
+    const builder = new StyledSheetBuilder(XLSX);
     const totalCols = 9;
     builder.setColWidths([38, 16, 8, 15, 14, 14, 15, 15, 18]);
 
@@ -1027,7 +1044,7 @@ export const exportResumenCompleto = ({
     const ws = builder.build(totalCols);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Resumen_Actividad');
-    downloadXLSX(wb, `resumen_actividad_${safeStart}_al_${safeEnd}.xlsx`);
+    await downloadXLSX(wb, `resumen_actividad_${safeStart}_al_${safeEnd}.xlsx`);
   } else {
     const lines = [];
     lines.push(escapeCsvCell(title));
@@ -1077,7 +1094,7 @@ export const exportResumenCompleto = ({
 /**
  * EXPORTADOR ESPECIALIZADO: CORTE DE SEGURO
  */
-export const exportCorteSeguro = ({
+export const exportCorteSeguro = async ({
   customerName = 'AVICOLA SALVADOREÑA S.A. DE C.V.',
   warehouseName = 'ALMACENADORA LIL',
   cutoffDate,
@@ -1106,7 +1123,8 @@ export const exportCorteSeguro = ({
   const totalPremium = totals.totalPremium || 0;
 
   if (format === 'xlsx') {
-    const builder = new StyledSheetBuilder();
+    const XLSX = await getXLSX();
+    const builder = new StyledSheetBuilder(XLSX);
     const totalCols = 9;
     builder.setColWidths([14, 38, 12, 15, 14, 15, 16, 18, 16]);
 
@@ -1267,7 +1285,7 @@ export const exportCorteSeguro = ({
     const ws = builder.build(totalCols);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Corte_Seguro');
-    downloadXLSX(wb, `corte_seguro_${safeCutoff}.xlsx`);
+    await downloadXLSX(wb, `corte_seguro_${safeCutoff}.xlsx`);
   } else {
     const lines = [];
     lines.push(escapeCsvCell(title));
@@ -1303,7 +1321,7 @@ export const exportCorteSeguro = ({
 /**
  * EXPORTADOR ESPECIALIZADO: MOVIMIENTOS
  */
-export const exportMovimientos = ({
+export const exportMovimientos = async ({
   movements = [],
   products = [],
   format = 'xlsx'
@@ -1317,6 +1335,7 @@ export const exportMovimientos = ({
   const todayStr = new Date().toISOString().split('T')[0];
 
   if (format === 'xlsx') {
+    const XLSX = await getXLSX();
     const wsData = [];
     wsData.push([]);
     wsData.push(['', title]);
@@ -1412,7 +1431,7 @@ export const exportMovimientos = ({
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Movimientos');
-    downloadXLSX(wb, `movimientos_${todayStr}.xlsx`);
+    await downloadXLSX(wb, `movimientos_${todayStr}.xlsx`);
   } else {
     const lines = [];
     lines.push(escapeCsvCell(title));
@@ -1485,7 +1504,7 @@ export const exportMovimientos = ({
 /**
  * EXPORTADOR ESPECIALIZADO: CATALOGO DE PRODUCTOS
  */
-export const exportProductos = ({
+export const exportProductos = async ({
   products = [],
   categoryUnits = {},
   format = 'xlsx'
@@ -1504,6 +1523,7 @@ export const exportProductos = ({
   }, 0);
 
   if (format === 'xlsx') {
+    const XLSX = await getXLSX();
     const wsData = [];
     wsData.push([]);
     wsData.push(['', title]);
@@ -1575,7 +1595,7 @@ export const exportProductos = ({
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Productos');
-    downloadXLSX(wb, `productos_${todayStr}.xlsx`);
+    await downloadXLSX(wb, `productos_${todayStr}.xlsx`);
   } else {
     const lines = [];
     lines.push(escapeCsvCell(title));
@@ -1623,7 +1643,7 @@ export const exportProductos = ({
 /**
  * EXPORTADOR ESPECIALIZADO: BITÁCORA Y AUDITORÍA DEL SISTEMA
  */
-export const exportBitacora = ({
+export const exportBitacora = async ({
   systemLogs = [],
   format = 'xlsx'
 }) => {
@@ -1631,6 +1651,7 @@ export const exportBitacora = ({
   const todayStr = new Date().toISOString().split('T')[0];
 
   if (format === 'xlsx') {
+    const XLSX = await getXLSX();
     const wsData = [];
     wsData.push([]);
     wsData.push(['', title]);
@@ -1666,7 +1687,7 @@ export const exportBitacora = ({
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Bitacora');
-    downloadXLSX(wb, `Bitacora_Sistema_${todayStr}.xlsx`);
+    await downloadXLSX(wb, `Bitacora_Sistema_${todayStr}.xlsx`);
   } else {
     const lines = [];
     lines.push(escapeCsvCell(title));

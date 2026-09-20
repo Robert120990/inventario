@@ -103,4 +103,10 @@ describe('Autenticación y Sesiones (verifyToken / generateToken)', () => {
             pool.query = originalQuery;
         }
     });
+
+    it('authLimiter y apiLimiter están definidos y configurados como middleware', async () => {
+        const { authLimiter, apiLimiter } = await import('../api/index.js');
+        assert.equal(typeof authLimiter, 'function');
+        assert.equal(typeof apiLimiter, 'function');
+    });
 });

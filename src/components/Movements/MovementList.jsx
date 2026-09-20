@@ -128,9 +128,9 @@ const MovementList = () => {
     );
   };
 
-  const handleExportXlsx = () => {
+  const handleExportXlsx = async () => {
     try {
-      exportMovimientos({
+      await exportMovimientos({
         movements: sortedMovements,
         products,
         format: 'xlsx'

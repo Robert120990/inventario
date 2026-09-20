@@ -1,6 +1,9 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import compression from 'compression';
+import rateLimit from 'express-rate-limit';
 import fs from 'node:fs';
 import path from 'node:path';
 import pool, { ensureSchema } from './db.js';
@@ -12,8 +15,49 @@ import { requirePermission } from './middleware/permissions.js';
 const app = express();
 const router = express.Router();
 
-app.use(cors());
+// 1. Cabeceras HTTP de seguridad con Helmet
+app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false
+}));
+
+// 2. Compresión HTTP Gzip/Deflate
+app.use(compression());
+
+// 3. CORS restringido por entorno
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+    : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:5173'];
+
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        return callback(new Error('Bloqueado por política CORS'));
+    },
+    credentials: true
+}));
+
 app.use(express.json());
+
+// 4. Rate Limiting: protección contra fuerza bruta y DoS
+export const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutos
+    max: 15, // máx 15 intentos fallidos
+    message: { error: 'Demasiados intentos fallidos de inicio de sesión. Por favor intenta de nuevo en 15 minutos.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true
+});
+
+export const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 2000, // 2000 peticiones cada 15 min por IP
+    message: { error: 'Límite de solicitudes excedido. Por favor intenta más tarde.' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
 
 // Initialize Schema once per cold start - safely without hanging requests
 let isInitialized = false;
@@ -913,7 +957,7 @@ router.delete('/movements/:id', requirePermission('movements', 'delete'), async 
 });
 
 // Authentication
-router.post('/auth/login', async (req, res) => {
+router.post('/auth/login', authLimiter, async (req, res) => {
     const { username, password } = req.body;
     const cleanUser = (username || '').trim();
     const cleanPass = (password || '').trim();
@@ -2166,7 +2210,7 @@ router.delete('/insurance-cuts/:id', requirePermission('insurance', 'edit'), asy
 });
 
 // Mount router under /api
-app.use('/api', (req, res, next) => {
+app.use('/api', apiLimiter, (req, res, next) => {
     // Rutas públicas que no requieren token
     const publicRoutes = ['/health', '/auth/login', '/version'];
     if (publicRoutes.includes(req.path)) {
@@ -2180,10 +2224,9 @@ app.use('/api', (req, res, next) => {
 export default app;
 
 // Standalone execution for local development
-const isDirectRun = import.meta.url.startsWith('file:') && 
-                   (process.argv[1] && (process.argv[1].endsWith('index.js') || process.argv[1].endsWith('api\\index.js')));
+const isDirectRun = Boolean(process.argv[1] && (process.argv[1].endsWith('index.js') || process.argv[1].endsWith('api\\index.js')));
 
-if (isDirectRun || process.env.NODE_ENV === 'development') {
+if (isDirectRun && process.env.NODE_ENV !== 'test') {
     const PORT = process.env.PORT || 3001; 
     app.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`);

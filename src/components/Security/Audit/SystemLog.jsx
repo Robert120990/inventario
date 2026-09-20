@@ -60,13 +60,13 @@ const SystemLog = () => {
     loadLogs();
   };
 
-  const handleExportXlsx = () => {
+  const handleExportXlsx = async () => {
     if (systemLogs.length === 0) {
       toast.error('No hay registros para exportar');
       return;
     }
     try {
-      exportBitacora({
+      await exportBitacora({
         systemLogs,
         format: 'xlsx'
       });

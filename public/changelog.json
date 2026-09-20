@@ -1,5 +1,23 @@
 [
   {
+    "id": "7151232",
+    "version": "v2.7.130",
+    "commit": "7151232",
+    "fullCommit": "7151232580a3a91c7ac3b5ba4c6e577eeebb5e7b",
+    "description": "Actualizar version v2.7.129 con commit 4a0a50d",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-09-20",
+    "time": "09:40",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "improvement",
+        "text": "Actualizar version v2.7.129 con commit 4a0a50d"
+      }
+    ]
+  },
+  {
     "id": "4a0a50d",
     "version": "v2.7.129",
     "commit": "4a0a50d",
@@ -170,7 +188,7 @@
     "author": "Ing. Raúl Sosa",
     "date": "2026-08-28",
     "time": "09:41",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
