@@ -1,6 +1,24 @@
 // Registro cronológico maestro y automático de versiones del sistema generado desde Git
 export const SYSTEM_CHANGELOG = [
   {
+    "id": "4a0a50d",
+    "version": "v2.7.129",
+    "commit": "4a0a50d",
+    "fullCommit": "4a0a50dbe32871506bac22b10865ab8b7a2510fd",
+    "description": "Implementar rbac en servidor, integridad transaccional de stock, bloqueo de cortes y suite de pruebas automatizadas",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-09-20",
+    "time": "09:39",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "feature",
+        "text": "Implementar rbac en servidor, integridad transaccional de stock, bloqueo de cortes y suite de pruebas automatizadas"
+      }
+    ]
+  },
+  {
     "id": "3015c8a",
     "version": "v2.7.128",
     "commit": "3015c8a",
@@ -171,7 +189,7 @@ export const SYSTEM_CHANGELOG = [
     "author": "Ing. Raúl Sosa",
     "date": "2026-08-28",
     "time": "09:15",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {

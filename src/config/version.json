@@ -1,11 +1,11 @@
 {
   "major": 2,
   "minor": 7,
-  "build": 128,
-  "version": "2.7.128",
-  "displayVersion": "v2.7.128",
+  "build": 129,
+  "version": "2.7.129",
+  "displayVersion": "v2.7.129",
   "shortDisplay": "v2.7",
-  "commit": "3015c8a",
-  "timestamp": 1789918563562,
-  "updatedAt": "2026-09-20T15:36:03.562Z"
+  "commit": "4a0a50d",
+  "timestamp": 1789918792505,
+  "updatedAt": "2026-09-20T15:39:52.505Z"
 }
