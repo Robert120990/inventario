@@ -187,6 +187,74 @@ export const InventoryProvider = ({ children }) => {
     return () => clearInterval(interval);
   }, [currentUser?.id, sessionId]);
 
+  const fetchProducts = async () => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/products`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setProducts(data);
+        return data;
+      }
+    } catch (e) {
+      console.error('Error fetching products:', e);
+    }
+    return [];
+  };
+
+  const fetchMovements = async () => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/movements`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setMovements(data);
+        return data;
+      }
+    } catch (e) {
+      console.error('Error fetching movements:', e);
+    }
+    return [];
+  };
+
+  const refreshModule = async (moduleName) => {
+    if (!currentUser?.id) return;
+    try {
+      switch (moduleName) {
+        case 'products':
+          await fetchProducts();
+          break;
+        case 'movements':
+          await fetchMovements();
+          break;
+        case 'inventory-count':
+          await fetchProducts();
+          break;
+        case 'dashboard':
+          await Promise.all([fetchProducts(), fetchMovements()]);
+          break;
+        case 'users':
+        case 'roles':
+        case 'security-users':
+        case 'security-roles':
+          await Promise.all([fetchUsers(), fetchRoles()]);
+          break;
+        case 'security':
+        case 'security-sessions':
+          await Promise.all([fetchUsers(), fetchRoles(), fetchActiveSessions()]);
+          break;
+        case 'summary2':
+          await fetchDailyCuts();
+          break;
+        case 'insurance':
+          await fetchInsuranceCuts();
+          break;
+        default:
+          break;
+      }
+    } catch (err) {
+      console.error(`Error al refrescar módulo ${moduleName}:`, err);
+    }
+  };
+
   const refreshData = async () => {
     try {
       const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes, rolesRes, notifRes] = await Promise.all([
@@ -968,6 +1036,24 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
+  const setDailyCutLockStatus = async (id, isLocked, reason = '') => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/daily-cuts/${id}/lock-status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isLocked, reason })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        await fetchDailyCuts();
+        return { success: true, isLocked: data.isLocked };
+      }
+      return { success: false, message: data.error || 'Error al cambiar estado de bloqueo' };
+    } catch {
+      return { success: false, message: 'Error de conexión con el servidor' };
+    }
+  };
+
   const deleteDailyCut = async (id, title = '') => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/daily-cuts/${id}`, { method: 'DELETE' });
@@ -1049,6 +1135,23 @@ export const InventoryProvider = ({ children }) => {
       return { success: false, message: data.error || 'Error al actualizar corte de seguro' };
     } catch (e) {
       console.error('Error updating insurance cut:', e);
+      return { success: false, message: 'Error de conexión con el servidor' };
+    }
+  };
+
+  const setInsuranceCutLockStatus = async (id, isLocked, reason = '') => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/insurance-cuts/${id}/lock-status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isLocked, reason })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        return { success: true, isLocked: data.isLocked };
+      }
+      return { success: false, message: data.error || 'Error al cambiar estado de bloqueo del corte de seguro' };
+    } catch {
       return { success: false, message: 'Error de conexión con el servidor' };
     }
   };
@@ -1194,12 +1297,17 @@ export const InventoryProvider = ({ children }) => {
       fetchDailyCutById,
       createDailyCut,
       updateDailyCut,
+      setDailyCutLockStatus,
       deleteDailyCut,
       fetchInsuranceCuts,
       fetchInsuranceCutById,
       createInsuranceCut,
       updateInsuranceCut,
+      setInsuranceCutLockStatus,
       deleteInsuranceCut,
+      fetchProducts,
+      fetchMovements,
+      refreshModule,
       refreshData,
       login,
       logout,

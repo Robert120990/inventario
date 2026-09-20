@@ -38,16 +38,16 @@ function ViewLoader() {
 }
 
 function AppContent() {
-  const { currentUser, loading, refreshData, canView } = useInventory();
+  const { currentUser, loading, refreshData, refreshModule, canView } = useInventory();
   const [currentView, setCurrentView] = useState('dashboard');
   const [targetAccessUserId, setTargetAccessUserId] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Refresh data whenever the view changes to ensure sync between devices without infinite loops
+  // Refresh granular module data whenever the view changes without downloading the full database
   React.useEffect(() => {
     if (currentUser?.id) {
-      refreshData();
+      refreshModule(currentView);
     }
   }, [currentView]);
 

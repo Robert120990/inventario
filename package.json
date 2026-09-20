@@ -9,6 +9,8 @@
     "version:update": "node scripts/update-version.js",
     "build": "node scripts/update-version.js && vite build",
     "lint": "eslint .",
+    "test": "node --test tests/**/*.test.js",
+    "db:migrate": "node scripts/migrate.js",
     "preview": "vite preview"
   },
   "dependencies": {
