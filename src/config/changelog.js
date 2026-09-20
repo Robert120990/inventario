@@ -1,6 +1,24 @@
 // Registro cronológico maestro y automático de versiones del sistema generado desde Git
 export const SYSTEM_CHANGELOG = [
   {
+    "id": "8214b85",
+    "version": "v2.7.131",
+    "commit": "8214b85",
+    "fullCommit": "8214b858faeecffc4f846d3b7ba88b5876ed2916",
+    "description": "Feat(security & perf): blindaje de api con helmet, rate-limiting, cors y lazy loading de exportadores excel/pdf",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-09-20",
+    "time": "09:55",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "feature",
+        "text": "Feat(security & perf): blindaje de api con helmet, rate-limiting, cors y lazy loading de exportadores excel/pdf"
+      }
+    ]
+  },
+  {
     "id": "7151232",
     "version": "v2.7.130",
     "commit": "7151232",
@@ -171,7 +189,7 @@ export const SYSTEM_CHANGELOG = [
     "author": "Ing. Raúl Sosa",
     "date": "2026-08-28",
     "time": "09:41",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
