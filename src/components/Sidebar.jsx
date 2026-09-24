@@ -158,6 +158,17 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
           </button>
         )}
 
+        {canView('summary2') && (
+          <button
+            className={`nav-link ${currentView === 'cut-history' ? 'active' : ''}`}
+            onClick={() => setCurrentView('cut-history')}
+            title={isCollapsed ? "Historial de Cortes" : ""}
+          >
+            <History size={18} />
+            {!isCollapsed && <span>Historial de Cortes</span>}
+          </button>
+        )}
+
         {/* Security Module Accordion */}
         {hasAnySecurityAccess && (
           <div style={{ marginTop: '0.6rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.6rem' }}>

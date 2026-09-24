@@ -89,6 +89,8 @@ function AppContent() {
         return canView('summary') ? <Summary /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'summary2':
         return canView('summary2') ? <Summary2 /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+      case 'cut-history':
+        return canView('summary2') ? <Summary2 openHistoryOnLoad={true} onNavigate={(v) => setCurrentView(v)} /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'insurance':
         return canView('insurance') ? <InsuranceReport /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       

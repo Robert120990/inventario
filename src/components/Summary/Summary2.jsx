@@ -13,7 +13,7 @@ import { toast } from 'react-hot-toast';
 import { DatePicker, DateQuickPresets, getLocalDateStr } from '../Common/DatePicker';
 import MovementForm from '../Movements/MovementForm';
 
-const Summary2 = () => {
+const Summary2 = ({ openHistoryOnLoad, onNavigate }) => {
   const { 
     products, 
     movements, 
@@ -848,6 +848,19 @@ const Summary2 = () => {
     loadHistory();
   };
 
+  useEffect(() => {
+    if (openHistoryOnLoad) {
+      handleOpenHistory();
+    }
+  }, [openHistoryOnLoad]);
+
+  const handleCloseHistory = () => {
+    setHistoryModalOpen(false);
+    if (openHistoryOnLoad && onNavigate) {
+      onNavigate('summary2');
+    }
+  };
+
   // Cargar un corte guardado desde el historial
   const handleSelectCutFromHistory = async (cutSummary) => {
     try {
@@ -862,7 +875,7 @@ const Summary2 = () => {
         setCustomServices(fullCut.servicesData);
         setIsLocked(Boolean(fullCut.isLocked));
         setSaveStatus(null);
-        setHistoryModalOpen(false);
+        handleCloseHistory();
         toast.success(`Corte '${fullCut.title}' cargado.`);
       }
     } catch (e) {
@@ -1151,7 +1164,7 @@ const Summary2 = () => {
           </button>
 
           {allowExport && (
-            <div style={{ display: 'flex', gap: '0.4rem', borderLeft: '1px solid var(--color-border)', paddingLeft: '0.6rem' }}>
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
               <button className="btn btn-outline" onClick={handleExportXLSX} title="Descargar en Excel (.xlsx)">
                 <FileSpreadsheet size={16} /> Excel
               </button>
@@ -2086,7 +2099,7 @@ const Summary2 = () => {
                 <History size={22} style={{ color: 'var(--color-primary)' }} />
                 Historial de Cortes Diarios Congelados
               </h3>
-              <button className="btn btn-ghost" onClick={() => setHistoryModalOpen(false)}>
+              <button className="btn btn-ghost" onClick={handleCloseHistory}>
                 <X size={18} />
               </button>
             </div>
@@ -2197,7 +2210,7 @@ const Summary2 = () => {
               <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                 Total de cortes registrados: <strong>{cutsList.length}</strong>
               </div>
-              <button className="btn btn-outline" onClick={() => setHistoryModalOpen(false)}>
+              <button className="btn btn-outline" onClick={() => handleCloseHistory()}>
                 Cerrar
               </button>
             </div>
