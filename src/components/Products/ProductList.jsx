@@ -4,9 +4,10 @@ import { Plus, Download, Search, SlidersHorizontal, X, FileSpreadsheet, Printer 
 import { toast } from 'react-hot-toast';
 import { exportProductos } from '../../utils/exportManager';
 import ProductForm from './ProductForm';
-import ProductExcelImportModal from './ProductExcelImportModal';
-import ProductLabelModal from './ProductLabelModal';
 import { formatPrice } from '../../utils/formatUtils';
+
+const ProductExcelImportModal = React.lazy(() => import('./ProductExcelImportModal'));
+const ProductLabelModal = React.lazy(() => import('./ProductLabelModal'));
 
 const normalizeSearchText = (value) => String(value ?? '')
   .normalize('NFD')
@@ -95,9 +96,9 @@ const ProductList = () => {
     setSortBy('sku-asc');
   };
 
-  const handleExportXlsx = () => {
+  const handleExportXlsx = async () => {
     try {
-      exportProductos({
+      await exportProductos({
         products: filteredProducts,
         categoryUnits,
         format: 'xlsx'
@@ -293,14 +294,18 @@ const ProductList = () => {
       )}
 
       {isImportModalOpen && (
-        <ProductExcelImportModal onClose={() => setIsImportModalOpen(false)} />
+        <React.Suspense fallback={null}>
+          <ProductExcelImportModal onClose={() => setIsImportModalOpen(false)} />
+        </React.Suspense>
       )}
 
       {labelProduct && (
-        <ProductLabelModal
-          product={labelProduct}
-          onClose={() => setLabelProduct(null)}
-        />
+        <React.Suspense fallback={null}>
+          <ProductLabelModal
+            product={labelProduct}
+            onClose={() => setLabelProduct(null)}
+          />
+        </React.Suspense>
       )}
     </div>
   );

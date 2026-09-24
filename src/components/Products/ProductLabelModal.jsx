@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Printer, Download, Settings2 } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
-import jsPDF from 'jspdf';
 import { toast } from 'react-hot-toast';
 
 /**
@@ -230,8 +229,9 @@ const ProductLabelModal = ({ product, onClose }) => {
   };
 
   // Descargar archivo PDF de las etiquetas optimizado para ticket 72mm
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
     try {
+      const { default: jsPDF } = await import('jspdf');
       const numCopies = Math.max(1, parseInt(copies, 10) || 1);
       const isContinuous = labelSize !== 'sheet';
 

@@ -1,8 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { FileText, Download, FileSpreadsheet, FileOutput } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils';
 import { CONTRACT_INFO, resolveServiceDetails } from '../../utils/contractRates';
 
@@ -158,7 +156,7 @@ const Summary = () => {
   const handleExportXLSX = async () => {
     try {
       const { exportResumenCompleto } = await import('../../utils/exportManager');
-      exportResumenCompleto({
+      await exportResumenCompleto({
         clientName,
         startDate,
         endDate,
@@ -184,7 +182,7 @@ const Summary = () => {
   const handleExportCSV = async () => {
     try {
       const { exportResumenCompleto } = await import('../../utils/exportManager');
-      exportResumenCompleto({
+      await exportResumenCompleto({
         clientName,
         startDate,
         endDate,
@@ -207,9 +205,14 @@ const Summary = () => {
     }
   };
 
-  const handleExportPDF = () => {
-    const doc = new jsPDF();
-    doc.text(`Resumen de Actividad (${startDate} al ${endDate})`, 14, 15);
+  const handleExportPDF = async () => {
+    try {
+      const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+        import('jspdf'),
+        import('jspdf-autotable')
+      ]);
+      const doc = new jsPDF();
+      doc.text(`Resumen de Actividad (${startDate} al ${endDate})`, 14, 15);
     
     const tableColumn = ["Producto", "UM", "S. Inicial", "Ent.", "Sal.", "S. Final", "Precio", "Total"];
     const tableRows = [];
@@ -290,6 +293,10 @@ const Summary = () => {
     doc.text(`TOTAL REPORTE: $${formatCurrency(reportGrandTotal)}`, 140, currentY);
 
     doc.save(`resumen_${startDate}_al_${endDate}.pdf`);
+    } catch (err) {
+      console.error('Error al generar PDF:', err);
+      toast.error('Error al generar PDF: ' + err.message);
+    }
   };
 
   return (

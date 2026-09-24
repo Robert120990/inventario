@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { 
-  Plus, Download, Search, FileSpreadsheet, 
-  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, 
-  SlidersHorizontal, ArrowDownCircle, ArrowUpCircle 
+import {
+  Plus, Download, Search, FileSpreadsheet,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+  SlidersHorizontal, ArrowDownCircle, ArrowUpCircle
 } from 'lucide-react';
 import { exportMovimientos } from '../../utils/exportManager';
 import MovementForm from './MovementForm';
@@ -14,7 +14,7 @@ const MovementList = () => {
   const { movements, products, deleteMovement, canCreate, canEdit, canDelete, canExport } = useInventory();
   const [isAdding, setIsAdding] = useState(false);
   const [editingMovement, setEditingMovement] = useState(null);
-  
+
   const allowCreate = canCreate('movements');
   const allowEdit = canEdit('movements');
   const allowDelete = canDelete('movements');
@@ -37,9 +37,9 @@ const MovementList = () => {
     if (!searchTerm.trim()) return true;
 
     const searchLow = searchTerm.toLowerCase();
-    
+
     // Buscar en datos generales del movimiento
-    const inMovement = 
+    const inMovement =
       (mov.refNumber || '').toLowerCase().includes(searchLow) ||
       (mov.refType || '').toLowerCase().includes(searchLow) ||
       (mov.carrier || '').toLowerCase().includes(searchLow) ||
@@ -115,7 +115,7 @@ const MovementList = () => {
     const totalUnits = mov.items.reduce((acc, curr) => acc + Number(curr.qtyUnits || 0), 0);
     const totalMovPounds = mov.items.reduce((acc, curr) => acc + Number(curr.qtyPounds || 0), 0);
     const totalBaskets = mov.items.reduce((acc, curr) => acc + Number(curr.qtyBaskets || 0), 0);
-    
+
     return (
       <>
         <div style={{ fontWeight: '600' }}>{totalUnits.toLocaleString()} Unid.</div>
@@ -128,9 +128,9 @@ const MovementList = () => {
     );
   };
 
-  const handleExportXlsx = () => {
+  const handleExportXlsx = async () => {
     try {
-      exportMovimientos({
+      await exportMovimientos({
         movements: sortedMovements,
         products,
         format: 'xlsx'
@@ -211,10 +211,10 @@ const MovementList = () => {
           {/* Search Input */}
           <div style={{ position: 'relative', flex: '1 1 280px', maxWidth: '450px' }}>
             <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-light)' }} />
-            <input 
-              type="text" 
-              className="form-input" 
-              placeholder="Buscar por documento, transporte, auditor o producto..." 
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Buscar por documento, transporte, auditor o producto..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{ paddingLeft: '2.5rem', marginBottom: 0 }}
@@ -301,14 +301,14 @@ const MovementList = () => {
         </div>
 
         {/* Metrics Summary Line */}
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between', 
-          marginTop: '0.85rem', 
-          paddingTop: '0.85rem', 
-          borderTop: '1px solid var(--color-border)', 
-          fontSize: '0.85rem', 
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginTop: '0.85rem',
+          paddingTop: '0.85rem',
+          borderTop: '1px solid var(--color-border)',
+          fontSize: '0.85rem',
           color: 'var(--color-text-light)',
           flexWrap: 'wrap',
           gap: '0.5rem'
@@ -320,11 +320,6 @@ const MovementList = () => {
             {totalItems > 0 ? (
               <span>
                 Mostrando <strong>{startIndex + 1} - {endIndex}</strong> de <strong>{totalItems}</strong> movimientos
-                {pageSize === 10 && totalItems > 10 && (
-                  <span className="badge badge-primary" style={{ marginLeft: '0.5rem', fontSize: '0.7rem' }}>
-                    ⚡ Modo Ultra-Rápido (Últimos 10)
-                  </span>
-                )}
               </span>
             ) : (
               <span>0 movimientos encontrados</span>
@@ -358,9 +353,9 @@ const MovementList = () => {
                         {searchTerm ? 'No se encontraron movimientos con ese criterio.' : 'No hay movimientos registrados.'}
                       </p>
                       {searchTerm && (
-                        <button 
+                        <button
                           onClick={() => setSearchTerm('')}
-                          className="btn btn-outline" 
+                          className="btn btn-outline"
                           style={{ marginTop: '0.5rem', padding: '0.25rem 0.75rem', fontSize: '0.8rem' }}
                         >
                           Limpiar búsqueda
@@ -404,9 +399,9 @@ const MovementList = () => {
                       <td style={{ textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center' }}>
                           {allowEdit && (
-                            <button 
-                              onClick={() => { setEditingMovement(mov); setIsAdding(true); }} 
-                              className="btn btn-outline" 
+                            <button
+                              onClick={() => { setEditingMovement(mov); setIsAdding(true); }}
+                              className="btn btn-outline"
                               style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
                               title="Editar este movimiento"
                             >
@@ -414,13 +409,13 @@ const MovementList = () => {
                             </button>
                           )}
                           {allowDelete && (
-                            <button 
-                              onClick={() => { 
+                            <button
+                              onClick={() => {
                                 if (window.confirm('¿Seguro que deseas eliminar este movimiento? Afectará el stock disponible.')) {
                                   deleteMovement(mov.id);
                                 }
-                              }} 
-                              className="btn btn-danger" 
+                              }}
+                              className="btn btn-danger"
                               style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
                               title="Eliminar este movimiento"
                             >
