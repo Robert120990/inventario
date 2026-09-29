@@ -51,6 +51,7 @@ const Summary2 = ({ openHistoryOnLoad, onNavigate }) => {
   const [customServices, setCustomServices] = useState(null);
 
   // Estados de interfaz y modales
+  const [cutsList, setCutsList] = useState([]);
   const [freezeModalOpen, setFreezeModalOpen] = useState(false);
   const [freezeTitle, setFreezeTitle] = useState('');
   const [isSavingCut, setIsSavingCut] = useState(false);
