@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import pool, { ensureSchema } from './db.js';
 import { randomUUID } from 'node:crypto';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { verifyToken, generateToken } from './middleware/auth.js';
 import { requirePermission } from './middleware/permissions.js';
 
