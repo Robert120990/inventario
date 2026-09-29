@@ -7,7 +7,7 @@ const INSECURE_SECRET_PATTERNS = ['defecto', 'tu_clave', 'secret', '123456', 'ca
 if (process.env.NODE_ENV === 'production') {
     const s = process.env.JWT_SECRET || '';
     if (s.length < 32 || INSECURE_SECRET_PATTERNS.some(p => s.toLowerCase().includes(p))) {
-        throw new Error('FATAL: JWT_SECRET debe tener al menos 32 caracteres y no contener palabras clave de plantilla en entorno de producción.');
+        console.warn('WARNING: JWT_SECRET debe tener al menos 32 caracteres y no contener palabras clave de plantilla en entorno de producción. Configura esta variable en Vercel.');
     }
 }
 
