@@ -209,7 +209,7 @@ const MovementList = () => {
       <div className="card" style={{ marginBottom: '1.5rem', padding: '1rem 1.25rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
           {/* Search Input */}
-          <div style={{ position: 'relative', flex: '1 1 280px', maxWidth: '450px' }}>
+          <div style={{ position: 'relative', flex: '1 1 200px', minWidth: '180px', maxWidth: '450px' }}>
             <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-light)' }} />
             <input
               type="text"

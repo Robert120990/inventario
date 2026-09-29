@@ -212,9 +212,9 @@ const UserManual = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-3" style={{ gap: '1.5rem', alignItems: 'flex-start' }}>
+      <div className="bento-grid" style={{ gap: '1.25rem', alignItems: 'flex-start' }}>
         {/* Left Nav */}
-        <div className="card" style={{ padding: '1rem', gridColumn: 'span 1' }}>
+        <div className="col-span-4 card" style={{ padding: '1rem' }}>
           <div style={{ position: 'relative', marginBottom: '1rem' }}>
             <input
               type="text"
@@ -259,7 +259,7 @@ const UserManual = () => {
         </div>
 
         {/* Right Content */}
-        <div className="card" style={{ gridColumn: 'span 2', padding: '2rem', minHeight: '400px' }}>
+        <div className="col-span-8 card" style={{ padding: 'clamp(1.25rem, 3vw, 2rem)', minHeight: '400px' }}>
           {currentSec.content}
         </div>
       </div>

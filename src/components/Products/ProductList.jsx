@@ -157,8 +157,8 @@ const ProductList = () => {
           <SlidersHorizontal size={18} /> Búsqueda avanzada
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', alignItems: 'end' }}>
-          <div className="form-group" style={{ marginBottom: 0, gridColumn: 'span 2' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem', alignItems: 'end' }}>
+          <div className="form-group" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
             <label className="form-label" htmlFor="product-search">Código o descripción</label>
             <div style={{ position: 'relative' }}>
               <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-light)' }} />

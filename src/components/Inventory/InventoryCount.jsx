@@ -147,15 +147,26 @@ const InventoryCount = () => {
                   type="button"
                   onClick={() => selectProduct(product)}
                   style={{
-                    display: 'grid', gridTemplateColumns: '130px 1fr auto', gap: '1rem',
-                    width: '100%', padding: '0.85rem 1rem', border: 'none',
-                    borderBottom: '1px solid var(--color-border)', background: 'transparent',
-                    color: 'var(--color-text)', textAlign: 'left', cursor: 'pointer'
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '0.5rem',
+                    width: '100%',
+                    padding: '0.85rem 1rem',
+                    border: 'none',
+                    borderBottom: '1px solid var(--color-border)',
+                    background: 'transparent',
+                    color: 'var(--color-text)',
+                    textAlign: 'left',
+                    cursor: 'pointer'
                   }}
                 >
-                  <strong>{product.sku}</strong>
-                  <span>{product.description}</span>
-                  <small style={{ color: 'var(--color-text-light)' }}>{product.category}</small>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                    <strong style={{ color: 'var(--color-primary)' }}>{product.sku}</strong>
+                    <span>{product.description}</span>
+                  </div>
+                  <small style={{ color: 'var(--color-text-light)', marginLeft: 'auto' }}>{product.category}</small>
                 </button>
               )) : (
                 <div style={{ padding: '1rem', color: 'var(--color-text-light)' }}>No se encontraron productos.</div>

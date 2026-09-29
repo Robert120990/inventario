@@ -36,15 +36,15 @@ const Login = () => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      minHeight: '100vh',
+      minHeight: '100dvh',
       backgroundColor: 'var(--color-bg)',
       position: 'relative',
       overflow: 'hidden',
-      padding: '1.5rem'
+      padding: 'clamp(1rem, 3vw, 1.5rem)'
     }}>
       {/* Stitch Luminous Background Radial Halos */}
-      <div className="luminous-glow" style={{ top: '-15%', left: '10%', width: '450px', height: '450px', background: 'radial-gradient(circle, rgba(0, 209, 102, 0.15) 0%, transparent 70%)' }}></div>
-      <div className="luminous-glow" style={{ bottom: '-15%', right: '10%', width: '500px', height: '500px', background: 'radial-gradient(circle, rgba(0, 89, 187, 0.12) 0%, transparent 70%)' }}></div>
+      <div className="luminous-glow" style={{ top: '-15%', left: '10%', width: 'min(450px, 80vw)', height: 'min(450px, 80vw)', background: 'radial-gradient(circle, rgba(0, 209, 102, 0.15) 0%, transparent 70%)' }}></div>
+      <div className="luminous-glow" style={{ bottom: '-15%', right: '10%', width: 'min(500px, 80vw)', height: 'min(500px, 80vw)', background: 'radial-gradient(circle, rgba(0, 89, 187, 0.12) 0%, transparent 70%)' }}></div>
 
       {/* Frosted Glass Login Center Card */}
       <div className="glass-card" style={{
@@ -54,7 +54,7 @@ const Login = () => {
         flexDirection: 'column',
         gap: '1.75rem',
         borderRadius: 'var(--radius-xl)',
-        padding: '2.5rem 2rem',
+        padding: 'clamp(1.75rem, 5vw, 2.5rem) clamp(1.25rem, 4vw, 2rem)',
         boxShadow: 'var(--shadow-lg)',
         position: 'relative',
         zIndex: 10

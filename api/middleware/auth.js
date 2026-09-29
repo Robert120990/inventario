@@ -92,3 +92,53 @@ export const generateToken = (userPayload) => {
     // Generamos el token con validez de 24 horas
     return jwt.sign(userPayload, JWT_SECRET, { expiresIn: '24h' });
 };
+
+export const requireAdmin = (req, res, next) => {
+    if (!req.user || req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Acceso restringido únicamente a administradores.' });
+    }
+    next();
+};
+
+export const requirePermission = (moduleName, action = 'view') => {
+    return async (req, res, next) => {
+        if (!req.user) {
+            return res.status(401).json({ error: 'No autenticado.' });
+        }
+        if (req.user.role === 'admin') {
+            return next();
+        }
+
+        try {
+            const [rows] = await pool.query(
+                `SELECT u.permissions as userPerms, r.permissions as rolePerms
+                 FROM users u
+                 LEFT JOIN roles r ON u.role_id = r.id
+                 WHERE u.id = ?`,
+                [req.user.id]
+            );
+
+            if (rows.length === 0) {
+                return res.status(403).json({ error: 'Usuario no encontrado o inactivo.' });
+            }
+
+            let permissions = {};
+            if (rows[0].userPerms) {
+                try { permissions = JSON.parse(rows[0].userPerms); } catch (e) {}
+            } else if (rows[0].rolePerms) {
+                try { permissions = JSON.parse(rows[0].rolePerms); } catch (e) {}
+            }
+
+            const modulePermissions = permissions[moduleName] || {};
+            if (modulePermissions[action] === true) {
+                return next();
+            }
+
+            return res.status(403).json({ 
+                error: `Acceso denegado. No tienes permisos para realizar la acción '${action}' en el módulo '${moduleName}'.` 
+            });
+        } catch (error) {
+            return res.status(500).json({ error: 'Error al verificar permisos de usuario.' });
+        }
+    };
+};

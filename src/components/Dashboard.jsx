@@ -112,10 +112,10 @@ const Dashboard = ({ onNavigate }) => {
                 <Calendar size={14} /> {formatDate(today)}
               </span>
             </div>
-            <h1 className="font-headline" style={{ fontSize: '2.5rem', fontWeight: '700', letterSpacing: '-0.04em', lineHeight: '1.1', color: 'var(--color-text)' }}>
+            <h1 className="font-headline" style={{ fontSize: 'clamp(1.6rem, 5vw, 2.5rem)', fontWeight: '700', letterSpacing: '-0.04em', lineHeight: '1.15', color: 'var(--color-text)' }}>
               Centro de Control
             </h1>
-            <p style={{ color: 'var(--color-text-light)', fontSize: '1.05rem', marginTop: '0.5rem', fontWeight: '400', lineHeight: '1.5' }}>
+            <p style={{ color: 'var(--color-text-light)', fontSize: 'clamp(0.9rem, 2.5vw, 1.05rem)', marginTop: '0.5rem', fontWeight: '400', lineHeight: '1.5' }}>
               Gestión inteligente de existencias y flujo logístico en tiempo real.
             </p>
           </div>
@@ -149,23 +149,23 @@ const Dashboard = ({ onNavigate }) => {
       <div className="bento-grid">
         
         {/* Featured Dial Card (Col 8) */}
-        <div className="col-span-8 card" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative', overflow: 'hidden', minHeight: '340px' }}>
+        <div className="col-span-8 card" style={{ padding: 'clamp(1.25rem, 3vw, 2rem)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative', overflow: 'hidden', minHeight: '320px' }}>
           {/* Ambient Radial Blur Glow */}
           <div className="luminous-glow" style={{ top: '-10%', right: '-5%', width: '320px', height: '320px' }}></div>
           
-          <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '2rem' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: '360px' }}>
+          <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: '360px', flex: '1 1 240px' }}>
               <span className="font-label" style={{ fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-primary)' }}>
                 Balance de Existencias
               </span>
-              <h2 className="font-headline" style={{ fontSize: '1.75rem', fontWeight: '700', lineHeight: '1.2' }}>
+              <h2 className="font-headline" style={{ fontSize: 'clamp(1.35rem, 4vw, 1.75rem)', fontWeight: '700', lineHeight: '1.2' }}>
                 Disponibilidad Global
               </h2>
               <p style={{ fontSize: '0.9rem', color: 'var(--color-text-light)', lineHeight: '1.5' }}>
                 Monitoreo activo sobre <strong style={{ color: 'var(--color-text)' }}>{products.length} referencias</strong> registradas en el catálogo.
               </p>
               
-              <div style={{ marginTop: '1rem', display: 'flex', gap: '1.5rem' }}>
+              <div style={{ marginTop: '1rem', display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
                 <div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Con Stock</div>
                   <div className="font-headline" style={{ fontSize: '1.35rem', fontWeight: '700', color: 'var(--color-primary)' }}>
@@ -182,7 +182,7 @@ const Dashboard = ({ onNavigate }) => {
             </div>
 
             {/* Luminous Engine Circular Dial Widget */}
-            <div className="luminous-dial-container" style={{ width: '220px', height: '220px' }}>
+            <div className="luminous-dial-container" style={{ width: 'min(220px, 100%)', height: '220px', margin: '0 auto' }}>
               <svg style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }} viewBox="0 0 100 100">
                 {/* Background Ring */}
                 <circle
@@ -210,7 +210,7 @@ const Dashboard = ({ onNavigate }) => {
               
               {/* Dial Center Info */}
               <div style={{ position: 'absolute', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <span className="font-headline" style={{ fontSize: '2.1rem', fontWeight: '800', lineHeight: '1', color: 'var(--color-text)' }}>
+                <span className="font-headline" style={{ fontSize: 'clamp(1.6rem, 5vw, 2.1rem)', fontWeight: '800', lineHeight: '1', color: 'var(--color-text)' }}>
                   {totalStock >= 10000 ? `${(totalStock / 1000).toFixed(1)}k` : totalStock.toLocaleString()}
                 </span>
                 <span style={{ fontSize: '0.7rem', fontWeight: '700', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '0.2rem' }}>
@@ -225,7 +225,7 @@ const Dashboard = ({ onNavigate }) => {
 
           {/* Bottom Metas */}
           <div style={{ position: 'relative', zIndex: 2, marginTop: '1.75rem', paddingTop: '1.25rem', borderTop: '1px solid var(--color-border-subtle)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--color-primary)' }}></div>
                 <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)' }}>Entradas Hoy: <strong style={{ color: 'var(--color-text)' }}>+{todayInUnits.toLocaleString()}</strong></span>
@@ -243,9 +243,9 @@ const Dashboard = ({ onNavigate }) => {
         </div>
 
         {/* Side Flow Card: Quick Actions & Live Stream (Col 4) */}
-        <div className="col-span-4 card" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+        <div className="col-span-4 card" style={{ padding: 'clamp(1.25rem, 3vw, 2rem)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
               <span className="font-label" style={{ fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-secondary)' }}>
                 Flujo Operativo
               </span>
@@ -354,9 +354,9 @@ const Dashboard = ({ onNavigate }) => {
       {/* Today's Activity Table with Stitch Flow Architecture */}
       <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
         {/* Table Header Controls */}
-        <div style={{ padding: '1.5rem 1.75rem', borderBottom: '1px solid var(--color-border)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', background: 'var(--color-surface)' }}>
+        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--color-border)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', background: 'var(--color-surface)' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
               <h2 className="font-headline" style={{ fontSize: '1.35rem', fontWeight: '700', color: 'var(--color-text)' }}>
                 Actividad de Hoy
               </h2>
@@ -368,9 +368,9 @@ const Dashboard = ({ onNavigate }) => {
           </div>
 
           {/* Filters & Search */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', width: '100%', maxWidth: '560px', justifyContent: 'flex-end' }}>
             {/* Filter Pills */}
-            <div style={{ display: 'flex', background: 'var(--color-card)', padding: '0.25rem', borderRadius: 'var(--radius)', border: '1px solid var(--color-border)' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', background: 'var(--color-card)', padding: '0.25rem', borderRadius: 'var(--radius)', border: '1px solid var(--color-border)' }}>
               <button
                 type="button"
                 onClick={() => setFilterType('all')}
@@ -425,7 +425,7 @@ const Dashboard = ({ onNavigate }) => {
             </div>
 
             {/* Quick Search Input */}
-            <div style={{ position: 'relative', width: '220px' }}>
+            <div style={{ position: 'relative', minWidth: '180px', flex: '1 1 180px' }}>
               <Search size={15} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
               <input
                 type="text"

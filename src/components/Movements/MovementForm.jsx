@@ -344,67 +344,67 @@ const MovementForm = ({ onCancel, initialData }) => {
                   </button>
                 )}
                 
-                <div className="grid grid-cols-2" style={{ marginBottom: '1rem', paddingRight: '2rem' }}>
-                  <div className="form-group" style={{ position: 'relative', marginBottom: 0 }} onClick={e => e.stopPropagation()}>
-                    <label className="form-label">Producto {index + 1}</label>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="Escribe código o nombre para buscar..." 
-                      value={item.searchQuery}
-                      onChange={(e) => {
-                        handleItemChange(index, 'searchQuery', e.target.value);
-                        handleItemChange(index, 'productId', '');
-                        handleItemChange(index, 'showDropdown', true);
-                      }}
-                      onFocus={() => {
-                        const newItems = formData.items.map((it, i) => i === index ? { ...it, showDropdown: true } : { ...it, showDropdown: false });
-                        setFormData({ ...formData, items: newItems });
-                      }}
-                    />
-                    {item.showDropdown && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', maxHeight: '200px', overflowY: 'auto', zIndex: 10, boxShadow: 'var(--shadow-lg)' }}>
-                        {filteredProducts.map(p => (
-                          <div 
-                            key={p.id} 
-                            style={{ padding: '0.75rem', cursor: 'pointer', borderBottom: '1px solid var(--color-border)' }}
-                            onClick={() => {
-                              handleItemChange(index, 'searchQuery', `${p.sku} - ${p.description}`);
-                              handleItemChange(index, 'productId', p.id);
-                              handleItemChange(index, 'showDropdown', false);
-                            }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = 'var(--color-bg)'}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                          >
-                            <strong>{p.sku}</strong> - {p.description} <span style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', marginLeft: '0.5rem' }}>(Stock local: {p.stockUnits})</span>
-                          </div>
-                        ))}
-                        {filteredProducts.length === 0 && <div style={{ padding: '0.75rem', color: 'var(--color-text-light)' }}>Sin resultados</div>}
+                <div className="product-item-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.85rem', marginBottom: '0.5rem', paddingRight: '2rem' }}>
+                    <div className="form-group" style={{ position: 'relative', marginBottom: 0 }} onClick={e => e.stopPropagation()}>
+                      <label className="form-label">Producto {index + 1}</label>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        placeholder="Escribe código o nombre para buscar..." 
+                        value={item.searchQuery}
+                        onChange={(e) => {
+                          handleItemChange(index, 'searchQuery', e.target.value);
+                          handleItemChange(index, 'productId', '');
+                          handleItemChange(index, 'showDropdown', true);
+                        }}
+                        onFocus={() => {
+                          const newItems = formData.items.map((it, i) => i === index ? { ...it, showDropdown: true } : { ...it, showDropdown: false });
+                          setFormData({ ...formData, items: newItems });
+                        }}
+                      />
+                      {item.showDropdown && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', maxHeight: '200px', overflowY: 'auto', zIndex: 10, boxShadow: 'var(--shadow-lg)' }}>
+                          {filteredProducts.map(p => (
+                            <div 
+                              key={p.id} 
+                              style={{ padding: '0.75rem', cursor: 'pointer', borderBottom: '1px solid var(--color-border)' }}
+                              onClick={() => {
+                                handleItemChange(index, 'searchQuery', `${p.sku} - ${p.description}`);
+                                handleItemChange(index, 'productId', p.id);
+                                handleItemChange(index, 'showDropdown', false);
+                              }}
+                              onMouseEnter={(e) => e.target.style.backgroundColor = 'var(--color-bg)'}
+                              onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                            >
+                              <strong>{p.sku}</strong> - {p.description} <span style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', marginLeft: '0.5rem' }}>(Stock: {p.stockUnits})</span>
+                            </div>
+                          ))}
+                          {filteredProducts.length === 0 && <div style={{ padding: '0.75rem', color: 'var(--color-text-light)' }}>Sin resultados</div>}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(75px, 1fr))', gap: '0.5rem' }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ fontSize: '0.75rem' }}>Temp °C</label>
+                        <input type="number" step="0.1" className="form-input" value={item.temperature} onChange={(e) => handleItemChange(index, 'temperature', e.target.value)} placeholder="-18.0" />
                       </div>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-4">
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Temp °C</label>
-                      <input type="number" step="0.1" className="form-input" value={item.temperature} onChange={(e) => handleItemChange(index, 'temperature', e.target.value)} placeholder="-18.0" />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Unidades</label>
-                      <input type="number" className="form-input" value={item.qtyUnits} onChange={(e) => handleItemChange(index, 'qtyUnits', e.target.value)} required min="1" />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Libras</label>
-                      <input type="number" step="0.01" className="form-input" value={item.qtyPounds} onChange={(e) => handleItemChange(index, 'qtyPounds', e.target.value)} min="0" />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label className="form-label">Cestas</label>
-                      <input type="number" className="form-input" value={item.qtyBaskets} onChange={(e) => handleItemChange(index, 'qtyBaskets', e.target.value)} min="0" />
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ fontSize: '0.75rem' }}>Unidades</label>
+                        <input type="number" className="form-input" value={item.qtyUnits} onChange={(e) => handleItemChange(index, 'qtyUnits', e.target.value)} required min="1" />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ fontSize: '0.75rem' }}>Libras</label>
+                        <input type="number" step="0.01" className="form-input" value={item.qtyPounds} onChange={(e) => handleItemChange(index, 'qtyPounds', e.target.value)} min="0" />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ fontSize: '0.75rem' }}>Cestas</label>
+                        <input type="number" className="form-input" value={item.qtyBaskets} onChange={(e) => handleItemChange(index, 'qtyBaskets', e.target.value)} min="0" />
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
 
         {/* Section 4: Servicios Extraordinarios */}
@@ -468,12 +468,13 @@ const MovementForm = ({ onCancel, initialData }) => {
           ) : (
             <div className="grid grid-cols-1" style={{ gap: '0.75rem' }}>
               {formData.services.map((service, sIndex) => (
-                <div key={sIndex} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 120px 120px 40px', gap: '0.75rem', alignItems: 'center', backgroundColor: 'var(--color-bg)', padding: '0.75rem', borderRadius: 'var(--radius)' }}>
-                  <div>
+                <div key={sIndex} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', alignItems: 'end', backgroundColor: 'var(--color-bg)', padding: '0.85rem', borderRadius: 'var(--radius)', position: 'relative' }}>
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Descripción del Servicio</label>
                     <input 
                       type="text" 
                       className="form-input" 
-                      placeholder="Descripción del servicio (ej. Descarga de Rastra)" 
+                      placeholder="Descripción (ej. Descarga de Rastra)" 
                       value={service.description}
                       onChange={(e) => handleServiceChange(sIndex, 'description', e.target.value)}
                       required
@@ -481,11 +482,12 @@ const MovementForm = ({ onCancel, initialData }) => {
                     />
                   </div>
                   <div>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Cantidad / Lbs</label>
                     <input 
                       type="number" 
                       step="any"
                       className="form-input" 
-                      placeholder="Cant/Lbs" 
+                      placeholder="1" 
                       value={service.quantity !== undefined ? service.quantity : ''}
                       onChange={(e) => handleServiceChange(sIndex, 'quantity', e.target.value)}
                       title="Cantidad o Libras"
@@ -493,33 +495,37 @@ const MovementForm = ({ onCancel, initialData }) => {
                     />
                   </div>
                   <div>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>Precio Unit. ($)</label>
                     <input 
                       type="number" 
                       step="0.001"
                       className="form-input" 
-                      placeholder="Precio Unit." 
+                      placeholder="0.00" 
                       value={service.unitPrice !== undefined ? service.unitPrice : ''}
                       onChange={(e) => handleServiceChange(sIndex, 'unitPrice', e.target.value)}
                       title="Precio Unitario"
                       style={{ marginBottom: 0 }}
                     />
                   </div>
-                  <div>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      className="form-input" 
-                      placeholder="Total $" 
-                      value={service.value}
-                      onChange={(e) => handleServiceChange(sIndex, 'value', e.target.value)}
-                      required
-                      title="Total en Dólares"
-                      style={{ marginBottom: 0, fontWeight: 'bold' }}
-                    />
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+                    <div style={{ flex: 1 }}>
+                      <label className="form-label" style={{ fontSize: '0.75rem' }}>Total ($)</label>
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        className="form-input" 
+                        placeholder="Total $" 
+                        value={service.value}
+                        onChange={(e) => handleServiceChange(sIndex, 'value', e.target.value)}
+                        required
+                        title="Total en Dólares"
+                        style={{ marginBottom: 0, fontWeight: 'bold' }}
+                      />
+                    </div>
+                    <button type="button" className="btn btn-danger" onClick={() => removeService(sIndex)} style={{ padding: '0.55rem', height: '42px', flexShrink: 0 }} title="Eliminar servicio">
+                      <Trash2 size={16} />
+                    </button>
                   </div>
-                  <button type="button" className="btn btn-danger" onClick={() => removeService(sIndex)} style={{ padding: '0.5rem' }}>
-                    <Trash2 size={16} />
-                  </button>
                 </div>
               ))}
             </div>

@@ -95,7 +95,7 @@ const ProductForm = ({ onCancel, initialData }) => {
             ></textarea>
           </div>
 
-          <div className="form-group" style={{ maxWidth: '50%' }}>
+          <div className="form-group" style={{ maxWidth: '320px', width: '100%' }}>
             <label className="form-label">Precio Unitario ($)</label>
             <input 
               type="number" 

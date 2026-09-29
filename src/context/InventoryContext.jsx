@@ -1230,6 +1230,61 @@ export const InventoryProvider = ({ children }) => {
   };
 
   const totalStock = products.reduce((acc, curr) => acc + Number(curr.stockUnits || 0), 0);
+  const downloadBackup = async () => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/system/backup`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Error al generar la copia de seguridad');
+      }
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const filename = `backup_inventario_${new Date().toISOString().slice(0, 10)}_${Date.now()}.json`;
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return { success: true, filename, meta: data.meta };
+    } catch (error) {
+      console.error('Download backup error:', error);
+      throw error;
+    }
+  };
+
+  const restoreBackup = async (backupData) => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/system/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backup: backupData })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al restaurar la copia de seguridad');
+      }
+      await refreshData();
+      return data;
+    } catch (error) {
+      console.error('Restore backup error:', error);
+      throw error;
+    }
+  };
+
+  const getDatabaseStats = async () => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/system/database-stats`);
+      if (!res.ok) throw new Error('Error al obtener estadísticas de base de datos');
+      return await res.json();
+    } catch (error) {
+      console.error('Get db stats error:', error);
+      return null;
+    }
+  };
+
   const currentVersion = versions.length > 0 ? versions[0] : null;
   const unreadNotificationsCount = notifications.filter(n => !n.isRead).length;
 
@@ -1260,6 +1315,9 @@ export const InventoryProvider = ({ children }) => {
       canEdit,
       canDelete,
       canExport,
+      downloadBackup,
+      restoreBackup,
+      getDatabaseStats,
       logAuditEvent,
       addProduct,
       updateProduct,

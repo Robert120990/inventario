@@ -1126,6 +1126,150 @@ const Summary2 = ({ openHistoryOnLoad, onNavigate }) => {
     );
   }, [cutsList, historySearch]);
 
+  const handleExportWord = () => {
+    const title = activeCut ? activeCut.title : `Resumen Diario ${formatDate(startDate)} al ${formatDate(endDate)}`;
+    
+    let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+    <head>
+      <meta charset="utf-8">
+      <title>${title}</title>
+      <style>
+        body { font-family: Arial, sans-serif; font-size: 11pt; color: #333; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; font-size: 9pt; }
+        th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: right; }
+        th { background-color: #f2f2f2; text-align: center; font-weight: bold; color: #333; }
+        td:nth-child(1), td:nth-child(2) { text-align: left; }
+        h2 { font-size: 11pt; margin-top: 20px; padding-bottom: 5px; color: #444; }
+        .header { margin-bottom: 20px; }
+        .header p { margin: 3px 0; font-size: 10pt; }
+        .bold { font-weight: bold; }
+        .totals { font-weight: bold; background-color: #f9f9f9; }
+        .grand-totals { margin-top: 30px; text-align: right; }
+        .grand-totals p { margin: 4px 0; font-size: 10pt; }
+        .grand-totals .main-total { font-weight: bold; font-size: 12pt; margin-top: 10px; }
+      </style>
+    </head>
+    <body>`;
+
+    html += `<div class="header">
+      <p class="bold" style="font-size: 12pt;">${CONTRACT_INFO.contractorName}</p>
+      <p>${CONTRACT_INFO.facility}</p>
+      <p>Cliente: ${clientName}</p>
+      <p>Período de Facturación: ${formatDate(startDate)} al ${formatDate(endDate)} (${daysCount} días)</p>
+      ${activeCut ? `<p class="bold">[Corte Congelado: ${activeCut.title}]</p>` : ''}
+    </div>`;
+
+    if (showCongelados && congeladosRows.length > 0) {
+      html += `<h2>1. ALMACENAMIENTO PRODUCTO CONGELADO (-18°C) - Tarifa: $0.001 / libra / día</h2>
+      <table>
+        <thead>
+          <tr><th>FECHA</th><th>DESCRIPCION</th><th>INV-INICIAL</th><th>ENTRADAS</th><th>SALIDAS</th><th>TOTAL LBS</th><th>PRECIO</th><th>TOTAL $</th></tr>
+        </thead>
+        <tbody>`;
+      
+      congeladosRows.forEach(r => {
+        html += `<tr>
+          <td>${formatDate(r.fecha)}</td>
+          <td>${r.descripcion}</td>
+          <td>${Number(r.stockInicial || 0).toLocaleString('en-US')}</td>
+          <td>${Number(r.entradas || 0).toLocaleString('en-US')}</td>
+          <td>${Number(r.salidas || 0).toLocaleString('en-US')}</td>
+          <td>${Number(r.stockFinal || 0).toLocaleString('en-US')}</td>
+          <td>$${formatPrice(r.precio)}</td>
+          <td>$${formatCurrency(r.totalMonto)}</td>
+        </tr>`;
+      });
+      
+      html += `<tr class="totals">
+        <td colspan="2">TOTALES</td>
+        <td>${congTotals.invInicial.toLocaleString('en-US')}</td>
+        <td>${congTotals.entradas.toLocaleString('en-US')}</td>
+        <td>${congTotals.salidas.toLocaleString('en-US')}</td>
+        <td>${congTotals.stockFinal.toLocaleString('en-US')}</td>
+        <td></td>
+        <td>$${formatCurrency(congTotals.totalMonto)}</td>
+      </tr></tbody></table>`;
+    }
+
+    if (showPreparados && preparadosRows.length > 0) {
+      html += `<h2>2. ALMACENAMIENTO PRODUCTOS PREPARADOS - Tarifa: $0.038 / cesta / día</h2>
+      <table>
+        <thead>
+          <tr><th>FECHA</th><th>DESCRIPCION</th><th>INV CESTAS</th><th>ENTRADAS</th><th>SALIDAS</th><th>TOTAL CESTAS</th><th>PRECIO</th><th>TOTAL $</th></tr>
+        </thead>
+        <tbody>`;
+      
+      preparadosRows.forEach(r => {
+        html += `<tr>
+          <td>${formatDate(r.fecha)}</td>
+          <td>${r.descripcion}</td>
+          <td>${Number(r.stockInicial || 0).toLocaleString('en-US')}</td>
+          <td>${Number(r.entradas || 0).toLocaleString('en-US')}</td>
+          <td>${Number(r.salidas || 0).toLocaleString('en-US')}</td>
+          <td>${Number(r.stockFinal || 0).toLocaleString('en-US')}</td>
+          <td>$${formatPrice(r.precio)}</td>
+          <td>$${formatCurrency(r.totalMonto)}</td>
+        </tr>`;
+      });
+      
+      html += `<tr class="totals">
+        <td colspan="2">TOTALES</td>
+        <td>${prepTotals.invInicial.toLocaleString('en-US')}</td>
+        <td>${prepTotals.entradas.toLocaleString('en-US')}</td>
+        <td>${prepTotals.salidas.toLocaleString('en-US')}</td>
+        <td>${prepTotals.stockFinal.toLocaleString('en-US')}</td>
+        <td></td>
+        <td>$${formatCurrency(prepTotals.totalMonto)}</td>
+      </tr></tbody></table>`;
+    }
+
+    if (servicesData.length > 0) {
+      html += `<h2>3. SERVICIOS EXTRA-ORDINARIOS (MANIOBRAS, HORAS EXTRAS, TEMPERATURA)</h2>
+      <table>
+        <thead>
+          <tr><th>FECHA</th><th>DESCRIPCION</th><th>TOTAL (CANT/LBS)</th><th>PRECIO</th><th>VALOR</th></tr>
+        </thead>
+        <tbody>`;
+      
+      servicesData.forEach(s => {
+        html += `<tr>
+          <td>${formatDate(s.date)}</td>
+          <td>${s.description + (s.ref ? ` (${s.ref})` : '')}</td>
+          <td>${s.quantity ? Number(s.quantity).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '1'}</td>
+          <td>${s.unitPrice ? `$${formatPrice(s.unitPrice)}` : `$${formatCurrency(s.value)}`}</td>
+          <td>$${formatCurrency(s.value)}</td>
+        </tr>`;
+      });
+      
+      html += `<tr class="totals">
+        <td colspan="2">TOTALES</td>
+        <td>${totalServiciosQty.toLocaleString('en-US')}</td>
+        <td></td>
+        <td>$${formatCurrency(totalServicios)}</td>
+      </tr></tbody></table>`;
+    }
+
+    html += `<div class="grand-totals">
+      ${showCongelados ? `<p>Almacenamiento Congelados: $${formatCurrency(congTotals.totalMonto)}</p>` : ''}
+      ${showPreparados ? `<p>Almacenamiento Preparados: $${formatCurrency(prepTotals.totalMonto)}</p>` : ''}
+      <p>Servicios Extra-ordinarios: $${formatCurrency(totalServicios)}</p>
+      <p>Sub Total: $${formatCurrency(reportSubtotal)}</p>
+      <p>IVA (13%): $${formatCurrency(reportIva)}</p>
+      <p class="main-total">TOTAL GENERAL: $${formatCurrency(reportGrandTotal)}</p>
+    </div>
+    </body></html>`;
+
+    const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Resumen_${formatDate(startDate).replace(/\//g,'-')}_al_${formatDate(endDate).replace(/\//g,'-')}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div>
       {/* Topbar Principal */}
@@ -1180,6 +1324,9 @@ const Summary2 = ({ openHistoryOnLoad, onNavigate }) => {
               </button>
               <button className="btn btn-outline" onClick={handleExportPDF} title="Descargar reporte en PDF">
                 <FileOutput size={16} /> PDF
+              </button>
+              <button className="btn btn-outline" onClick={handleExportWord} title="Descargar reporte en Word">
+                <FileText size={16} /> Word
               </button>
             </div>
           )}

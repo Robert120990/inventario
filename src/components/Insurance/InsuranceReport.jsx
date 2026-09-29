@@ -684,7 +684,7 @@ const InsuranceReport = () => {
           </button>
 
           {allowExport && (
-            <div style={{ display: 'flex', gap: '0.4rem', borderLeft: '1px solid var(--color-border)', paddingLeft: '0.6rem' }}>
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
               <button className="btn btn-outline" onClick={handleExportXlsx} title="Descargar en Excel (.xlsx)">
                 <FileSpreadsheet size={16} /> Excel
               </button>

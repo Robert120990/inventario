@@ -293,7 +293,7 @@ const ProductExcelImportModal = ({ onClose }) => {
                 <span>Crear automáticamente productos nuevos no registrados (Stock = 0)</span>
               </label>
 
-              <div style={{ position: 'relative', width: '240px' }}>
+              <div style={{ position: 'relative', minWidth: '180px', flex: '1 1 200px' }}>
                 <Search size={14} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-light)' }} />
                 <input
                   type="text"

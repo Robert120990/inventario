@@ -188,7 +188,7 @@ const UserAccess = ({ initialSelectedUserId }) => {
                   className="form-select"
                   value={selectedUserId}
                   onChange={(e) => setSelectedUserId(e.target.value)}
-                  style={{ minWidth: '280px', padding: '0.45rem 0.75rem', fontWeight: '600' }}
+                  style={{ minWidth: '200px', width: '100%', maxWidth: '380px', padding: '0.45rem 0.75rem', fontWeight: '600' }}
                 >
                   {users.map(u => (
                     <option key={u.id} value={String(u.id)}>

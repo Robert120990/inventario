@@ -383,7 +383,7 @@ const ChangeHistory = () => {
           </div>
 
           {/* Buscador */}
-          <div style={{ position: 'relative', minWidth: '260px', flex: 1, maxWidth: '380px' }}>
+          <div style={{ position: 'relative', minWidth: '180px', flex: '1 1 200px', maxWidth: '380px' }}>
             <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-light)' }} />
             <input
               type="text"

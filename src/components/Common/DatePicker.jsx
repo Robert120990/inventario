@@ -303,7 +303,8 @@ export const DatePicker = ({
             borderRadius: 'var(--radius)',
             boxShadow: 'var(--shadow-lg)',
             padding: '0.85rem',
-            width: '280px',
+            width: 'min(290px, calc(100vw - 2rem))',
+            maxWidth: 'calc(100vw - 2rem)',
             userSelect: 'none',
             animation: 'fadeIn 0.15s ease-out'
           }}

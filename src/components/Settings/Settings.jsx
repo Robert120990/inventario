@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { Plus, Trash2, Home, Save, Image as ImageIcon, GitBranch, Calendar, Palette } from 'lucide-react';
+import { Plus, Trash2, Home, Save, Image as ImageIcon, GitBranch, Calendar, Palette, Database } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { formatDate } from '../../utils/formatUtils';
 import { WINDOWS_THEMES } from '../../config/themes';
+import BackupRestore from './BackupRestore';
 
 const Settings = () => {
   const { categories, documentTypes, settings, categoryUnits, versions, addCategory, deleteCategory, addDocumentType, deleteDocumentType, updateSettings, updateCategoryUnit, addVersion, deleteVersion, theme, setTheme } = useInventory();
@@ -385,6 +386,9 @@ const Settings = () => {
           )}
         </div>
       </div>
+
+      {/* Backup and Restore System */}
+      <BackupRestore />
     </div>
   );
 };

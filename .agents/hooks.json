@@ -1,0 +1,12 @@
+{
+  "inventario-context-guardian": {
+    "enabled": true,
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "node .agents/scripts/check-health.js",
+        "timeout": 10
+      }
+    ]
+  }
+}
