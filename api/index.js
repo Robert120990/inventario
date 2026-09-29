@@ -964,7 +964,8 @@ router.post('/auth/login', authLimiter, async (req, res) => {
     const { username, password } = req.body;
     const cleanUser = (username || '').trim();
     const cleanPass = (password || '').trim();
-    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+    const rawIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+    const ip = typeof rawIp === 'string' ? rawIp.substring(0, 45) : 'unknown';
     const userAgent = req.headers['user-agent'] || '';
 
     if (!cleanUser || !cleanPass) {
