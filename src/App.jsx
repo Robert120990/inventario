@@ -8,6 +8,7 @@ import Login from './components/Login/Login';
 import { ThemeToggle } from './components/Theme/ThemeToggle';
 import UpdateNotifier from './components/Common/UpdateNotifier';
 import ErrorBoundary from './components/Common/ErrorBoundary';
+import DailyCutsHistoryModal from './components/Summary/DailyCutsHistoryModal';
 import { APP_DISPLAY_VERSION, APP_BUILD_NUMBER, APP_COMMIT_HASH } from './config/version';
 import './App.css';
 
@@ -38,11 +39,34 @@ function ViewLoader() {
 }
 
 function AppContent() {
-  const { currentUser, loading, refreshData, refreshModule, canView } = useInventory();
+  const { 
+    currentUser, 
+    loading, 
+    refreshData, 
+    refreshModule, 
+    canView,
+    cutHistoryModalOpen,
+    closeCutHistoryModal,
+    fetchDailyCutById,
+    setSelectedCutForSummary
+  } = useInventory();
   const [currentView, setCurrentView] = useState('dashboard');
   const [targetAccessUserId, setTargetAccessUserId] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const handleSelectCutFromModal = async (cutSummary) => {
+    try {
+      const fullCut = await fetchDailyCutById(cutSummary.id);
+      if (fullCut) {
+        setSelectedCutForSummary(fullCut);
+        closeCutHistoryModal();
+        setCurrentView('summary2');
+      }
+    } catch (e) {
+      console.error('Error al cargar corte seleccionado:', e);
+    }
+  };
 
   // Refresh granular module data whenever the view changes without downloading the full database
   React.useEffect(() => {
@@ -88,9 +112,8 @@ function AppContent() {
       case 'summary':
         return canView('summary') ? <Summary /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'summary2':
-        return canView('summary2') ? <Summary2 /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'cut-history':
-        return canView('summary2') ? <Summary2 openHistoryOnLoad={true} onNavigate={(v) => setCurrentView(v)} /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
+        return canView('summary2') ? <Summary2 /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       case 'insurance':
         return canView('insurance') ? <InsuranceReport /> : <UnauthorizedView onGoHome={() => setCurrentView('dashboard')} />;
       
@@ -196,6 +219,11 @@ function AppContent() {
           </div>
         </footer>
       </div>
+      <DailyCutsHistoryModal 
+        isOpen={cutHistoryModalOpen} 
+        onClose={closeCutHistoryModal} 
+        onSelectCut={handleSelectCutFromModal} 
+      />
     </div>
   );
 }

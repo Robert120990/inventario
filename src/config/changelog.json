@@ -1,5 +1,23 @@
 [
   {
+    "id": "536018d",
+    "version": "v2.7.139",
+    "commit": "536018d",
+    "fullCommit": "536018dd467953adb25599111ea8c686af6bbe60",
+    "description": "Sanitize errors and finalize cors handling",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-09-29",
+    "time": "13:31",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "fix",
+        "text": "Sanitize errors and finalize cors handling"
+      }
+    ]
+  },
+  {
     "id": "209d98b",
     "version": "v2.7.138",
     "commit": "209d98b",
@@ -170,7 +188,7 @@
     "author": "Ing. Raúl Sosa",
     "date": "2026-09-24",
     "time": "12:58",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {

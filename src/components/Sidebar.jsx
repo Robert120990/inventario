@@ -10,7 +10,7 @@ import { ThemeToggle } from './Theme/ThemeToggle';
 import { APP_DISPLAY_VERSION } from '../config/version';
 
 const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isMobileOpen, closeMobileMenu }) => {
-  const { currentUser, settings, logout, currentVersion, unreadNotificationsCount, canView, isAdmin } = useInventory();
+  const { currentUser, settings, logout, currentVersion, unreadNotificationsCount, canView, isAdmin, openCutHistoryModal, cutHistoryModalOpen } = useInventory();
   const [isSecurityOpen, setIsSecurityOpen] = useState(true);
 
   const isSecurityView = currentView.startsWith('security-') || currentView === 'users';
@@ -160,8 +160,11 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
 
         {canView('summary2') && (
           <button
-            className={`nav-link ${currentView === 'cut-history' ? 'active' : ''}`}
-            onClick={() => setCurrentView('cut-history')}
+            className={`nav-link ${cutHistoryModalOpen ? 'active' : ''}`}
+            onClick={() => {
+              openCutHistoryModal();
+              closeMobileMenu();
+            }}
             title={isCollapsed ? "Historial de Cortes" : ""}
           >
             <History size={18} />

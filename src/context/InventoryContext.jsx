@@ -65,6 +65,8 @@ export const InventoryProvider = ({ children }) => {
   const [categoryUnits, setCategoryUnits] = useState({});
   const [versions, setVersions] = useState(SYSTEM_CHANGELOG);
   const [dailyCuts, setDailyCuts] = useState([]);
+  const [cutHistoryModalOpen, setCutHistoryModalOpen] = useState(false);
+  const [selectedCutForSummary, setSelectedCutForSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [theme, setThemeState] = useState(() => localStorage.getItem('inv_theme') || 'light');
 
@@ -1357,6 +1359,12 @@ export const InventoryProvider = ({ children }) => {
       updateDailyCut,
       setDailyCutLockStatus,
       deleteDailyCut,
+      cutHistoryModalOpen,
+      setCutHistoryModalOpen,
+      openCutHistoryModal: () => setCutHistoryModalOpen(true),
+      closeCutHistoryModal: () => setCutHistoryModalOpen(false),
+      selectedCutForSummary,
+      setSelectedCutForSummary,
       fetchInsuranceCuts,
       fetchInsuranceCutById,
       createInsuranceCut,
