@@ -24,14 +24,22 @@ app.use(helmet({
 // 2. Compresión HTTP Gzip/Deflate
 app.use(compression());
 
-// 3. CORS restringido por entorno
-const allowedOrigins = process.env.ALLOWED_ORIGINS
+// 3. CORS permitido para desarrollo local y dominios en la nube (Vercel)
+const envOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
-    : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:5173'];
+    : [];
 
 app.use(cors({
     origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+        // Permitir peticiones sin origen (como curl o apps móviles), localhost, o cualquier subdominio de Vercel
+        if (
+            !origin ||
+            envOrigins.includes('*') ||
+            envOrigins.includes(origin) ||
+            origin.endsWith('.vercel.app') ||
+            origin.includes('localhost') ||
+            origin.includes('127.0.0.1')
+        ) {
             return callback(null, true);
         }
         return callback(new Error('Bloqueado por política CORS'));
