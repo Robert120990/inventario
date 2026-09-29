@@ -100,9 +100,7 @@ const logSystemEvent = async ({ userId = null, username = 'Sistema', action, mod
 // Helper de respuesta de error sanitizada (previene fugas de SQL y detalles internos en producción)
 const sendApiError = (res, error, defaultMessage = 'Error interno en el servidor', statusCode = 500) => {
     console.error(`[API Error] ${defaultMessage}:`, error);
-    if (process.env.NODE_ENV === 'production') {
-        return res.status(statusCode).json({ error: defaultMessage });
-    }
+    // TEMPORARY: Return real error to debug Vercel 500 error
     return res.status(statusCode).json({ error: error?.message || defaultMessage });
 };
 
