@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
-import compression from 'compression';
-import rateLimit from 'express-rate-limit';
+// import helmet from 'helmet';
+// import compression from 'compression';
+// import rateLimit from 'express-rate-limit';
 import fs from 'node:fs';
 import path from 'node:path';
 import pool, { ensureSchema } from './db.js';
@@ -16,13 +16,13 @@ const app = express();
 const router = express.Router();
 
 // 1. Cabeceras HTTP de seguridad con Helmet
-app.use(helmet({
-    contentSecurityPolicy: false,
-    crossOriginEmbedderPolicy: false
-}));
+// app.use(helmet({
+//     contentSecurityPolicy: false,
+//     crossOriginEmbedderPolicy: false
+// }));
 
 // 2. Compresión HTTP Gzip/Deflate
-app.use(compression());
+// app.use(compression());
 
 // 3. CORS restringido por entorno
 const allowedOrigins = process.env.ALLOWED_ORIGINS
@@ -42,22 +42,9 @@ app.use(cors({
 app.use(express.json());
 
 // 4. Rate Limiting: protección contra fuerza bruta y DoS
-export const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutos
-    max: 15, // máx 15 intentos fallidos
-    message: { error: 'Demasiados intentos fallidos de inicio de sesión. Por favor intenta de nuevo en 15 minutos.' },
-    standardHeaders: true,
-    legacyHeaders: false,
-    skipSuccessfulRequests: true
-});
+export const authLimiter = (req, res, next) => next();
 
-export const apiLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 2000, // 2000 peticiones cada 15 min por IP
-    message: { error: 'Límite de solicitudes excedido. Por favor intenta más tarde.' },
-    standardHeaders: true,
-    legacyHeaders: false
-});
+export const apiLimiter = (req, res, next) => next();
 
 // Initialize Schema once per cold start - safely without hanging requests
 let isInitialized = false;
