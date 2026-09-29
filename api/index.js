@@ -2323,7 +2323,10 @@ app.use((err, req, res, _next) => {
 export default app;
 
 // Standalone execution for local development
-if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
+const isDirectRun = import.meta.url.startsWith('file:') && 
+                   (process.argv[1] && (process.argv[1].endsWith('index.js') || process.argv[1].endsWith('api\\index.js')));
+
+if (isDirectRun || process.env.NODE_ENV === 'development') {
     const PORT = process.env.PORT || 3001; 
     app.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`);
