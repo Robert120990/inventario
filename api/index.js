@@ -108,7 +108,14 @@ const logSystemEvent = async ({ userId = null, username = 'Sistema', action, mod
 // Helper de respuesta de error sanitizada (previene fugas de SQL y detalles internos en producción)
 const sendApiError = (res, error, defaultMessage = 'Error interno en el servidor', statusCode = 500) => {
     console.error(`[API Error] ${defaultMessage}:`, error);
-    // TEMPORARY: Return real error to debug Vercel 500 error
+    if (process.env.NODE_ENV === 'production') {
+        const isClientSafe = error?.message && (
+            error.message.includes('CORS') ||
+            error.message.includes('Credenciales') ||
+            error.message.includes('requerido')
+        );
+        return res.status(statusCode).json({ error: isClientSafe ? error.message : defaultMessage });
+    }
     return res.status(statusCode).json({ error: error?.message || defaultMessage });
 };
 

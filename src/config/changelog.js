@@ -1,6 +1,24 @@
 // Registro cronológico maestro y automático de versiones del sistema generado desde Git
 export const SYSTEM_CHANGELOG = [
   {
+    "id": "209d98b",
+    "version": "v2.7.138",
+    "commit": "209d98b",
+    "fullCommit": "209d98b925bb6a8cd1eefb800645f8df16c5b4c2",
+    "description": "Allow vercel.app domains in CORS policy",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-09-29",
+    "time": "13:29",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "fix",
+        "text": "Allow vercel.app domains in CORS policy"
+      }
+    ]
+  },
+  {
     "id": "527438b",
     "version": "v2.7.137",
     "commit": "527438b",
@@ -171,7 +189,7 @@ export const SYSTEM_CHANGELOG = [
     "author": "Ing. Raúl Sosa",
     "date": "2026-09-24",
     "time": "12:56",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
