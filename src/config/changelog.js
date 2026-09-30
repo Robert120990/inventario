@@ -1,6 +1,24 @@
 // Registro cronológico maestro y automático de versiones del sistema generado desde Git
 export const SYSTEM_CHANGELOG = [
   {
+    "id": "024e6ff",
+    "version": "v2.7.141",
+    "commit": "024e6ff",
+    "fullCommit": "024e6ffd4cc59ef439e7ed6561b23729d4705a43",
+    "description": "Restore cutsList state in Summary2 to fix runtime crash",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-09-29",
+    "time": "17:51",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "fix",
+        "text": "Restore cutsList state in Summary2 to fix runtime crash"
+      }
+    ]
+  },
+  {
     "id": "97fcb9c",
     "version": "v2.7.140",
     "commit": "97fcb9c",
@@ -171,7 +189,7 @@ export const SYSTEM_CHANGELOG = [
     "author": "Ing. Raúl Sosa",
     "date": "2026-09-29",
     "time": "13:05",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {

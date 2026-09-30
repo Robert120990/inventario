@@ -48,6 +48,7 @@ function AppContent() {
     cutHistoryModalOpen,
     closeCutHistoryModal,
     fetchDailyCutById,
+    selectedCutForSummary,
     setSelectedCutForSummary
   } = useInventory();
   const [currentView, setCurrentView] = useState('dashboard');
@@ -223,6 +224,7 @@ function AppContent() {
         isOpen={cutHistoryModalOpen} 
         onClose={closeCutHistoryModal} 
         onSelectCut={handleSelectCutFromModal} 
+        activeCutId={selectedCutForSummary?.id}
       />
     </div>
   );
