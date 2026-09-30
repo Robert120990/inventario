@@ -105,10 +105,22 @@ INVENTARIO/
 
 ---
 
-## 🚀 6. Flujo de Trabajo y Comandos
+## 🚀 6. Flujo de Trabajo, Comandos y Habilidades (Skills)
 
 - **Instalación**: `npm install`
 - **Desarrollo completo**: `npm run dev` (Inicia Vite en puerto 5173 + Express en puerto 3000 con concurrently).
 - **Compilación de Producción**: `npm run build` (Actualiza versión automáticamente y genera bundle en `dist/`).
+- **Sincronización Multi-Remoto & Vercel**: `npm run sync:all "mensaje del commit"` (Compila, commitea y empuja a `origin` y `upstream` en `main` y `master`, verificando Vercel).
+- **Diagnóstico Integral de Base de Datos**: `npm run db:check` (Verifica latencia, conteos, hashes Bcrypt y consistencia multi-unidad).
+- **Monitoreo de Salud de Servicios**: `npm run health` (Chequea latencia de endpoints en Vercel y local).
 - **Verificación de Código**: `npm run lint`
 - **Incremento de Versión**: `npm run version:update`
+
+### 📚 Skills Disponibles para Agentes de IA (`.agents/skills/`):
+1. **`inventario-cloud-deploy`**: Protocolo multi-remoto y compatibilidad serverless Vercel (bcryptjs, CORS, IP).
+2. **`inventario-daily-cuts`**: Fórmulas de cuarto frío, integridad en cascada y modal popup `DailyCutsHistoryModal`.
+3. **`inventario-ui-system`**: Tokens de diseño Stitch/Windows 11 Mica, modales Frosted Glass y micro-tarjetas KPI.
+4. **`inventario-db-tools`**: Diagnósticos de base de datos, pool serverless y prevención de trampas de PowerShell.
+5. **`inventario-domain-guide`**: Reglas de negocio, triple unidad y conciliación física.
+6. **`inventario-security-rbac`**: Matriz de permisos, JWT y bitácora de auditoría.
+7. **`inventario-workflow`**: Flujo de trabajo y solución de problemas.

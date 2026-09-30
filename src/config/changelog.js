@@ -1,6 +1,24 @@
 // Registro cronológico maestro y automático de versiones del sistema generado desde Git
 export const SYSTEM_CHANGELOG = [
   {
+    "id": "3fdc908",
+    "version": "v2.7.142",
+    "commit": "3fdc908",
+    "fullCommit": "3fdc908cd8b3f4d0c97c79e510f3589603027064",
+    "description": "Redesign DailyCutsHistoryModal with executive KPI cards, filters, and polished aesthetics",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-09-30",
+    "time": "21:42",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "feature",
+        "text": "Redesign DailyCutsHistoryModal with executive KPI cards, filters, and polished aesthetics"
+      }
+    ]
+  },
+  {
     "id": "024e6ff",
     "version": "v2.7.141",
     "commit": "024e6ff",
@@ -171,7 +189,7 @@ export const SYSTEM_CHANGELOG = [
     "author": "Ing. Raúl Sosa",
     "date": "2026-09-29",
     "time": "13:08",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
