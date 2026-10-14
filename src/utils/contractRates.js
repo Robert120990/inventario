@@ -156,3 +156,59 @@ export const resolveServiceDetails = (s) => {
   };
 };
 
+/**
+ * Hidrata dinámicamente las tarifas y parámetros del contrato desde el backend (/api/contract-rates)
+ * mutando las referencias exportadas en memoria para mantener compatibilidad 100% síncrona.
+ */
+export const applyDynamicContractRates = (customRates) => {
+  if (!customRates || typeof customRates !== 'object') return CONTRACT_INFO;
+
+  const source = customRates.rates && typeof customRates.rates === 'object'
+    ? customRates.rates
+    : (customRates.contractInfo && typeof customRates.contractInfo === 'object' ? customRates.contractInfo : customRates);
+
+  const stringFields = ['clientName', 'contractorName', 'facility', 'period'];
+  stringFields.forEach((key) => {
+    if (typeof source[key] === 'string' && source[key].trim()) {
+      CONTRACT_INFO[key] = source[key].trim();
+    }
+  });
+
+  if (Array.isArray(source.cutoffs) && source.cutoffs.length > 0) {
+    CONTRACT_INFO.cutoffs = source.cutoffs.map(Number).filter(n => !isNaN(n) && n > 0);
+  }
+
+  const numericFields = [
+    'defaultStorageRatePounds',
+    'defaultStorageRateBaskets',
+    'palletBasketCapacity',
+    'ivaRate',
+    'insuranceRate'
+  ];
+  numericFields.forEach((key) => {
+    if (source[key] !== undefined && source[key] !== null && !isNaN(Number(source[key]))) {
+      const val = Number(source[key]);
+      if (val >= 0) {
+        CONTRACT_INFO[key] = val;
+      }
+    }
+  });
+
+  const presets = source.extraServicePresets || customRates.extraServicePresets;
+  if (Array.isArray(presets) && presets.length > 0) {
+    EXTRA_SERVICE_PRESETS.splice(0, EXTRA_SERVICE_PRESETS.length, ...presets);
+  }
+
+  const tempRates = source.temperatureRates || customRates.temperatureRates;
+  if (tempRates && typeof tempRates === 'object') {
+    Object.entries(tempRates).forEach(([k, v]) => {
+      if (!isNaN(Number(v))) {
+        TEMPERATURE_RATES[String(k)] = Number(v);
+      }
+    });
+  }
+
+  return CONTRACT_INFO;
+};
+
+

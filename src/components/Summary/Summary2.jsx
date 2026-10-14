@@ -2,29 +2,28 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { 
   FileText, Download, FileSpreadsheet, FileOutput, Layers, Package, 
-  Snowflake, Lock, Unlock, History, RotateCcw, Save, Trash2, 
-  CheckCircle2, AlertCircle, RefreshCw, Search, X, Check, Eye, Pencil
+  Snowflake, Lock, Unlock, History, RotateCcw, Save, Receipt,
+  CheckCircle2, RefreshCw, Search, X, Check, Eye, Pencil
 } from 'lucide-react';
 import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils';
 import { CONTRACT_INFO, resolveServiceDetails } from '../../utils/contractRates';
 import { toast } from 'react-hot-toast';
 import { DatePicker, DateQuickPresets, getLocalDateStr } from '../Common/DatePicker';
 import MovementForm from '../Movements/MovementForm';
+import SipeBillingModal from '../Billing/SipeBillingModal';
 
-const Summary2 = ({ openHistoryOnLoad, onNavigate }) => {
+const Summary2 = ({ openHistoryOnLoad }) => {
   const { 
     products, 
     movements, 
     categoryUnits, 
     canExport, 
     canEdit,
-    currentUser,
     dailyCuts,
     fetchDailyCuts, 
     fetchDailyCutById, 
     createDailyCut, 
     updateDailyCut, 
-    deleteDailyCut,
     openCutHistoryModal,
     selectedCutForSummary,
     setSelectedCutForSummary 
@@ -53,6 +52,7 @@ const Summary2 = ({ openHistoryOnLoad, onNavigate }) => {
   // Estados de interfaz y modales
   const [cutsList, setCutsList] = useState([]);
   const [freezeModalOpen, setFreezeModalOpen] = useState(false);
+  const [billingModalOpen, setBillingModalOpen] = useState(false);
   const [freezeTitle, setFreezeTitle] = useState('');
   const [isSavingCut, setIsSavingCut] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null); // 'saving' | 'saved' | null
@@ -338,17 +338,23 @@ const Summary2 = ({ openHistoryOnLoad, onNavigate }) => {
   }, [movements, startDate, endDate]);
 
   // Filas activas en pantalla (utiliza datos del corte congelado o cálculo dinámico en vivo)
-  const congeladosRows = customCongelados !== null 
-    ? customCongelados 
-    : (activeCut ? (activeCut.congeladosData || []) : liveCongeladosRows);
+  const congeladosRows = useMemo(() => (
+    customCongelados !== null 
+      ? customCongelados 
+      : (activeCut ? (activeCut.congeladosData || []) : liveCongeladosRows)
+  ), [customCongelados, activeCut, liveCongeladosRows]);
 
-  const preparadosRows = customPreparados !== null 
-    ? customPreparados 
-    : (activeCut ? (activeCut.preparadosData || []) : livePreparadosRows);
+  const preparadosRows = useMemo(() => (
+    customPreparados !== null 
+      ? customPreparados 
+      : (activeCut ? (activeCut.preparadosData || []) : livePreparadosRows)
+  ), [customPreparados, activeCut, livePreparadosRows]);
 
-  const rawServicesData = customServices !== null 
-    ? customServices 
-    : (activeCut ? (activeCut.servicesData || []) : liveServicesData);
+  const rawServicesData = useMemo(() => (
+    customServices !== null 
+      ? customServices 
+      : (activeCut ? (activeCut.servicesData || []) : liveServicesData)
+  ), [customServices, activeCut, liveServicesData]);
 
   const servicesData = useMemo(() => {
     return (rawServicesData || []).map(resolveServiceDetails);
@@ -810,7 +816,7 @@ const Summary2 = ({ openHistoryOnLoad, onNavigate }) => {
           toast('Corte desbloqueado. Ahora puedes editar fechas y lecturas.', { icon: '🔓' });
         }
       }
-    } catch (e) {
+    } catch {
       toast.error('Error al actualizar estado de bloqueo');
     }
   };
@@ -1223,7 +1229,7 @@ const Summary2 = ({ openHistoryOnLoad, onNavigate }) => {
           </p>
         </div>
 
-        {/* Acciones de Cabecera: Congelar, Desbloquear, Historial, Exportar */}
+        {/* Acciones de Cabecera: Congelar, Desbloquear, Facturar SIPE, Historial, Exportar */}
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {!activeCut ? (
             <button 
@@ -1234,14 +1240,40 @@ const Summary2 = ({ openHistoryOnLoad, onNavigate }) => {
               <Snowflake size={18} /> Congelar Período
             </button>
           ) : (
-            <button 
-              className={`btn ${isLocked ? 'btn-outline' : 'btn-primary'}`}
-              onClick={handleToggleLock}
-              title={isLocked ? 'Desbloquear corte para editar fechas o lecturas' : 'Bloquear y cerrar corte guardando fechas y datos'}
-            >
-              {isLocked ? <Unlock size={18} /> : <Lock size={18} />}
-              {isLocked ? 'Desbloquear Corte' : 'Bloquear / Cerrar Corte'}
-            </button>
+            <>
+              <button 
+                className={`btn ${isLocked ? 'btn-outline' : 'btn-primary'}`}
+                onClick={handleToggleLock}
+                title={isLocked ? 'Desbloquear corte para editar fechas o lecturas' : 'Bloquear y cerrar corte guardando fechas y datos'}
+              >
+                {isLocked ? <Unlock size={18} /> : <Lock size={18} />}
+                {isLocked ? 'Desbloquear Corte' : 'Bloquear / Cerrar Corte'}
+              </button>
+
+              {(() => {
+                const isBilled = Boolean(
+                  (activeCut.dteStatus && activeCut.dteStatus !== 'UNBILLED') ||
+                  (activeCut.dte_status && activeCut.dte_status !== 'UNBILLED') ||
+                  activeCut.dteNumeroControl ||
+                  activeCut.dte_numero_control
+                );
+                return (
+                  <button
+                    className="btn btn-primary"
+                    style={{
+                      backgroundColor: isBilled ? '#059669' : '#10b981',
+                      borderColor: isBilled ? '#059669' : '#10b981',
+                      color: '#ffffff'
+                    }}
+                    onClick={() => setBillingModalOpen(true)}
+                    title={isBilled ? 'Consultar comprobante DTE-03 emitido en SIPE' : 'Emitir Comprobante de Crédito Fiscal (DTE-03) en SIPE como Inversiones LIL'}
+                  >
+                    <Receipt size={18} />
+                    {isBilled ? 'Ver DTE Emitido' : 'Facturar en SIPE (LIL)'}
+                  </button>
+                );
+              })()}
+            </>
           )}
 
           {/* Botón Historial de Cortes */}
@@ -1308,6 +1340,31 @@ const Summary2 = ({ openHistoryOnLoad, onNavigate }) => {
                 <span className={`badge ${isLocked ? 'badge-primary' : 'badge-warning'}`} style={{ fontSize: '0.7rem' }}>
                   {isLocked ? '🔒 Bloqueado (Solo lectura)' : '🔓 Desbloqueado (Modo edición y ajuste de fechas)'}
                 </span>
+                {((activeCut.dteStatus && activeCut.dteStatus !== 'UNBILLED') ||
+                  (activeCut.dte_status && activeCut.dte_status !== 'UNBILLED') ||
+                  activeCut.dteNumeroControl ||
+                  activeCut.dte_numero_control) && (
+                  <span
+                    onClick={() => setBillingModalOpen(true)}
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '0.2rem 0.65rem',
+                      borderRadius: '999px',
+                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                      color: '#059669',
+                      border: '1px solid rgba(16, 185, 129, 0.35)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      cursor: 'pointer'
+                    }}
+                    title="Clic para abrir el detalle del DTE emitido en SIPE"
+                  >
+                    <CheckCircle2 size={12} />
+                    Facturado DTE: {activeCut.dteNumeroControl || activeCut.dte_numero_control || activeCut.dteStatus || activeCut.dte_status}
+                  </span>
+                )}
                 {saveStatus === 'saving' && (
                   <span className="badge badge-warning" style={{ fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                     <RefreshCw size={11} className="spin" /> Guardando cambios...
@@ -1326,6 +1383,19 @@ const Summary2 = ({ openHistoryOnLoad, onNavigate }) => {
           </div>
 
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              className="btn btn-outline"
+              style={{
+                fontSize: '0.8rem',
+                padding: '0.4rem 0.75rem',
+                borderColor: 'rgba(16, 185, 129, 0.45)',
+                color: '#059669'
+              }}
+              onClick={() => setBillingModalOpen(true)}
+              title="Abrir módulo de Facturación Electrónica SIPE (DTE-03)"
+            >
+              <Receipt size={14} /> Facturación SIPE
+            </button>
             <button 
               className="btn btn-outline" 
               style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }} 
@@ -2432,6 +2502,48 @@ const Summary2 = ({ openHistoryOnLoad, onNavigate }) => {
           </div>
         </div>
       )}
+
+      {/* =========================================================================
+          MODAL: FACTURACIÓN ELECTRÓNICA SIPE (DTE-03 INVERSIONES LIL)
+          ========================================================================= */}
+      <SipeBillingModal
+        isOpen={billingModalOpen}
+        onClose={() => setBillingModalOpen(false)}
+        cutType="daily_cut"
+        cutData={activeCut ? {
+          ...activeCut,
+          startDate,
+          endDate,
+          clientName,
+          congeladosData: customCongelados || activeCut.congeladosData,
+          preparadosData: customPreparados || activeCut.preparadosData,
+          servicesData: customServices || activeCut.servicesData,
+          totals: {
+            ...(activeCut.totals || {}),
+            totalCongeladosMonto: congTotals.totalMonto,
+            totalPreparadosMonto: prepTotals.totalMonto,
+            totalServicios,
+            subtotal: reportSubtotal,
+            iva: reportIva,
+            granTotalFacturar: reportGrandTotal
+          },
+          totalsData: {
+            ...(activeCut.totalsData || {}),
+            totalCongeladosMonto: congTotals.totalMonto,
+            totalPreparadosMonto: prepTotals.totalMonto,
+            totalServicios,
+            subtotal: reportSubtotal,
+            iva: reportIva,
+            granTotalFacturar: reportGrandTotal
+          }
+        } : null}
+        onBillingSuccess={(updatedCut) => {
+          setActiveCut(prev => prev ? ({ ...prev, ...updatedCut }) : prev);
+          fetchDailyCuts().then(cuts => {
+            if (Array.isArray(cuts)) setCutsList(cuts);
+          });
+        }}
+      />
     </div>
   );
 };

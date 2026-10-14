@@ -1,13 +1,14 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { 
   Download, FileOutput, ShieldCheck, FileSpreadsheet, Snowflake, 
-  Lock, Unlock, History, RotateCcw, RefreshCw, Check, Trash2, Search, X, CheckCircle2, AlertCircle 
+  Lock, Unlock, History, RotateCcw, RefreshCw, Check, Trash2, Search, X, CheckCircle2, AlertCircle, Receipt
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { exportCorteSeguro } from '../../utils/exportManager';
 import { formatCurrency, formatDate, formatPrice } from '../../utils/formatUtils';
 import { toast } from 'react-hot-toast';
 import { DatePicker, getLocalDateStr } from '../Common/DatePicker';
+import SipeBillingModal from '../Billing/SipeBillingModal';
 
 const InsuranceReport = () => {
   const { 
@@ -15,7 +16,6 @@ const InsuranceReport = () => {
     movements, 
     categoryUnits, 
     canExport,
-    currentUser,
     fetchInsuranceCuts,
     fetchInsuranceCutById,
     createInsuranceCut,
@@ -48,6 +48,7 @@ const InsuranceReport = () => {
   const [historySearch, setHistorySearch] = useState('');
 
   const [freezeModalOpen, setFreezeModalOpen] = useState(false);
+  const [billingModalOpen, setBillingModalOpen] = useState(false);
   const [freezeTitle, setFreezeTitle] = useState('');
   const [isSavingCut, setIsSavingCut] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null); // 'saving' | 'saved' | null
@@ -410,7 +411,7 @@ const InsuranceReport = () => {
           toast('Corte desbloqueado. Ahora puedes editar valores y tarifas.', { icon: '🔓' });
         }
       }
-    } catch (e) {
+    } catch {
       toast.error('Error al actualizar estado de bloqueo');
     }
   };
@@ -430,7 +431,7 @@ const InsuranceReport = () => {
     try {
       const cuts = await fetchInsuranceCuts();
       setCutsList(Array.isArray(cuts) ? cuts : []);
-    } catch (e) {
+    } catch {
       toast.error('Error al cargar historial de cortes');
     } finally {
       setLoadingHistory(false);
@@ -458,7 +459,7 @@ const InsuranceReport = () => {
         setHistoryModalOpen(false);
         toast.success(`Corte "${fullCut.title}" cargado con éxito.`);
       }
-    } catch (e) {
+    } catch {
       toast.error('Error al cargar el corte seleccionado');
     }
   };
@@ -481,7 +482,7 @@ const InsuranceReport = () => {
       } else {
         toast.error('No se pudo eliminar el corte');
       }
-    } catch (e) {
+    } catch {
       toast.error('Error al eliminar');
     }
   };
@@ -653,7 +654,7 @@ const InsuranceReport = () => {
           </p>
         </div>
 
-        {/* Acciones de Cabecera: Congelar, Desbloquear, Historial, Exportar */}
+        {/* Acciones de Cabecera: Congelar, Desbloquear, Facturar SIPE, Historial, Exportar */}
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {!activeCut ? (
             <button 
@@ -664,14 +665,40 @@ const InsuranceReport = () => {
               <Snowflake size={18} /> Congelar Período
             </button>
           ) : (
-            <button 
-              className={`btn ${isLocked ? 'btn-outline' : 'btn-primary'}`}
-              onClick={handleToggleLock}
-              title={isLocked ? 'Desbloquear corte para editar cantidades o tarifas' : 'Bloquear y cerrar corte guardando cambios'}
-            >
-              {isLocked ? <Unlock size={18} /> : <Lock size={18} />}
-              {isLocked ? 'Desbloquear Corte' : 'Bloquear / Cerrar Corte'}
-            </button>
+            <>
+              <button 
+                className={`btn ${isLocked ? 'btn-outline' : 'btn-primary'}`}
+                onClick={handleToggleLock}
+                title={isLocked ? 'Desbloquear corte para editar cantidades o tarifas' : 'Bloquear y cerrar corte guardando cambios'}
+              >
+                {isLocked ? <Unlock size={18} /> : <Lock size={18} />}
+                {isLocked ? 'Desbloquear Corte' : 'Bloquear / Cerrar Corte'}
+              </button>
+
+              {(() => {
+                const isBilled = Boolean(
+                  (activeCut.dteStatus && activeCut.dteStatus !== 'UNBILLED') ||
+                  (activeCut.dte_status && activeCut.dte_status !== 'UNBILLED') ||
+                  activeCut.dteNumeroControl ||
+                  activeCut.dte_numero_control
+                );
+                return (
+                  <button
+                    className="btn btn-primary"
+                    style={{
+                      backgroundColor: isBilled ? '#059669' : '#10b981',
+                      borderColor: isBilled ? '#059669' : '#10b981',
+                      color: '#ffffff'
+                    }}
+                    onClick={() => setBillingModalOpen(true)}
+                    title={isBilled ? 'Consultar comprobante DTE-03 emitido en SIPE' : 'Emitir Comprobante de Crédito Fiscal (DTE-03) en SIPE como Inversiones LIL'}
+                  >
+                    <Receipt size={18} />
+                    {isBilled ? 'Ver DTE Emitido' : 'Facturar en SIPE (LIL)'}
+                  </button>
+                );
+              })()}
+            </>
           )}
 
           {/* Botón Historial de Cortes */}
@@ -735,6 +762,31 @@ const InsuranceReport = () => {
                 <span className={`badge ${isLocked ? 'badge-primary' : 'badge-warning'}`} style={{ fontSize: '0.7rem' }}>
                   {isLocked ? '🔒 Bloqueado (Solo lectura)' : '🔓 Desbloqueado (Modo edición)'}
                 </span>
+                {((activeCut.dteStatus && activeCut.dteStatus !== 'UNBILLED') ||
+                  (activeCut.dte_status && activeCut.dte_status !== 'UNBILLED') ||
+                  activeCut.dteNumeroControl ||
+                  activeCut.dte_numero_control) && (
+                  <span
+                    onClick={() => setBillingModalOpen(true)}
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '0.2rem 0.65rem',
+                      borderRadius: '999px',
+                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                      color: '#059669',
+                      border: '1px solid rgba(16, 185, 129, 0.35)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      cursor: 'pointer'
+                    }}
+                    title="Clic para abrir el detalle del DTE emitido en SIPE"
+                  >
+                    <CheckCircle2 size={12} />
+                    Facturado DTE: {activeCut.dteNumeroControl || activeCut.dte_numero_control || activeCut.dteStatus || activeCut.dte_status}
+                  </span>
+                )}
                 {saveStatus === 'saving' && (
                   <span className="badge badge-warning" style={{ fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                     <RefreshCw size={11} className="spin" /> Guardando cambios...
@@ -753,6 +805,19 @@ const InsuranceReport = () => {
           </div>
 
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              className="btn btn-outline"
+              style={{
+                fontSize: '0.8rem',
+                padding: '0.4rem 0.75rem',
+                borderColor: 'rgba(16, 185, 129, 0.45)',
+                color: '#059669'
+              }}
+              onClick={() => setBillingModalOpen(true)}
+              title="Abrir módulo de Facturación Electrónica SIPE (DTE-03)"
+            >
+              <Receipt size={14} /> Facturación SIPE
+            </button>
             <button 
               className="btn btn-outline" 
               style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }} 
@@ -1176,10 +1241,32 @@ const InsuranceReport = () => {
                           onClick={() => handleSelectCutFromHistory(cut)}
                         >
                           <td>
-                            <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                               {cut.title}
                               {cut.isLocked && <Lock size={12} style={{ color: 'var(--color-text-light)' }} />}
                               {isActive && <span className="badge badge-primary" style={{ fontSize: '0.65rem' }}>Activo</span>}
+                              {((cut.dteStatus && cut.dteStatus !== 'UNBILLED') ||
+                                (cut.dte_status && cut.dte_status !== 'UNBILLED') ||
+                                cut.dteNumeroControl ||
+                                cut.dte_numero_control) && (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.2rem',
+                                    fontSize: '0.65rem',
+                                    padding: '0.15rem 0.45rem',
+                                    borderRadius: '999px',
+                                    fontWeight: 700,
+                                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                    color: '#059669',
+                                    border: '1px solid rgba(16, 185, 129, 0.35)'
+                                  }}
+                                  title={cut.dteNumeroControl || cut.dte_numero_control || 'DTE-03 Emitido en SIPE'}
+                                >
+                                  <CheckCircle2 size={10} /> Facturado DTE
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td>{formatDate(cut.cutoffDate)}</td>
@@ -1233,6 +1320,44 @@ const InsuranceReport = () => {
           </div>
         </div>
       )}
+
+      {/* =========================================================================
+          MODAL: FACTURACIÓN ELECTRÓNICA SIPE (DTE-03 PÓLIZA DE SEGURO)
+          ========================================================================= */}
+      <SipeBillingModal
+        isOpen={billingModalOpen}
+        onClose={() => setBillingModalOpen(false)}
+        cutType="insurance_cut"
+        cutData={activeCut ? {
+          ...activeCut,
+          startDate,
+          cutoffDate,
+          customerName,
+          warehouseName,
+          premiumRate,
+          rowsData: customRows || activeCut.rowsData,
+          totals: {
+            ...(activeCut.totals || {}),
+            totalPounds,
+            totalBaskets,
+            totalInsuredValue,
+            totalPremium
+          },
+          totalsData: {
+            ...(activeCut.totalsData || {}),
+            totalPounds,
+            totalBaskets,
+            totalInsuredValue,
+            totalPremium
+          }
+        } : null}
+        onBillingSuccess={(updatedCut) => {
+          setActiveCut(prev => prev ? ({ ...prev, ...updatedCut }) : prev);
+          fetchInsuranceCuts().then(cuts => {
+            if (Array.isArray(cuts)) setCutsList(cuts);
+          });
+        }}
+      />
     </div>
   );
 };

@@ -32,7 +32,7 @@ for (const line of lines) {
         
         // Try to parse price if available
         let price = 0;
-        const priceMatch = line.match(/,\$\s*([\d\.,]+)\s*,/);
+        const priceMatch = line.match(/,\$\s*([\d.,]+)\s*,/);
         if (priceMatch) {
             price = parseFloat(priceMatch[1].replace(/,/g, '')) || 0;
         }

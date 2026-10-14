@@ -65,11 +65,18 @@ export const verifyToken = async (req, res, next) => {
         }
 
         // 3. Resolver matriz de permisos (prioridad: permisos personalizados del usuario -> permisos del rol)
-        let permissions = null;
+        let permissions = {};
         if (user.permissions) {
-            try { permissions = JSON.parse(user.permissions); } catch { permissions = null; }
+            try {
+                permissions = typeof user.permissions === 'string' ? JSON.parse(user.permissions) : user.permissions;
+            } catch { permissions = {}; }
         } else if (user.rolePermissions) {
-            try { permissions = JSON.parse(user.rolePermissions); } catch { permissions = null; }
+            try {
+                permissions = typeof user.rolePermissions === 'string' ? JSON.parse(user.rolePermissions) : user.rolePermissions;
+            } catch { permissions = {}; }
+        }
+        if (!permissions || typeof permissions !== 'object') {
+            permissions = {};
         }
 
         req.user = {
@@ -100,6 +107,34 @@ export const requireAdmin = (req, res, next) => {
     next();
 };
 
+const hasModulePermission = (permissions, moduleName, action) => {
+    if (!permissions || typeof permissions !== 'object') return false;
+
+    // 1. Verificación directa en el módulo solicitado
+    const mod = permissions[moduleName];
+    if (mod && (mod[action] === true || mod.all === true)) {
+        return true;
+    }
+
+    // 2. Fallback para submódulos de seguridad (ej. 'security-users' hereda de 'security')
+    if (moduleName.startsWith('security-')) {
+        const baseSecurity = permissions['security'];
+        if (baseSecurity && (baseSecurity[action] === true || baseSecurity.all === true)) {
+            return true;
+        }
+    }
+
+    // 3. Fallback de cortes: 'summary2' puede heredar de 'summary'
+    if (moduleName === 'summary2') {
+        const baseSummary = permissions['summary'];
+        if (baseSummary && (baseSummary[action] === true || baseSummary.all === true)) {
+            return true;
+        }
+    }
+
+    return false;
+};
+
 export const requirePermission = (moduleName, action = 'view') => {
     return async (req, res, next) => {
         if (!req.user) {
@@ -109,6 +144,17 @@ export const requirePermission = (moduleName, action = 'view') => {
             return next();
         }
 
+        // Fast-path en memoria (0 consultas SQL extra cuando verifyToken ya pobló req.user.permissions)
+        if (req.user.permissions !== undefined && req.user.permissions !== null && typeof req.user.permissions === 'object') {
+            if (hasModulePermission(req.user.permissions, moduleName, action)) {
+                return next();
+            }
+            return res.status(403).json({ 
+                error: `Acceso denegado. No tienes permisos para realizar la acción '${action}' en el módulo '${moduleName}'.` 
+            });
+        }
+
+        // Fallback a base de datos únicamente si req.user.permissions === undefined
         try {
             const [rows] = await pool.query(
                 `SELECT u.permissions as userPerms, r.permissions as rolePerms
@@ -124,20 +170,21 @@ export const requirePermission = (moduleName, action = 'view') => {
 
             let permissions = {};
             if (rows[0].userPerms) {
-                try { permissions = JSON.parse(rows[0].userPerms); } catch (e) {}
+                try { permissions = JSON.parse(rows[0].userPerms); } catch {}
             } else if (rows[0].rolePerms) {
-                try { permissions = JSON.parse(rows[0].rolePerms); } catch (e) {}
+                try { permissions = JSON.parse(rows[0].rolePerms); } catch {}
             }
 
-            const modulePermissions = permissions[moduleName] || {};
-            if (modulePermissions[action] === true) {
+            req.user.permissions = permissions || {};
+
+            if (hasModulePermission(req.user.permissions, moduleName, action)) {
                 return next();
             }
 
             return res.status(403).json({ 
                 error: `Acceso denegado. No tienes permisos para realizar la acción '${action}' en el módulo '${moduleName}'.` 
             });
-        } catch (error) {
+        } catch {
             return res.status(500).json({ error: 'Error al verificar permisos de usuario.' });
         }
     };

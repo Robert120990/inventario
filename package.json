@@ -13,6 +13,7 @@
     "db:migrate": "node scripts/migrate.js",
     "db:check": "node scripts/db-diagnose.js",
     "health": "node scripts/health-check.js",
+    "check:sipe-contract": "node scripts/check-sipe-contract.js",
     "sync:all": "node scripts/sync-remotes.js",
     "preview": "vite preview"
   },

@@ -8,9 +8,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import pool, { ensureSchema } from './db.js';
 import { randomUUID } from 'node:crypto';
-import bcrypt from 'bcryptjs';
+import { createRequire } from 'node:module';
 import { verifyToken, generateToken } from './middleware/auth.js';
 import { requirePermission } from './middleware/permissions.js';
+
+const _require = createRequire(import.meta.url);
+const bcrypt = (() => {
+    try { return _require('bcryptjs'); } catch { return _require('bcrypt'); }
+})();
 
 const app = express();
 const router = express.Router();
@@ -67,6 +72,133 @@ export const apiLimiter = rateLimit({
     legacyHeaders: false
 });
 
+// Valores por defecto del contrato Almacenadora LIL y Avícola Salvadoreña
+export const DEFAULT_CONTRACT_RATES = {
+    clientName: 'Avícola Salvadoreña, S.A. de C.V.',
+    contractorName: 'Inversiones LIL, S.A. de C.V.',
+    facility: 'Cuarto Frío San Martín (Km 19 Carretera Panamericana)',
+    period: '16 de Enero 2025 - 15 de Enero 2026',
+    cutoffs: [10, 25],
+    defaultStorageRatePounds: 0.001,
+    defaultStorageRateBaskets: 0.038,
+    palletBasketCapacity: 35,
+    ivaRate: 0.13,
+    insuranceRate: 0.10,
+    extraServicePresets: [
+        { id: 'rastra_habil', label: 'Descarga y Carga Rastra (Horas hábiles)', unitPrice: 54.00, unitLabel: 'Servicio' },
+        { id: 'rastra_nohabil', label: 'Descarga y Carga Rastra (Horas no hábiles)', unitPrice: 95.00, unitLabel: 'Servicio' },
+        { id: 'camion8_habil', label: 'Descarga y Carga Camión 8 Ton (Horas hábiles)', unitPrice: 30.00, unitLabel: 'Servicio' },
+        { id: 'camion8_nohabil', label: 'Descarga y Carga Camión 8 Ton (Horas no hábiles)', unitPrice: 60.00, unitLabel: 'Servicio' },
+        { id: 'camion5_habil', label: 'Descarga y Carga Camión 5 Ton (Horas hábiles)', unitPrice: 25.00, unitLabel: 'Servicio' },
+        { id: 'camion5_nohabil', label: 'Descarga y Carga Camión 5 Ton (Horas no hábiles)', unitPrice: 50.00, unitLabel: 'Servicio' },
+        { id: 'hora_extra_normal', label: 'Hora Extra (Día Normal / Horas no hábiles)', unitPrice: 50.00, unitLabel: 'Horas' },
+        { id: 'hora_extra_festivo', label: 'Hora Extra (Día Festivo / No hábil)', unitPrice: 60.00, unitLabel: 'Horas' }
+    ],
+    temperatureRates: {
+        '-13': 0.003,
+        '-12': 0.004,
+        '-11': 0.005,
+        '-10': 0.006,
+        '-9': 0.007,
+        '-8': 0.008,
+        '-7': 0.009,
+        '-6': 0.010,
+        '-5': 0.012,
+        '-4': 0.014,
+        '-3': 0.016,
+        '-2': 0.018,
+        '-1': 0.020,
+        '0': 0.022,
+        '1': 0.024,
+        '2': 0.026,
+        '3': 0.028,
+        '4': 0.030,
+        '5': 0.032,
+        '6': 0.034
+    }
+};
+
+// Verificador e instalador de columnas DTE/SIPE, system_config, audit_logs e índices de movimientos
+export const ensureTableColumns = async () => {
+    let connection;
+    try {
+        connection = await pool.getConnection();
+
+        const addColIfMissing = async (table, colName, colDef) => {
+            const [cols] = await connection.query(`SHOW COLUMNS FROM ${table} LIKE ?`, [colName]);
+            if (cols.length === 0) {
+                await connection.query(`ALTER TABLE ${table} ADD COLUMN ${colName} ${colDef}`);
+            }
+        };
+
+        const addIndexIfMissing = async (table, indexName, colList) => {
+            const [indexes] = await connection.query(`SHOW INDEX FROM ${table} WHERE Key_name = ?`, [indexName]);
+            if (indexes.length === 0) {
+                await connection.query(`CREATE INDEX ${indexName} ON ${table} (${colList})`);
+            }
+        };
+
+        const dteColumns = [
+            ['sipe_sale_id', 'INT DEFAULT NULL'],
+            ['dte_codigo_generacion', 'VARCHAR(36) DEFAULT NULL'],
+            ['dte_numero_control', 'VARCHAR(35) DEFAULT NULL'],
+            ['dte_sello_recepcion', 'VARCHAR(60) DEFAULT NULL'],
+            ['dte_status', "VARCHAR(25) DEFAULT 'UNBILLED'"],
+            ['dte_emitted_at', 'DATETIME DEFAULT NULL'],
+            ['dte_payload', 'JSON DEFAULT NULL']
+        ];
+
+        for (const table of ['daily_cuts', 'insurance_cuts']) {
+            for (const [colName, colDef] of dteColumns) {
+                await addColIfMissing(table, colName, colDef);
+            }
+        }
+
+        // Tabla de configuración dinámica (tarifas de contrato, etc.)
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS system_config (
+                config_key VARCHAR(100) PRIMARY KEY,
+                config_value JSON NOT NULL,
+                updated_by VARCHAR(100) DEFAULT 'Sistema',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        `);
+
+        await connection.query(
+            `INSERT IGNORE INTO system_config (config_key, config_value, updated_by) VALUES ('contract_rates', ?, 'Sistema')`,
+            [JSON.stringify(DEFAULT_CONTRACT_RATES)]
+        );
+
+        // Tabla de auditoría extendida (audit_logs)
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id VARCHAR(50) PRIMARY KEY,
+                user_id INT NULL,
+                username VARCHAR(50) NOT NULL,
+                action VARCHAR(100) NOT NULL,
+                module VARCHAR(50) NOT NULL,
+                details TEXT NOT NULL,
+                metadata JSON DEFAULT NULL,
+                ip_address VARCHAR(50) DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_audit_logs_module (module),
+                INDEX idx_audit_logs_created (created_at)
+            )
+        `);
+
+        // Índices de rendimiento para movimientos e ítems de movimiento
+        await addIndexIfMissing('movements', 'idx_movements_date', 'date');
+        await addIndexIfMissing('movement_items', 'idx_movement_items_mov_prod', 'movementId, productId');
+
+        return true;
+    } catch (err) {
+        console.warn('[Backend] ensureTableColumns warning:', err.message);
+        return false;
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
 // Initialize Schema once per cold start - safely without hanging requests
 let isInitialized = false;
 
@@ -74,8 +206,11 @@ const initializeApp = async () => {
     if (isInitialized) return;
     try {
         await Promise.race([
-            ensureSchema(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Init timeout')), 4000))
+            (async () => {
+                await ensureSchema();
+                await ensureTableColumns();
+            })(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Init timeout')), 6000))
         ]);
         isInitialized = true;
     } catch (err) {
@@ -473,8 +608,9 @@ router.post('/products/bulk-sync', requirePermission('products', 'edit'), async 
 // Movements con soporte de paginación, filtros por fecha y búsqueda server-side
 router.get('/movements', requirePermission('movements', 'view'), async (req, res) => {
     try {
-        const { page, limit, startDate, endDate, type, search } = req.query;
-        const isPaginated = limit !== undefined && limit !== '';
+        const { page, limit, offset: rawOffset, startDate, endDate, type, search, envelope } = req.query;
+        const hasLimitOrOffset = (limit !== undefined && limit !== '') || (rawOffset !== undefined && rawOffset !== '') || (page !== undefined && page !== '');
+        const useEnvelope = (page !== undefined && page !== '') || envelope === 'true';
 
         let query = "SELECT id, type, equipment, carrier, seal, refType, refNumber, DATE_FORMAT(date, '%Y-%m-%d') as date, timeStart, timeEnd, auditUser, created_at FROM movements WHERE 1=1";
         let countQuery = "SELECT COUNT(*) as total FROM movements WHERE 1=1";
@@ -510,29 +646,35 @@ router.get('/movements', requirePermission('movements', 'view'), async (req, res
             countParams.push(searchTerm, searchTerm, searchTerm, searchTerm);
         }
 
-        query += " ORDER BY created_at DESC";
+        query += " ORDER BY date DESC, created_at DESC";
 
         let total = 0;
-        let numLimit = 50;
+        let numLimit = 100;
         let numPage = 1;
+        let numOffset = 0;
 
-        if (isPaginated) {
-            numLimit = Math.max(1, parseInt(limit, 10) || 50);
+        if (hasLimitOrOffset) {
+            numLimit = Math.max(1, parseInt(limit, 10) || 100);
             numPage = Math.max(1, parseInt(page, 10) || 1);
-            const offset = (numPage - 1) * numLimit;
+            numOffset = rawOffset !== undefined && rawOffset !== ''
+                ? Math.max(0, parseInt(rawOffset, 10) || 0)
+                : (numPage - 1) * numLimit;
 
             const [countResult] = await pool.query(countQuery, countParams);
             total = countResult[0].total;
+            if (typeof res.setHeader === 'function') {
+                res.setHeader('X-Total-Count', String(total));
+            }
 
             query += " LIMIT ? OFFSET ?";
-            params.push(numLimit, offset);
+            params.push(numLimit, numOffset);
         }
 
         const [rows] = await pool.query(query, params);
         
         if (rows.length === 0) {
-            return isPaginated
-                ? res.json({ data: [], total, page: numPage, limit: numLimit, totalPages: 0 })
+            return useEnvelope
+                ? res.json({ data: [], total, page: numPage, limit: numLimit, offset: numOffset, totalPages: 0 })
                 : res.json([]);
         }
 
@@ -558,12 +700,13 @@ router.get('/movements', requirePermission('movements', 'view'), async (req, res
             services: servicesMap[mov.id] || []
         }));
 
-        if (isPaginated) {
+        if (useEnvelope) {
             return res.json({
                 data: results,
                 total,
                 page: numPage,
                 limit: numLimit,
+                offset: numOffset,
                 totalPages: Math.ceil(total / numLimit)
             });
         }
@@ -1753,6 +1896,122 @@ router.delete('/versions/:id', requirePermission('security-changelog', 'delete')
 });
 
 // ==========================================
+// TARIFAS Y PARÁMETROS DINÁMICOS DE CONTRATO
+// ==========================================
+
+router.get('/contract-rates', verifyToken, async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            "SELECT config_value, updated_by, DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') as updated_at FROM system_config WHERE config_key = 'contract_rates' LIMIT 1"
+        );
+
+        if (rows.length === 0) {
+            await pool.query(
+                "INSERT IGNORE INTO system_config (config_key, config_value, updated_by) VALUES ('contract_rates', ?, 'Sistema')",
+                [JSON.stringify(DEFAULT_CONTRACT_RATES)]
+            );
+            return res.json({
+                ...DEFAULT_CONTRACT_RATES,
+                updatedBy: 'Sistema',
+                updatedAt: new Date().toISOString()
+            });
+        }
+
+        let stored = {};
+        try {
+            stored = typeof rows[0].config_value === 'string'
+                ? JSON.parse(rows[0].config_value)
+                : (rows[0].config_value || {});
+        } catch {
+            stored = {};
+        }
+
+        res.json({
+            ...DEFAULT_CONTRACT_RATES,
+            ...stored,
+            temperatureRates: {
+                ...DEFAULT_CONTRACT_RATES.temperatureRates,
+                ...(stored.temperatureRates || {})
+            },
+            extraServicePresets: Array.isArray(stored.extraServicePresets) && stored.extraServicePresets.length > 0
+                ? stored.extraServicePresets
+                : DEFAULT_CONTRACT_RATES.extraServicePresets,
+            updatedBy: rows[0].updated_by || 'Sistema',
+            updatedAt: rows[0].updated_at || null
+        });
+    } catch (error) {
+        console.error('Error fetching contract rates:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.put('/contract-rates', verifyToken, requirePermission('settings', 'edit'), async (req, res) => {
+    const actor = req.user?.username || 'Sistema';
+    const actorId = req.user?.id || null;
+    try {
+        const [existingRows] = await pool.query(
+            "SELECT config_value FROM system_config WHERE config_key = 'contract_rates' LIMIT 1"
+        );
+        let current = { ...DEFAULT_CONTRACT_RATES };
+        if (existingRows.length > 0 && existingRows[0].config_value) {
+            try {
+                const parsed = typeof existingRows[0].config_value === 'string'
+                    ? JSON.parse(existingRows[0].config_value)
+                    : existingRows[0].config_value;
+                current = { ...DEFAULT_CONTRACT_RATES, ...parsed };
+            } catch {
+                current = { ...DEFAULT_CONTRACT_RATES };
+            }
+        }
+
+        const incoming = req.body || {};
+        const merged = {
+            clientName: incoming.clientName !== undefined ? String(incoming.clientName).trim() : current.clientName,
+            contractorName: incoming.contractorName !== undefined ? String(incoming.contractorName).trim() : current.contractorName,
+            facility: incoming.facility !== undefined ? String(incoming.facility).trim() : current.facility,
+            period: incoming.period !== undefined ? String(incoming.period).trim() : current.period,
+            cutoffs: Array.isArray(incoming.cutoffs) ? incoming.cutoffs.map(Number) : current.cutoffs,
+            defaultStorageRatePounds: incoming.defaultStorageRatePounds !== undefined ? Number(incoming.defaultStorageRatePounds) : current.defaultStorageRatePounds,
+            defaultStorageRateBaskets: incoming.defaultStorageRateBaskets !== undefined ? Number(incoming.defaultStorageRateBaskets) : current.defaultStorageRateBaskets,
+            palletBasketCapacity: incoming.palletBasketCapacity !== undefined ? Number(incoming.palletBasketCapacity) : current.palletBasketCapacity,
+            ivaRate: incoming.ivaRate !== undefined ? Number(incoming.ivaRate) : current.ivaRate,
+            insuranceRate: incoming.insuranceRate !== undefined ? Number(incoming.insuranceRate) : current.insuranceRate,
+            extraServicePresets: Array.isArray(incoming.extraServicePresets) ? incoming.extraServicePresets : current.extraServicePresets,
+            temperatureRates: incoming.temperatureRates && typeof incoming.temperatureRates === 'object'
+                ? { ...current.temperatureRates, ...incoming.temperatureRates }
+                : current.temperatureRates
+        };
+
+        await pool.query(
+            `INSERT INTO system_config (config_key, config_value, updated_by)
+             VALUES ('contract_rates', ?, ?)
+             ON DUPLICATE KEY UPDATE config_value = VALUES(config_value), updated_by = VALUES(updated_by)`,
+            [JSON.stringify(merged), actor]
+        );
+
+        await logSystemEvent({
+            userId: actorId,
+            username: actor,
+            action: 'UPDATE_CONTRACT_RATES',
+            module: 'settings',
+            details: `Actualización de tarifas y parámetros de contrato (${merged.period})`
+        });
+
+        res.json({
+            success: true,
+            contractRates: {
+                ...merged,
+                updatedBy: actor,
+                updatedAt: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('Error updating contract rates:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ==========================================
 // CORTES DIARIOS CONGELADOS (DAILY CUTS)
 // ==========================================
 
@@ -1797,7 +2056,13 @@ router.get('/daily-cuts', requirePermission('summary2', 'view'), async (req, res
                 congeladosData: congelados,
                 preparadosData: preparados,
                 servicesData: services,
-                totals
+                totals,
+                sipeSaleId: r.sipe_sale_id ?? null,
+                dteCodigoGeneracion: r.dte_codigo_generacion ?? null,
+                dteNumeroControl: r.dte_numero_control ?? null,
+                dteSelloRecepcion: r.dte_sello_recepcion ?? null,
+                dteStatus: r.dte_status || 'UNBILLED',
+                dteEmittedAt: r.dte_emitted_at ?? null
             };
         });
 
@@ -1822,6 +2087,13 @@ router.get('/daily-cuts/:id', requirePermission('summary2', 'view'), async (req,
             ? cut.endDate.toISOString().split('T')[0] 
             : String(cut.endDate || '').split('T')[0];
 
+        let dtePayload = null;
+        if (cut.dte_payload) {
+            try {
+                dtePayload = typeof cut.dte_payload === 'string' ? JSON.parse(cut.dte_payload) : cut.dte_payload;
+            } catch { dtePayload = null; }
+        }
+
         res.json({
             ...cut,
             startDate: cleanStart,
@@ -1830,7 +2102,14 @@ router.get('/daily-cuts/:id', requirePermission('summary2', 'view'), async (req,
             congeladosData: typeof cut.congeladosData === 'string' ? JSON.parse(cut.congeladosData || '[]') : cut.congeladosData,
             preparadosData: typeof cut.preparadosData === 'string' ? JSON.parse(cut.preparadosData || '[]') : cut.preparadosData,
             servicesData: typeof cut.servicesData === 'string' ? JSON.parse(cut.servicesData || '[]') : cut.servicesData,
-            totalsData: typeof cut.totalsData === 'string' ? JSON.parse(cut.totalsData || '{}') : cut.totalsData
+            totalsData: typeof cut.totalsData === 'string' ? JSON.parse(cut.totalsData || '{}') : cut.totalsData,
+            sipeSaleId: cut.sipe_sale_id ?? null,
+            dteCodigoGeneracion: cut.dte_codigo_generacion ?? null,
+            dteNumeroControl: cut.dte_numero_control ?? null,
+            dteSelloRecepcion: cut.dte_sello_recepcion ?? null,
+            dteStatus: cut.dte_status || 'UNBILLED',
+            dteEmittedAt: cut.dte_emitted_at ?? null,
+            dtePayload
         });
     } catch (error) {
         console.error('Error fetching daily cut by id:', error);
@@ -1890,6 +2169,7 @@ router.post('/daily-cuts', requirePermission('summary2', 'edit'), async (req, re
             startDate,
             endDate,
             isLocked: Boolean(isLocked),
+            dteStatus: 'UNBILLED',
             created_by: actor
         });
     } catch (error) {
@@ -2013,14 +2293,23 @@ router.put('/daily-cuts/:id/lock-status', requirePermission('summary2', 'edit'),
     }
 });
 
-// Eliminar un corte registrado (solo permitido si está desbloqueado)
+// Eliminar un corte registrado (solo permitido si está desbloqueado y sin DTE emitido)
 router.delete('/daily-cuts/:id', requirePermission('summary2', 'edit'), async (req, res) => {
     const actor = req.user?.username || 'Sistema';
     const actorId = req.user?.id || null;
     try {
-        const [existing] = await pool.query('SELECT id, title, isLocked FROM daily_cuts WHERE id = ?', [req.params.id]);
+        const [existing] = await pool.query(
+            'SELECT id, title, isLocked, dte_status, dte_numero_control FROM daily_cuts WHERE id = ?',
+            [req.params.id]
+        );
         if (existing.length === 0) {
             return res.status(404).json({ error: 'Corte no encontrado.' });
+        }
+
+        if (existing[0].dte_status === 'EMITTED') {
+            return res.status(400).json({
+                error: `No se puede eliminar el corte diario '${existing[0].title}' porque ya tiene un DTE emitido (${existing[0].dte_numero_control || 'EMITTED'}).`
+            });
         }
 
         if (existing[0].isLocked === 1) {
@@ -2080,7 +2369,13 @@ router.get('/insurance-cuts', requirePermission('insurance', 'view'), async (req
                 premiumRate: Number(r.premiumRate || 0.10),
                 isLocked: Boolean(r.isLocked),
                 rowsData,
-                totals
+                totals,
+                sipeSaleId: r.sipe_sale_id ?? null,
+                dteCodigoGeneracion: r.dte_codigo_generacion ?? null,
+                dteNumeroControl: r.dte_numero_control ?? null,
+                dteSelloRecepcion: r.dte_sello_recepcion ?? null,
+                dteStatus: r.dte_status || 'UNBILLED',
+                dteEmittedAt: r.dte_emitted_at ?? null
             };
         });
 
@@ -2105,6 +2400,13 @@ router.get('/insurance-cuts/:id', requirePermission('insurance', 'view'), async 
             ? cut.cutoffDate.toISOString().split('T')[0] 
             : String(cut.cutoffDate || '').split('T')[0];
 
+        let dtePayload = null;
+        if (cut.dte_payload) {
+            try {
+                dtePayload = typeof cut.dte_payload === 'string' ? JSON.parse(cut.dte_payload) : cut.dte_payload;
+            } catch { dtePayload = null; }
+        }
+
         res.json({
             ...cut,
             startDate: cleanStart,
@@ -2112,7 +2414,14 @@ router.get('/insurance-cuts/:id', requirePermission('insurance', 'view'), async 
             premiumRate: Number(cut.premiumRate || 0.10),
             isLocked: Boolean(cut.isLocked),
             rowsData: typeof cut.rowsData === 'string' ? JSON.parse(cut.rowsData || '[]') : cut.rowsData,
-            totalsData: typeof cut.totalsData === 'string' ? JSON.parse(cut.totalsData || '{}') : cut.totalsData
+            totalsData: typeof cut.totalsData === 'string' ? JSON.parse(cut.totalsData || '{}') : cut.totalsData,
+            sipeSaleId: cut.sipe_sale_id ?? null,
+            dteCodigoGeneracion: cut.dte_codigo_generacion ?? null,
+            dteNumeroControl: cut.dte_numero_control ?? null,
+            dteSelloRecepcion: cut.dte_sello_recepcion ?? null,
+            dteStatus: cut.dte_status || 'UNBILLED',
+            dteEmittedAt: cut.dte_emitted_at ?? null,
+            dtePayload
         });
     } catch (error) {
         console.error('Error fetching insurance cut by id:', error);
@@ -2170,6 +2479,7 @@ router.post('/insurance-cuts', requirePermission('insurance', 'edit'), async (re
             cutoffDate,
             premiumRate,
             isLocked: Boolean(isLocked),
+            dteStatus: 'UNBILLED',
             created_by: actor
         });
     } catch (error) {
@@ -2286,14 +2596,23 @@ router.put('/insurance-cuts/:id/lock-status', requirePermission('insurance', 'ed
     }
 });
 
-// Eliminar corte de seguro registrado (solo permitido si está desbloqueado)
+// Eliminar corte de seguro registrado (solo permitido si está desbloqueado y sin DTE emitido)
 router.delete('/insurance-cuts/:id', requirePermission('insurance', 'edit'), async (req, res) => {
     const actor = req.user?.username || 'Sistema';
     const actorId = req.user?.id || null;
     try {
-        const [existing] = await pool.query('SELECT id, title, isLocked FROM insurance_cuts WHERE id = ?', [req.params.id]);
+        const [existing] = await pool.query(
+            'SELECT id, title, isLocked, dte_status, dte_numero_control FROM insurance_cuts WHERE id = ?',
+            [req.params.id]
+        );
         if (existing.length === 0) {
             return res.status(404).json({ error: 'Corte de seguro no encontrado.' });
+        }
+
+        if (existing[0].dte_status === 'EMITTED') {
+            return res.status(400).json({
+                error: `No se puede eliminar el corte de seguro '${existing[0].title}' porque ya tiene un DTE emitido (${existing[0].dte_numero_control || 'EMITTED'}).`
+            });
         }
 
         if (existing[0].isLocked === 1) {
@@ -2316,6 +2635,314 @@ router.delete('/insurance-cuts/:id', requirePermission('insurance', 'edit'), asy
         res.status(500).json({ error: error.message });
     }
 });
+
+// ==========================================
+// FACTURACIÓN ELECTRÓNICA DTE 03 / SIPE
+// ==========================================
+
+const getSipeBillingService = async () => {
+    return import('./services/sipeBillingService.js');
+};
+
+const loadCutForBilling = async (cutType, cutId) => {
+    const normalizedType = String(cutType || 'daily').toLowerCase().includes('ins') ? 'insurance' : 'daily';
+    if (normalizedType === 'insurance') {
+        const [rows] = await pool.query('SELECT * FROM insurance_cuts WHERE id = ?', [cutId]);
+        if (rows.length === 0) return null;
+        const cut = rows[0];
+        const cleanStart = cut.startDate
+            ? (cut.startDate instanceof Date ? cut.startDate.toISOString().split('T')[0] : String(cut.startDate).split('T')[0])
+            : null;
+        const cleanCutoff = cut.cutoffDate instanceof Date
+            ? cut.cutoffDate.toISOString().split('T')[0]
+            : String(cut.cutoffDate || '').split('T')[0];
+        const rowsData = typeof cut.rowsData === 'string' ? JSON.parse(cut.rowsData || '[]') : (cut.rowsData || []);
+        const totalsData = typeof cut.totalsData === 'string' ? JSON.parse(cut.totalsData || '{}') : (cut.totalsData || {});
+        return {
+            ...cut,
+            cutType: 'insurance',
+            startDate: cleanStart,
+            cutoffDate: cleanCutoff,
+            premiumRate: Number(cut.premiumRate || 0.10),
+            isLocked: Boolean(cut.isLocked),
+            rowsData,
+            totalsData,
+            totals: totalsData,
+            sipeSaleId: cut.sipe_sale_id ?? null,
+            dteCodigoGeneracion: cut.dte_codigo_generacion ?? null,
+            dteNumeroControl: cut.dte_numero_control ?? null,
+            dteSelloRecepcion: cut.dte_sello_recepcion ?? null,
+            dteStatus: cut.dte_status || 'UNBILLED',
+            dteEmittedAt: cut.dte_emitted_at ?? null
+        };
+    }
+
+    const [rows] = await pool.query('SELECT * FROM daily_cuts WHERE id = ?', [cutId]);
+    if (rows.length === 0) return null;
+    const cut = rows[0];
+    const cleanStart = cut.startDate instanceof Date
+        ? cut.startDate.toISOString().split('T')[0]
+        : String(cut.startDate || '').split('T')[0];
+    const cleanEnd = cut.endDate instanceof Date
+        ? cut.endDate.toISOString().split('T')[0]
+        : String(cut.endDate || '').split('T')[0];
+    const congeladosData = typeof cut.congeladosData === 'string' ? JSON.parse(cut.congeladosData || '[]') : (cut.congeladosData || []);
+    const preparadosData = typeof cut.preparadosData === 'string' ? JSON.parse(cut.preparadosData || '[]') : (cut.preparadosData || []);
+    const servicesData = typeof cut.servicesData === 'string' ? JSON.parse(cut.servicesData || '[]') : (cut.servicesData || []);
+    const totalsData = typeof cut.totalsData === 'string' ? JSON.parse(cut.totalsData || '{}') : (cut.totalsData || {});
+    return {
+        ...cut,
+        cutType: 'daily',
+        startDate: cleanStart,
+        endDate: cleanEnd,
+        isLocked: Boolean(cut.isLocked),
+        congeladosData,
+        preparadosData,
+        servicesData,
+        totalsData,
+        totals: totalsData,
+        sipeSaleId: cut.sipe_sale_id ?? null,
+        dteCodigoGeneracion: cut.dte_codigo_generacion ?? null,
+        dteNumeroControl: cut.dte_numero_control ?? null,
+        dteSelloRecepcion: cut.dte_sello_recepcion ?? null,
+        dteStatus: cut.dte_status || 'UNBILLED',
+        dteEmittedAt: cut.dte_emitted_at ?? null
+    };
+};
+
+router.get('/billing/contract-status', verifyToken, async (req, res) => {
+    try {
+        const sipeBillingService = await getSipeBillingService();
+        const status = await sipeBillingService.checkSipeContractStatus();
+        res.json(status);
+    } catch (error) {
+        console.error('Error checking SIPE contract status:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/billing/preview', verifyToken, async (req, res) => {
+    try {
+        const { cutId, cutType = 'daily', options = {} } = req.body || {};
+        const normalizedType = String(cutType || 'daily').toLowerCase().includes('ins') ? 'insurance' : 'daily';
+
+        let cutData = req.body?.cutData || null;
+        if (cutId) {
+            cutData = await loadCutForBilling(normalizedType, cutId);
+            if (!cutData) {
+                return res.status(404).json({ error: `Corte (${normalizedType}) con ID '${cutId}' no encontrado.` });
+            }
+        } else if (!cutData) {
+            return res.status(400).json({ error: 'Se requiere cutId o cutData para generar la vista previa del DTE.' });
+        }
+
+        const sipeBillingService = await getSipeBillingService();
+        const preview = await sipeBillingService.buildCutDtePayload({
+            cutId,
+            cutType: normalizedType,
+            cutData,
+            cut: cutData,
+            options
+        });
+
+        let contractStatus = preview?.contractStatus || null;
+        if (!contractStatus && typeof sipeBillingService.checkSipeContractStatus === 'function') {
+            try {
+                contractStatus = await sipeBillingService.checkSipeContractStatus();
+            } catch {
+                contractStatus = null;
+            }
+        }
+
+        res.json({
+            success: true,
+            cutId: cutData.id || cutId,
+            cutType: normalizedType,
+            ...preview,
+            contractStatus
+        });
+    } catch (error) {
+        console.error('Error building DTE preview:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/billing/emit', verifyToken, async (req, res) => {
+    const actor = req.user?.username || 'Sistema';
+    const actorId = req.user?.id || null;
+    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+
+    try {
+        const { cutId, cutType = 'daily', cutData = null, options = {} } = req.body || {};
+        if (!cutId && !cutData?.id) {
+            return res.status(400).json({ error: 'El identificador del corte (cutId) es obligatorio para emitir DTE.' });
+        }
+
+        const effectiveCutId = cutId || cutData?.id;
+        const normalizedType = String(cutType || 'daily').toLowerCase().includes('ins') ? 'insurance' : 'daily';
+        const sipeBillingService = await getSipeBillingService();
+        const emitResult = await sipeBillingService.emitCutToSipe({
+            cutId: effectiveCutId,
+            cutType: normalizedType,
+            cutData,
+            options,
+            user: req.user
+        });
+
+        const numeroControl = emitResult?.dteNumeroControl || emitResult?.numeroControl || emitResult?.dte?.identificacion?.numeroControl || '';
+        const codigoGeneracion = emitResult?.dteCodigoGeneracion || emitResult?.codigoGeneracion || emitResult?.dte?.identificacion?.codigoGeneracion || '';
+        const sipeSaleId = emitResult?.sipeSaleId || emitResult?.saleId || null;
+
+        // Registrar en bitácora principal (system_logs)
+        await logSystemEvent({
+            userId: actorId,
+            username: actor,
+            action: 'EMIT_DTE_SIPE',
+            module: normalizedType === 'insurance' ? 'insurance' : 'summary2',
+            details: `Emisión de DTE 03 en SIPE para corte ${normalizedType === 'insurance' ? 'de seguro' : 'diario'} ID '${cutId}' (Control: ${numeroControl || 'N/A'}, Gen: ${codigoGeneracion || 'N/A'}, Venta SIPE #${sipeSaleId || 'N/A'})`,
+            ip
+        });
+
+        // Registrar también en audit_logs
+        try {
+            await pool.query(
+                `INSERT INTO audit_logs (id, user_id, username, action, module, details, metadata, ip_address)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    randomUUID(),
+                    actorId,
+                    actor,
+                    'EMIT_DTE_SIPE',
+                    normalizedType === 'insurance' ? 'insurance' : 'summary2',
+                    `DTE 03 emitido para corte ${cutId} (${numeroControl})`,
+                    JSON.stringify({ cutId, cutType: normalizedType, sipeSaleId, codigoGeneracion, numeroControl }),
+                    typeof ip === 'string' ? ip.substring(0, 45) : ''
+                ]
+            );
+        } catch (auditErr) {
+            console.warn('Warning writing to audit_logs:', auditErr.message);
+        }
+
+        // Registrar notificación del sistema
+        try {
+            await pool.query(
+                'INSERT INTO notifications (id, userId, title, message, type) VALUES (?, ?, ?, ?, ?)',
+                [
+                    randomUUID(),
+                    null,
+                    'DTE 03 Emitido en SIPE',
+                    `Se emitió el Comprobante de Crédito Fiscal (DTE 03) ${numeroControl || codigoGeneracion} para el corte ${normalizedType === 'insurance' ? 'de seguro' : 'diario'} (${cutId}) por ${actor}.`,
+                    'success'
+                ]
+            );
+        } catch (notifErr) {
+            console.warn('Warning writing DTE notification:', notifErr.message);
+        }
+
+        res.json({
+            success: true,
+            ...emitResult
+        });
+    } catch (error) {
+        console.error('Error emitting DTE to SIPE:', error);
+        const statusCode = error?.statusCode || (error?.message?.includes('ya fue facturado') || error?.message?.includes('EMITTED') ? 409 : 500);
+        res.status(statusCode).json({ error: error.message });
+    }
+});
+
+router.get('/billing/history', verifyToken, async (req, res) => {
+    try {
+        const includeUnbilled = req.query.includeUnbilled === 'true' || req.query.all === 'true';
+        const whereClause = includeUnbilled
+            ? '1=1'
+            : "dte_status IS NOT NULL AND dte_status != 'UNBILLED'";
+
+        const [dailyRows] = await pool.query(`
+            SELECT id, title, clientName, startDate, endDate, isLocked, totalsData,
+                   sipe_sale_id, dte_codigo_generacion, dte_numero_control,
+                   dte_sello_recepcion, dte_status, dte_emitted_at, created_by, created_at
+            FROM daily_cuts
+            WHERE ${whereClause}
+            ORDER BY COALESCE(dte_emitted_at, created_at) DESC
+        `);
+
+        const [insuranceRows] = await pool.query(`
+            SELECT id, title, customerName, warehouseName, startDate, cutoffDate, premiumRate, isLocked, totalsData,
+                   sipe_sale_id, dte_codigo_generacion, dte_numero_control,
+                   dte_sello_recepcion, dte_status, dte_emitted_at, created_by, created_at
+            FROM insurance_cuts
+            WHERE ${whereClause}
+            ORDER BY COALESCE(dte_emitted_at, created_at) DESC
+        `);
+
+        const formatDaily = dailyRows.map(r => {
+            let totals = {};
+            try { totals = typeof r.totalsData === 'string' ? JSON.parse(r.totalsData) : (r.totalsData || {}); } catch { totals = {}; }
+            const cleanStart = r.startDate instanceof Date ? r.startDate.toISOString().split('T')[0] : String(r.startDate || '').split('T')[0];
+            const cleanEnd = r.endDate instanceof Date ? r.endDate.toISOString().split('T')[0] : String(r.endDate || '').split('T')[0];
+            return {
+                id: r.id,
+                cutId: r.id,
+                cutType: 'daily',
+                title: r.title,
+                clientName: r.clientName,
+                startDate: cleanStart,
+                endDate: cleanEnd,
+                isLocked: Boolean(r.isLocked),
+                totals,
+                sipeSaleId: r.sipe_sale_id ?? null,
+                dteCodigoGeneracion: r.dte_codigo_generacion ?? null,
+                dteNumeroControl: r.dte_numero_control ?? null,
+                dteSelloRecepcion: r.dte_sello_recepcion ?? null,
+                dteStatus: r.dte_status || 'UNBILLED',
+                dteEmittedAt: r.dte_emitted_at ?? null,
+                created_by: r.created_by,
+                created_at: r.created_at
+            };
+        });
+
+        const formatInsurance = insuranceRows.map(r => {
+            let totals = {};
+            try { totals = typeof r.totalsData === 'string' ? JSON.parse(r.totalsData) : (r.totalsData || {}); } catch { totals = {}; }
+            const cleanStart = r.startDate ? (r.startDate instanceof Date ? r.startDate.toISOString().split('T')[0] : String(r.startDate).split('T')[0]) : null;
+            const cleanCutoff = r.cutoffDate instanceof Date ? r.cutoffDate.toISOString().split('T')[0] : String(r.cutoffDate || '').split('T')[0];
+            return {
+                id: r.id,
+                cutId: r.id,
+                cutType: 'insurance',
+                title: r.title,
+                clientName: r.customerName,
+                warehouseName: r.warehouseName,
+                startDate: cleanStart,
+                endDate: cleanCutoff,
+                cutoffDate: cleanCutoff,
+                premiumRate: Number(r.premiumRate || 0.10),
+                isLocked: Boolean(r.isLocked),
+                totals,
+                sipeSaleId: r.sipe_sale_id ?? null,
+                dteCodigoGeneracion: r.dte_codigo_generacion ?? null,
+                dteNumeroControl: r.dte_numero_control ?? null,
+                dteSelloRecepcion: r.dte_sello_recepcion ?? null,
+                dteStatus: r.dte_status || 'UNBILLED',
+                dteEmittedAt: r.dte_emitted_at ?? null,
+                created_by: r.created_by,
+                created_at: r.created_at
+            };
+        });
+
+        const combined = [...formatDaily, ...formatInsurance].sort((a, b) => {
+            const dateA = new Date(a.dteEmittedAt || a.created_at || 0).getTime();
+            const dateB = new Date(b.dteEmittedAt || b.created_at || 0).getTime();
+            return dateB - dateA;
+        });
+
+        res.json(combined);
+    } catch (error) {
+        console.error('Error fetching billing history:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 
 // Mount router under /api
 app.use('/api', apiLimiter, (req, res, next) => {

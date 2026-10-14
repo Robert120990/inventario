@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { 
   History, X, Search, RefreshCw, Snowflake, Eye, Trash2, 
-  Calendar, Lock, Unlock, DollarSign, ShieldCheck, FileText, CheckCircle2
+  Calendar, Lock, Unlock, DollarSign, ShieldCheck, CheckCircle2
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../utils/formatUtils';
 import { toast } from 'react-hot-toast';
@@ -19,7 +19,7 @@ export default function DailyCutsHistoryModal({ isOpen, onClose, onSelectCut, ac
     try {
       const cuts = await fetchDailyCuts();
       setCutsList(Array.isArray(cuts) ? cuts : []);
-    } catch (e) {
+    } catch {
       toast.error('Error al cargar historial de cortes');
     } finally {
       setLoadingHistory(false);
@@ -580,41 +580,65 @@ export default function DailyCutsHistoryModal({ isOpen, onClose, onSelectCut, ac
                           </div>
                         </td>
 
-                        {/* 5. Estado de Bloqueo */}
+                        {/* 5. Estado de Bloqueo y Facturación DTE */}
                         <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
-                          {cut.isLocked ? (
-                            <span 
-                              style={{ 
-                                display: 'inline-flex', 
-                                alignItems: 'center', 
-                                gap: '0.3rem', 
-                                fontSize: '0.72rem', 
-                                padding: '0.25rem 0.65rem',
-                                borderRadius: '12px',
-                                fontWeight: '700',
-                                backgroundColor: 'rgba(0, 103, 192, 0.1)',
-                                color: 'var(--color-primary)'
-                              }}
-                            >
-                              <Lock size={11} /> Cerrado
-                            </span>
-                          ) : (
-                            <span 
-                              style={{ 
-                                display: 'inline-flex', 
-                                alignItems: 'center', 
-                                gap: '0.3rem', 
-                                fontSize: '0.72rem', 
-                                padding: '0.25rem 0.65rem',
-                                borderRadius: '12px',
-                                fontWeight: '700',
-                                backgroundColor: 'rgba(217, 119, 6, 0.12)',
-                                color: '#d97706'
-                              }}
-                            >
-                              <Unlock size={11} /> Editable
-                            </span>
-                          )}
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
+                            {cut.isLocked ? (
+                              <span 
+                                style={{ 
+                                  display: 'inline-flex', 
+                                  alignItems: 'center', 
+                                  gap: '0.3rem', 
+                                  fontSize: '0.72rem', 
+                                  padding: '0.25rem 0.65rem',
+                                  borderRadius: '12px',
+                                  fontWeight: '700',
+                                  backgroundColor: 'rgba(0, 103, 192, 0.1)',
+                                  color: 'var(--color-primary)'
+                                }}
+                              >
+                                <Lock size={11} /> Cerrado
+                              </span>
+                            ) : (
+                              <span 
+                                style={{ 
+                                  display: 'inline-flex', 
+                                  alignItems: 'center', 
+                                  gap: '0.3rem', 
+                                  fontSize: '0.72rem', 
+                                  padding: '0.25rem 0.65rem',
+                                  borderRadius: '12px',
+                                  fontWeight: '700',
+                                  backgroundColor: 'rgba(217, 119, 6, 0.12)',
+                                  color: '#d97706'
+                                }}
+                              >
+                                <Unlock size={11} /> Editable
+                              </span>
+                            )}
+                            {((cut.dteStatus && cut.dteStatus !== 'UNBILLED') ||
+                              (cut.dte_status && cut.dte_status !== 'UNBILLED') ||
+                              cut.dteNumeroControl ||
+                              cut.dte_numero_control) && (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem',
+                                  fontSize: '0.68rem',
+                                  padding: '0.18rem 0.55rem',
+                                  borderRadius: '10px',
+                                  fontWeight: '700',
+                                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                  color: '#059669',
+                                  border: '1px solid rgba(16, 185, 129, 0.35)'
+                                }}
+                                title={cut.dteNumeroControl || cut.dte_numero_control || 'DTE-03 Emitido en SIPE'}
+                              >
+                                <CheckCircle2 size={10} /> Facturado DTE
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* 6. Fecha de Creado */}

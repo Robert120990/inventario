@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { SYSTEM_CHANGELOG } from '../config/changelog';
+import { CONTRACT_INFO, applyDynamicContractRates } from '../utils/contractRates';
 
 const InventoryContext = createContext();
 
@@ -67,8 +68,41 @@ export const InventoryProvider = ({ children }) => {
   const [dailyCuts, setDailyCuts] = useState([]);
   const [cutHistoryModalOpen, setCutHistoryModalOpen] = useState(false);
   const [selectedCutForSummary, setSelectedCutForSummary] = useState(null);
+  const [contractRates, setContractRates] = useState(CONTRACT_INFO);
+  const [sipeContractStatus, setSipeContractStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [theme, setThemeState] = useState(() => localStorage.getItem('inv_theme') || 'light');
+
+  const fetchContractRates = async () => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/contract-rates`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && !data.error) {
+          const updated = applyDynamicContractRates(data);
+          setContractRates({ ...updated });
+          return updated;
+        }
+      }
+    } catch {
+      // Fallback silencioso a las tarifas locales en memoria
+    }
+    return CONTRACT_INFO;
+  };
+
+  const checkSipeContract = async () => {
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/billing/contract-status`);
+      if (res.ok) {
+        const data = await res.json();
+        setSipeContractStatus(data);
+        return data;
+      }
+    } catch {
+      // Ignorar si el endpoint no está disponible aún
+    }
+    return null;
+  };
 
 
   const setTheme = (newTheme) => {
@@ -100,6 +134,9 @@ export const InventoryProvider = ({ children }) => {
         setLoading(false);
         return;
       }
+
+      // Hidratación silenciosa no bloqueante de tarifas dinámicas del contrato
+      fetchContractRates();
 
       // Fail-safe: Force stop loading after 8 seconds
       const timeoutId = setTimeout(() => {
@@ -181,7 +218,7 @@ export const InventoryProvider = ({ children }) => {
           setSessionId(data.sessionId);
           localStorage.setItem('inv_session_id', data.sessionId);
         }
-      } catch (e) {}
+      } catch {}
     };
 
     sendHeartbeat();
@@ -259,6 +296,7 @@ export const InventoryProvider = ({ children }) => {
 
   const refreshData = async () => {
     try {
+      fetchContractRates();
       const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes, rolesRes, notifRes] = await Promise.all([
         apiFetch(`${API_BASE_URL}/api/products`).then(res => res.json()).catch(() => []),
         apiFetch(`${API_BASE_URL}/api/movements`).then(res => res.json()).catch(() => []),
@@ -679,7 +717,7 @@ export const InventoryProvider = ({ children }) => {
         return { success: true, id: data.id };
       }
       return { success: false, message: data.error };
-    } catch (e) {
+    } catch {
       return { success: false, message: 'Error al conectar con el servidor.' };
     }
   };
@@ -696,7 +734,7 @@ export const InventoryProvider = ({ children }) => {
         return { success: true };
       }
       return { success: false };
-    } catch (e) {
+    } catch {
       return { success: false };
     }
   };
@@ -709,7 +747,7 @@ export const InventoryProvider = ({ children }) => {
         return { success: true };
       }
       return { success: false };
-    } catch (e) {
+    } catch {
       return { success: false };
     }
   };
@@ -753,7 +791,7 @@ export const InventoryProvider = ({ children }) => {
       const data = await res.json();
       if (Array.isArray(data)) setUsers(data);
       return data;
-    } catch (e) {
+    } catch {
       return [];
     }
   };
@@ -771,7 +809,7 @@ export const InventoryProvider = ({ children }) => {
       }
       const data = await res.json();
       return { success: false, message: data.error };
-    } catch (error) {
+    } catch {
       return { success: false, message: 'Error de conexión' };
     }
   };
@@ -812,7 +850,7 @@ export const InventoryProvider = ({ children }) => {
         return { success: true };
       }
       return { success: false };
-    } catch (error) {
+    } catch {
       return { success: false };
     }
   };
@@ -825,7 +863,7 @@ export const InventoryProvider = ({ children }) => {
         return { success: true };
       }
       return { success: false };
-    } catch (error) {
+    } catch {
       return { success: false };
     }
   };
@@ -838,7 +876,7 @@ export const InventoryProvider = ({ children }) => {
       const data = await res.json();
       if (Array.isArray(data)) setSystemLogs(data);
       return data;
-    } catch (e) {
+    } catch {
       return [];
     }
   };
@@ -863,14 +901,14 @@ export const InventoryProvider = ({ children }) => {
             setSessionId(hbData.sessionId);
             localStorage.setItem('inv_session_id', hbData.sessionId);
           }
-        } catch (err) {}
+        } catch {}
       }
 
       const res = await apiFetch(`${API_BASE_URL}/api/active-sessions`);
       const data = await res.json();
       if (Array.isArray(data)) setActiveSessions(data);
       return data;
-    } catch (e) {
+    } catch {
       return [];
     }
   };
@@ -883,7 +921,7 @@ export const InventoryProvider = ({ children }) => {
         return { success: true };
       }
       return { success: false };
-    } catch (e) {
+    } catch {
       return { success: false };
     }
   };
@@ -895,7 +933,7 @@ export const InventoryProvider = ({ children }) => {
       const data = await res.json();
       if (Array.isArray(data)) setNotifications(data);
       return data;
-    } catch (e) {
+    } catch {
       return [];
     }
   };
@@ -912,7 +950,7 @@ export const InventoryProvider = ({ children }) => {
         return { success: true };
       }
       return { success: false };
-    } catch (e) {
+    } catch {
       return { success: false };
     }
   };
@@ -921,7 +959,7 @@ export const InventoryProvider = ({ children }) => {
     try {
       await apiFetch(`${API_BASE_URL}/api/notifications/${id}/read`, { method: 'PUT' });
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: 1 } : n));
-    } catch (e) {}
+    } catch {}
   };
 
   const markAllNotificationsAsRead = async () => {
@@ -932,7 +970,7 @@ export const InventoryProvider = ({ children }) => {
         body: JSON.stringify({ userId: currentUser?.id })
       });
       setNotifications(prev => prev.map(n => ({ ...n, isRead: 1 })));
-    } catch (e) {}
+    } catch {}
   };
 
   const updateSettings = async (newSettings) => {
@@ -1371,6 +1409,10 @@ export const InventoryProvider = ({ children }) => {
       updateInsuranceCut,
       setInsuranceCutLockStatus,
       deleteInsuranceCut,
+      contractRates,
+      fetchContractRates,
+      sipeContractStatus,
+      checkSipeContract,
       fetchProducts,
       fetchMovements,
       refreshModule,
