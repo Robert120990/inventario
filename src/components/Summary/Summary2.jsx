@@ -3,10 +3,10 @@ import { useInventory } from '../../context/InventoryContext';
 import { 
   FileText, Download, FileSpreadsheet, FileOutput, Layers, Package, 
   Snowflake, Lock, Unlock, History, RotateCcw, Save, Receipt,
-  CheckCircle2, RefreshCw, Search, X, Check, Eye, Pencil
+  CheckCircle2, RefreshCw, Search, X, Check, Eye, Pencil, Plus, Trash2, Zap
 } from 'lucide-react';
 import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils';
-import { CONTRACT_INFO, resolveServiceDetails } from '../../utils/contractRates';
+import { CONTRACT_INFO, EXTRA_SERVICE_PRESETS, resolveServiceDetails } from '../../utils/contractRates';
 import { toast } from 'react-hot-toast';
 import { DatePicker, DateQuickPresets, getLocalDateStr } from '../Common/DatePicker';
 import MovementForm from '../Movements/MovementForm';
@@ -414,7 +414,15 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     autoSaveTimerRef.current = setTimeout(async () => {
       const cong = updatedCong || congeladosRows;
       const prep = updatedPrep || preparadosRows;
-      const serv = (updatedServ || servicesData).map(resolveServiceDetails);
+      const serv = (updatedServ !== null && updatedServ !== undefined ? updatedServ : servicesData).map(s => {
+        const resolved = resolveServiceDetails(s);
+        return {
+          ...resolved,
+          quantity: Number(resolved.quantity) || 0,
+          unitPrice: Number(resolved.unitPrice) || 0,
+          value: Number(resolved.value) || 0
+        };
+      });
       const effectiveStart = customStart || startDate;
       const effectiveEnd = customEnd || endDate;
 
@@ -546,12 +554,14 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     }
 
     const newServices = servicesData.map(s => ({ ...s }));
-    const item = { ...newServices[index] };
+    const item = { ...newServices[index], _manualEdit: true };
 
-    if (field === 'description') {
+    if (field === 'date') {
+      item.date = rawValue;
+    } else if (field === 'description') {
       item.description = rawValue;
     } else {
-      const numVal = rawValue === '' ? 0 : Number(rawValue);
+      const numVal = rawValue === '' ? '' : Number(rawValue);
       item[field] = numVal;
 
       const q = Number(field === 'quantity' ? numVal : item.quantity) || 0;
@@ -562,6 +572,58 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     newServices[index] = item;
     setCustomServices(newServices);
     triggerAutoSave(null, null, newServices);
+  };
+
+  // Agregar nuevo servicio extraordinario en corte desbloqueado
+  const handleAddExtraService = (preset = null) => {
+    if (isLocked && activeCut) {
+      toast('Desbloquea el corte para poder agregar servicios extraordinarios.', { icon: '🔒' });
+      return;
+    }
+
+    const lastDate = servicesData.length > 0 && servicesData[servicesData.length - 1]?.date
+      ? String(servicesData[servicesData.length - 1].date).split('T')[0]
+      : (endDate || startDate || getLocalDateStr(new Date()));
+
+    const newItem = preset
+      ? {
+          date: lastDate,
+          description: preset.description,
+          quantity: preset.quantity ?? 1,
+          unitPrice: preset.unitPrice ?? 0,
+          value: Number(((preset.quantity ?? 1) * (preset.unitPrice ?? 0)).toFixed(2)),
+          _manualEdit: true
+        }
+      : {
+          date: lastDate,
+          description: '',
+          quantity: 1,
+          unitPrice: 0,
+          value: 0,
+          _manualEdit: true
+        };
+
+    const newServices = [...servicesData.map(s => ({ ...s })), newItem];
+    setCustomServices(newServices);
+    triggerAutoSave(null, null, newServices);
+    toast.success(
+      preset
+        ? `Servicio "${preset.description}" agregado al corte.`
+        : 'Nuevo servicio extraordinario agregado. Completa la descripción y tarifa.'
+    );
+  };
+
+  // Eliminar servicio extraordinario en corte desbloqueado
+  const handleRemoveExtraService = (index) => {
+    if (isLocked && activeCut) {
+      toast('Desbloquea el corte para poder eliminar servicios extraordinarios.', { icon: '🔒' });
+      return;
+    }
+
+    const newServices = servicesData.filter((_, idx) => idx !== index).map(s => ({ ...s }));
+    setCustomServices(newServices);
+    triggerAutoSave(null, null, newServices);
+    toast.success('Servicio extraordinario eliminado del corte.');
   };
 
   // Abrir desglose detallado de movimientos vinculados a una sumatoria de Entrada o Salida
@@ -2097,7 +2159,28 @@ const Summary2 = ({ openHistoryOnLoad }) => {
               </button>
             )}
             <div style={{ fontSize: '0.85rem', color: 'var(--color-text-light)' }}>
-              Total Servicios: <strong style={{ color: '#e67e22' }}>${formatCurrency(totalServicios)}</strong>
+              {activeCut && !isLocked && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{
+                    fontSize: '0.75rem',
+                    padding: '0.28rem 0.75rem',
+                    backgroundColor: '#e67e22',
+                    borderColor: '#e67e22',
+                    color: '#ffffff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    marginRight: '0.75rem'
+                  }}
+                  onClick={() => handleAddExtraService()}
+                  title="Agregar un nuevo servicio extraordinario a este corte desbloqueado"
+                >
+                  <Plus size={14} /> Agregar Servicio
+                </button>
+              )}
+              <span>Total Servicios: <strong style={{ color: '#e67e22' }}>${formatCurrency(totalServicios)}</strong></span>
             </div>
           </div>
         </div>
@@ -2124,7 +2207,20 @@ const Summary2 = ({ openHistoryOnLoad }) => {
                 ) : (
                   servicesData.map((s, idx) => (
                     <tr key={idx}>
-                      <td style={{ fontWeight: '500' }}>{formatDate(s.date)}</td>
+                      <td style={{ fontWeight: '500' }}>
+                        {activeCut && !isLocked ? (
+                          <input
+                            type="date"
+                            className="form-input"
+                            style={{ width: '145px', margin: 0, padding: '0.35rem 0.5rem' }}
+                            value={String(s.date || endDate || startDate).split('T')[0]}
+                            onChange={(e) => handleServiceCellEdit(idx, 'date', e.target.value)}
+                            title="Fecha del servicio extraordinario"
+                          />
+                        ) : (
+                          formatDate(s.date)
+                        )}
+                      </td>
                       <td>
                         {activeCut && !isLocked ? (
                           <input
@@ -2133,6 +2229,8 @@ const Summary2 = ({ openHistoryOnLoad }) => {
                             style={{ margin: 0, padding: '0.35rem 0.5rem', width: '100%' }}
                             value={s.description || ''}
                             onChange={(e) => handleServiceCellEdit(idx, 'description', e.target.value)}
+                            placeholder="Descripción del servicio (ej. Descarga Rastra)"
+                            list="extra-service-descriptions-list"
                           />
                         ) : (
                           <>{s.description} {s.ref ? `(${s.ref})` : ''}</>
@@ -2169,7 +2267,29 @@ const Summary2 = ({ openHistoryOnLoad }) => {
                         )}
                       </td>
                       <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#e67e22' }}>
-                        ${formatCurrency(s.value)}
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                          <span>${formatCurrency(s.value)}</span>
+                          {activeCut && !isLocked && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveExtraService(idx)}
+                              style={{
+                                background: 'transparent',
+                                border: '1px solid rgba(239, 68, 68, 0.35)',
+                                color: 'var(--color-danger)',
+                                borderRadius: '6px',
+                                padding: '0.25rem 0.35rem',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                              title="Eliminar este servicio extraordinario del corte"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
                       </td>
 
                     </tr>
@@ -2191,6 +2311,86 @@ const Summary2 = ({ openHistoryOnLoad }) => {
           </div>
         </div>
       </div>
+
+      {activeCut && !isLocked && (
+        <div
+          className="card"
+          style={{
+            marginTop: '-1.75rem',
+            marginBottom: '2.5rem',
+            padding: '0.85rem 1.1rem',
+            border: '1px dashed rgba(230, 126, 34, 0.45)',
+            backgroundColor: 'rgba(230, 126, 34, 0.04)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.65rem'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', fontWeight: 600, color: '#e67e22' }}>
+              <Zap size={14} /> Agregar Servicio Rápido (Tarifas Anexo A) o Personalizado:
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{
+                fontSize: '0.75rem',
+                padding: '0.32rem 0.8rem',
+                backgroundColor: '#e67e22',
+                borderColor: '#e67e22',
+                color: '#ffffff',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem'
+              }}
+              onClick={() => handleAddExtraService()}
+            >
+              <Plus size={14} /> Agregar Servicio Personalizado
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' }}>
+            {[
+              { id: 'descarga_rastra', description: 'Descarga Rastra', unitPrice: 54 },
+              { id: 'carga_rastra', description: 'Carga Rastra', unitPrice: 54 },
+              ...EXTRA_SERVICE_PRESETS.map(p => ({
+                id: p.id,
+                description: p.label,
+                unitPrice: Number(p.unitPrice || 0)
+              }))
+            ].map(preset => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => handleAddExtraService({ description: preset.description, quantity: 1, unitPrice: preset.unitPrice })}
+                style={{
+                  fontSize: '0.73rem',
+                  padding: '0.28rem 0.65rem',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(230, 126, 34, 0.35)',
+                  backgroundColor: 'var(--color-surface)',
+                  color: 'var(--color-text)',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.3rem'
+                }}
+                title={`Agregar "${preset.description}" ($${preset.unitPrice.toFixed(2)})`}
+              >
+                <Plus size={12} style={{ color: '#e67e22' }} />
+                <span>{preset.description}</span>
+                <strong style={{ color: '#e67e22' }}>(${preset.unitPrice})</strong>
+              </button>
+            ))}
+          </div>
+          <datalist id="extra-service-descriptions-list">
+            <option value="Descarga Rastra" />
+            <option value="Carga Rastra" />
+            {EXTRA_SERVICE_PRESETS.map(p => (
+              <option key={p.id} value={p.label} />
+            ))}
+          </datalist>
+        </div>
+      )}
 
       {/* Resumen de Facturación Final */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>

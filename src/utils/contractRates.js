@@ -117,6 +117,21 @@ export const calculateTemperatureService = (tempCelsius, pounds, isAverage = tru
  */
 export const resolveServiceDetails = (s) => {
   if (!s) return { description: '', quantity: 1, unitPrice: 0, value: 0 };
+  if (s._manualEdit) {
+    const qty = s.quantity === '' ? '' : (s.quantity !== undefined && s.quantity !== null && !isNaN(Number(s.quantity)) ? Number(s.quantity) : 0);
+    const price = s.unitPrice === '' ? '' : (s.unitPrice !== undefined && s.unitPrice !== null && !isNaN(Number(s.unitPrice)) ? Number(s.unitPrice) : 0);
+    const numQty = Number(qty) || 0;
+    const numPrice = Number(price) || 0;
+    const val = Number((numQty * numPrice).toFixed(2));
+    return {
+      ...s,
+      description: String(s.description || ''),
+      quantity: qty,
+      unitPrice: price,
+      value: val
+    };
+  }
+  if (!s) return { description: '', quantity: 1, unitPrice: 0, value: 0 };
   
   let qty = Number(s.quantity);
   let price = Number(s.unitPrice);
