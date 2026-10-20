@@ -833,6 +833,43 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     toast.success('Has regresado al Modo en Tiempo Real.');
   };
 
+  // Sincronizar Servicios Extraordinarios del corte con los movimientos reales del per?odo
+  const handleSyncServicesFromLive = () => {
+    if (!activeCut) return;
+    const syncedServices = liveServicesData.map(resolveServiceDetails);
+    setCustomServices(syncedServices);
+    triggerAutoSave(null, null, syncedServices);
+    toast.success(`Servicios extraordinarios actualizados (${syncedServices.length} registros sincronizados).`);
+  };
+
+  // Sincronizar todo el corte (lecturas diarias + servicios extraordinarios) con los movimientos reales
+  const handleSyncCutFromLive = () => {
+    if (!activeCut) return;
+    const syncedCong = ensureCascadingIntegrity(liveCongeladosRows, 0.001);
+    const syncedPrep = ensureCascadingIntegrity(livePreparadosRows, 0.038);
+    const syncedServ = liveServicesData.map(resolveServiceDetails);
+    setCustomCongelados(syncedCong);
+    setCustomPreparados(syncedPrep);
+    setCustomServices(syncedServ);
+    triggerAutoSave(syncedCong, syncedPrep, syncedServ);
+    toast.success('Corte y servicios extraordinarios sincronizados al 100% con los movimientos del per?odo.');
+  };
+
+  // Cuando el corte est? desbloqueado y cambian las fechas, recalcular lecturas y servicios extraordinarios autom?ticamente
+  useEffect(() => {
+    if (activeCut && !isLocked && pendingDateSyncRef.current) {
+      const { start, end } = pendingDateSyncRef.current;
+      pendingDateSyncRef.current = false;
+      const syncedCong = ensureCascadingIntegrity(liveCongeladosRows, 0.001);
+      const syncedPrep = ensureCascadingIntegrity(livePreparadosRows, 0.038);
+      const syncedServ = liveServicesData.map(resolveServiceDetails);
+      setCustomCongelados(syncedCong);
+      setCustomPreparados(syncedPrep);
+      setCustomServices(syncedServ);
+      triggerAutoSave(syncedCong, syncedPrep, syncedServ, start, end);
+    }
+  }, [startDate, endDate, liveCongeladosRows, livePreparadosRows, liveServicesData, activeCut, isLocked]);
+
   useEffect(() => {
     if (selectedCutForSummary) {
       setStartDate(selectedCutForSummary.startDate.split('T')[0]);
