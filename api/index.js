@@ -2186,6 +2186,7 @@ router.put('/daily-cuts/:id', requirePermission('summary2', 'edit'), async (req,
             clientName,
             startDate,
             endDate,
+            isLocked,
             congeladosData,
             preparadosData,
             servicesData,
@@ -2201,17 +2202,11 @@ router.put('/daily-cuts/:id', requirePermission('summary2', 'edit'), async (req,
 
         const current = existing[0];
 
-        // Impedir modificación de datos en cortes bloqueados
-        if (current.isLocked === 1) {
-            return res.status(409).json({ 
-                error: 'El corte diario se encuentra bloqueado. Para modificar sus datos debe desbloquearlo expresamente primero.' 
-            });
-        }
-
         const newTitle = title !== undefined ? title : current.title;
         const newClient = clientName !== undefined ? clientName : current.clientName;
         const newStartDate = startDate !== undefined ? startDate : current.startDate;
         const newEndDate = endDate !== undefined ? endDate : current.endDate;
+        const newIsLocked = isLocked !== undefined ? (isLocked ? 1 : 0) : current.isLocked;
 
         const newCongelados = congeladosData !== undefined 
             ? (typeof congeladosData === 'string' ? congeladosData : JSON.stringify(congeladosData))
@@ -2231,10 +2226,10 @@ router.put('/daily-cuts/:id', requirePermission('summary2', 'edit'), async (req,
 
         await pool.query(
             `UPDATE daily_cuts 
-            SET title = ?, clientName = ?, startDate = ?, endDate = ?, 
+            SET title = ?, clientName = ?, startDate = ?, endDate = ?, isLocked = ?,
                 congeladosData = ?, preparadosData = ?, servicesData = ?, totalsData = ?
             WHERE id = ?`,
-            [newTitle, newClient, newStartDate, newEndDate, newCongelados, newPreparados, newServices, newTotals, req.params.id]
+            [newTitle, newClient, newStartDate, newEndDate, newIsLocked, newCongelados, newPreparados, newServices, newTotals, req.params.id]
         );
 
         await logSystemEvent({
@@ -2242,14 +2237,14 @@ router.put('/daily-cuts/:id', requirePermission('summary2', 'edit'), async (req,
             username: actor,
             action: 'UPDATE_DAILY_CUT',
             module: 'summary2',
-            details: `Actualización de corte diario '${newTitle}' (ID ${req.params.id})`
+            details: `Actualizaci\u00f3n de corte diario '${newTitle}' (ID ${req.params.id})`
         });
 
         res.json({
             success: true,
             id: req.params.id,
             title: newTitle,
-            isLocked: false
+            isLocked: Boolean(newIsLocked)
         });
     } catch (error) {
         console.error('Error updating daily cut:', error);
@@ -2497,6 +2492,7 @@ router.put('/insurance-cuts/:id', requirePermission('insurance', 'edit'), async 
             startDate,
             cutoffDate,
             premiumRate,
+            isLocked,
             rowsData,
             totalsData
         } = req.body;
@@ -2510,19 +2506,13 @@ router.put('/insurance-cuts/:id', requirePermission('insurance', 'edit'), async 
 
         const current = existing[0];
 
-        // Impedir modificación si el corte está bloqueado
-        if (current.isLocked === 1) {
-            return res.status(409).json({
-                error: 'El corte de seguro se encuentra bloqueado. Para modificar sus datos debe desbloquearlo expresamente primero.'
-            });
-        }
-
         const newTitle = title !== undefined ? title : current.title;
         const newCustomer = customerName !== undefined ? customerName : current.customerName;
         const newWarehouse = warehouseName !== undefined ? warehouseName : current.warehouseName;
         const newStartDate = startDate !== undefined ? startDate : current.startDate;
         const newCutoffDate = cutoffDate !== undefined ? cutoffDate : current.cutoffDate;
         const newPremiumRate = premiumRate !== undefined ? premiumRate : current.premiumRate;
+        const newIsLocked = isLocked !== undefined ? (isLocked ? 1 : 0) : current.isLocked;
 
         const newRows = rowsData !== undefined 
             ? (typeof rowsData === 'string' ? rowsData : JSON.stringify(rowsData))
@@ -2535,9 +2525,9 @@ router.put('/insurance-cuts/:id', requirePermission('insurance', 'edit'), async 
         await pool.query(
             `UPDATE insurance_cuts 
             SET title = ?, customerName = ?, warehouseName = ?, startDate = ?, cutoffDate = ?, 
-                premiumRate = ?, rowsData = ?, totalsData = ?
+                premiumRate = ?, isLocked = ?, rowsData = ?, totalsData = ?
             WHERE id = ?`,
-            [newTitle, newCustomer, newWarehouse, newStartDate, newCutoffDate, newPremiumRate, newRows, newTotals, req.params.id]
+            [newTitle, newCustomer, newWarehouse, newStartDate, newCutoffDate, newPremiumRate, newIsLocked, newRows, newTotals, req.params.id]
         );
 
         await logSystemEvent({
@@ -2545,14 +2535,14 @@ router.put('/insurance-cuts/:id', requirePermission('insurance', 'edit'), async 
             username: actor,
             action: 'UPDATE_INSURANCE_CUT',
             module: 'insurance',
-            details: `Actualización de corte de seguro '${newTitle}' (ID ${req.params.id})`
+            details: `Actualizaci\u00f3n de corte de seguro '${newTitle}' (ID ${req.params.id})`
         });
 
         res.json({
             success: true,
             id: req.params.id,
             title: newTitle,
-            isLocked: false
+            isLocked: Boolean(newIsLocked)
         });
     } catch (error) {
         console.error('Error updating insurance cut:', error);

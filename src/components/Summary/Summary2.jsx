@@ -833,7 +833,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     toast.success('Has regresado al Modo en Tiempo Real.');
   };
 
-  // Sincronizar Servicios Extraordinarios del corte con los movimientos reales del per?odo
+  // Sincronizar Servicios Extraordinarios del corte con los movimientos reales del per\u00edodo
   const handleSyncServicesFromLive = () => {
     if (!activeCut) return;
     const syncedServices = liveServicesData.map(resolveServiceDetails);
@@ -852,10 +852,10 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     setCustomPreparados(syncedPrep);
     setCustomServices(syncedServ);
     triggerAutoSave(syncedCong, syncedPrep, syncedServ);
-    toast.success('Corte y servicios extraordinarios sincronizados al 100% con los movimientos del per?odo.');
+    toast.success('Corte y servicios extraordinarios sincronizados al 100% con los movimientos del período.');
   };
 
-  // Cuando el corte est? desbloqueado y cambian las fechas, recalcular lecturas y servicios extraordinarios autom?ticamente
+  // Cuando el corte está desbloqueado y cambian las fechas, recalcular lecturas y servicios extraordinarios automáticamente
   useEffect(() => {
     if (activeCut && !isLocked && pendingDateSyncRef.current) {
       const { start, end } = pendingDateSyncRef.current;
@@ -2091,7 +2091,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
                 className="btn btn-outline"
                 style={{ fontSize: '0.75rem', padding: '0.28rem 0.65rem', borderColor: '#e67e22', color: '#e67e22' }}
                 onClick={handleSyncServicesFromLive}
-                title="Recalcular y actualizar los servicios extraordinarios de este corte a partir de los movimientos del per?odo"
+                title="Recalcular y actualizar los servicios extraordinarios de este corte a partir de los movimientos del período"
               >
                 <RefreshCw size={13} /> Actualizar Servicios Extraordinarios
               </button>
