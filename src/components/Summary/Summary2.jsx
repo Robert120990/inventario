@@ -63,6 +63,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
   const [editingMovement, setEditingMovement] = useState(null);
   
   const autoSaveTimerRef = useRef(null);
+  const pendingDateSyncRef = useRef(false);
 
   // Cargar cortes registrados al iniciar para sincronización de balances, baseline y fecha inicial automática
   useEffect(() => {
@@ -107,7 +108,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
       effectiveEnd = newStart;
     }
     if (activeCut && !isLocked) {
-      triggerAutoSave(null, null, null, newStart, effectiveEnd);
+      pendingDateSyncRef.current = { start: newStart, end: effectiveEnd };
     }
   };
 
@@ -120,7 +121,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
       effectiveStart = newEnd;
     }
     if (activeCut && !isLocked) {
-      triggerAutoSave(null, null, null, effectiveStart, newEnd);
+      pendingDateSyncRef.current = { start: effectiveStart, end: newEnd };
     }
   };
 
@@ -129,7 +130,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     setStartDate(start);
     setEndDate(end);
     if (activeCut && !isLocked) {
-      triggerAutoSave(null, null, null, start, end);
+      pendingDateSyncRef.current = { start, end };
     }
   };
 
@@ -202,11 +203,11 @@ const Summary2 = ({ openHistoryOnLoad }) => {
           pMovs.forEach(m => {
             const mDate = String(m.date || '').split('T')[0];
             if (mDate > baselineDate && mDate < d0) {
-              const item = m.items.find(it => it.productId === p.id);
-              if (item) {
+              const matchingItems = m.items.filter(it => it.productId === p.id);
+              matchingItems.forEach(item => {
                 if (m.type === 'in') accumulated += Number(item[unitField] || 0);
                 if (m.type === 'out') accumulated -= Number(item[unitField] || 0);
-              }
+              });
             }
           });
         });
@@ -220,22 +221,22 @@ const Summary2 = ({ openHistoryOnLoad }) => {
 
         const afterD0 = pMovs.filter(m => String(m.date || '').split('T')[0] > d0);
         afterD0.forEach(m => {
-          const item = m.items.find(it => it.productId === p.id);
-          if (item) {
+          const matchingItems = m.items.filter(it => it.productId === p.id);
+          matchingItems.forEach(item => {
             if (m.type === 'in') stockAtD0End -= Number(item[unitField] || 0);
             if (m.type === 'out') stockAtD0End += Number(item[unitField] || 0);
-          }
+          });
         });
 
         const onD0 = pMovs.filter(m => String(m.date || '').split('T')[0] === d0);
         let inOnD0 = 0;
         let outOnD0 = 0;
         onD0.forEach(m => {
-          const item = m.items.find(it => it.productId === p.id);
-          if (item) {
+          const matchingItems = m.items.filter(it => it.productId === p.id);
+          matchingItems.forEach(item => {
             if (m.type === 'in') inOnD0 += Number(item[unitField] || 0);
             if (m.type === 'out') outOnD0 += Number(item[unitField] || 0);
-          }
+          });
         });
 
         const initialOnD0 = stockAtD0End - inOnD0 + outOnD0;
@@ -255,11 +256,11 @@ const Summary2 = ({ openHistoryOnLoad }) => {
         const pMovs = movements.filter(m => m.items && m.items.some(it => it.productId === p.id));
         const onDate = pMovs.filter(m => String(m.date || '').split('T')[0] === dateStr);
         onDate.forEach(m => {
-          const item = m.items.find(it => it.productId === p.id);
-          if (item) {
+          const matchingItems = m.items.filter(it => it.productId === p.id);
+          matchingItems.forEach(item => {
             if (m.type === 'in') dayIn += Number(item[unitField] || 0);
             if (m.type === 'out') dayOut += Number(item[unitField] || 0);
-          }
+          });
         });
       });
 
@@ -2046,8 +2047,21 @@ const Summary2 = ({ openHistoryOnLoad }) => {
               </span>
             )}
           </div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--color-text-light)' }}>
-            Total Servicios: <strong style={{ color: '#e67e22' }}>${formatCurrency(totalServicios)}</strong>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {activeCut && (
+              <button
+                type="button"
+                className="btn btn-outline"
+                style={{ fontSize: '0.75rem', padding: '0.28rem 0.65rem', borderColor: '#e67e22', color: '#e67e22' }}
+                onClick={handleSyncServicesFromLive}
+                title="Recalcular y actualizar los servicios extraordinarios de este corte a partir de los movimientos del per?odo"
+              >
+                <RefreshCw size={13} /> Actualizar Servicios Extraordinarios
+              </button>
+            )}
+            <div style={{ fontSize: '0.85rem', color: 'var(--color-text-light)' }}>
+              Total Servicios: <strong style={{ color: '#e67e22' }}>${formatCurrency(totalServicios)}</strong>
+            </div>
           </div>
         </div>
 
