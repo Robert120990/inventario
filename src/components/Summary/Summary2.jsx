@@ -895,7 +895,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     toast.success('Has regresado al Modo en Tiempo Real.');
   };
 
-  // Sincronizar Servicios Extraordinarios del corte con los movimientos reales del per\u00edodo
+  // Sincronizar Servicios Extraordinarios del corte con los movimientos reales del período
   const handleSyncServicesFromLive = () => {
     if (!activeCut) return;
     const syncedServices = liveServicesData.map(resolveServiceDetails);

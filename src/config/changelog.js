@@ -1,6 +1,24 @@
 // Registro cronológico maestro y automático de versiones del sistema generado desde Git
 export const SYSTEM_CHANGELOG = [
   {
+    "id": "ac2dcaa",
+    "version": "v2.7.160",
+    "commit": "ac2dcaa",
+    "fullCommit": "ac2dcaae45755beef066dbaf206293e3b5af35b2",
+    "description": "Permitir agregar, editar fecha y eliminar servicios extraordinarios en cortes desbloqueados",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-10-20",
+    "time": "16:52",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "feature",
+        "text": "Permitir agregar, editar fecha y eliminar servicios extraordinarios en cortes desbloqueados"
+      }
+    ]
+  },
+  {
     "id": "2df86fa",
     "version": "v2.7.159",
     "commit": "2df86fa",
@@ -171,7 +189,7 @@ export const SYSTEM_CHANGELOG = [
     "author": "Ing. Raúl Sosa",
     "date": "2026-09-29",
     "time": "17:44",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
