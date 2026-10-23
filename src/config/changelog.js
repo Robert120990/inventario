@@ -1,6 +1,24 @@
 // Registro cronológico maestro y automático de versiones del sistema generado desde Git
 export const SYSTEM_CHANGELOG = [
   {
+    "id": "b5dc63e",
+    "version": "v2.7.166",
+    "commit": "b5dc63e",
+    "fullCommit": "b5dc63e71b7d51e06da848958a5578c32f314351",
+    "description": "Add IndexedDB per-user queue isolation, server idempotency, conflict detection and incremental sync",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-10-23",
+    "time": "08:27",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "feature",
+        "text": "Add IndexedDB per-user queue isolation, server idempotency, conflict detection and incremental sync"
+      }
+    ]
+  },
+  {
     "id": "0f52cfb",
     "version": "v2.7.165",
     "commit": "0f52cfb",
@@ -171,7 +189,7 @@ export const SYSTEM_CHANGELOG = [
     "author": "Ing. Raúl Sosa",
     "date": "2026-10-20",
     "time": "16:18",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
@@ -2683,24 +2701,6 @@ export const SYSTEM_CHANGELOG = [
       {
         "type": "improvement",
         "text": "Implementacion de notificaciones"
-      }
-    ]
-  },
-  {
-    "id": "c501247",
-    "version": "v2.7.16",
-    "commit": "c501247",
-    "fullCommit": "c5012476ccd406031adf0b4f56c5c2d897843abe",
-    "description": "Logo y nombre",
-    "author": "Roberto",
-    "date": "2026-03-19",
-    "time": "12:41",
-    "isOfficial": false,
-    "isGitCommit": true,
-    "changes": [
-      {
-        "type": "improvement",
-        "text": "Logo y nombre"
       }
     ]
   }
