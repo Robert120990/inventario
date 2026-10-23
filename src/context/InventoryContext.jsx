@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { SYSTEM_CHANGELOG } from '../config/changelog';
+import versionInfo from '../config/version.json';
 import { CONTRACT_INFO, applyDynamicContractRates } from '../utils/contractRates';
 import {
   saveLocalSnapshot,
@@ -65,16 +65,50 @@ export const apiFetch = async (url, options = {}) => {
   }
 };
 
+const INITIAL_VERSION_LIST = [
+  {
+    id: versionInfo.build || 1,
+    version: versionInfo.displayVersion || `v${versionInfo.version || '2.7.162'}`,
+    date: (versionInfo.buildDate || versionInfo.updatedAt || new Date().toISOString()).slice(0, 10),
+    time: '00:00',
+    author: 'Sistema',
+    description: 'Versión actual del sistema',
+    changes: [],
+    isPlaceholder: true
+  }
+];
+
+let cachedSystemChangelog = null;
+
+const loadSystemChangelog = async () => {
+  if (cachedSystemChangelog) return cachedSystemChangelog;
+  try {
+    const mod = await import('../config/changelog');
+    cachedSystemChangelog = Array.isArray(mod.SYSTEM_CHANGELOG) ? mod.SYSTEM_CHANGELOG : INITIAL_VERSION_LIST;
+  } catch {
+    cachedSystemChangelog = INITIAL_VERSION_LIST;
+  }
+  return cachedSystemChangelog;
+};
+
 // Fusionador seguro de versiones oficiales y creadas dinámicamente en BD
-const mergeChangelog = (dbVersions = []) => {
+const mergeChangelog = (dbVersions = [], baseChangelog = cachedSystemChangelog || INITIAL_VERSION_LIST) => {
   const map = new Map();
   // 1. Agregar versiones del changelog oficial
-  SYSTEM_CHANGELOG.forEach(v => map.set(v.version.toLowerCase(), v));
+  if (Array.isArray(baseChangelog)) {
+    baseChangelog.forEach(v => {
+      const key = (v?.version || '').toLowerCase();
+      if (key) {
+        map.set(key, v);
+      }
+    });
+  }
   // 2. Agregar o sobreescribir versiones provenientes de la base de datos
   if (Array.isArray(dbVersions)) {
     dbVersions.forEach(v => {
-      const key = (v.version || '').toLowerCase();
+      const key = (v?.version || '').toLowerCase();
       if (key) {
+        if (v.isPlaceholder && map.has(key)) return;
         map.set(key, { ...map.get(key), ...v });
       }
     });
@@ -105,7 +139,7 @@ export const InventoryProvider = ({ children }) => {
     logo: null
   }));
   const [categoryUnits, setCategoryUnits] = useState(() => loadLocalSnapshot('categoryUnits', {}));
-  const [versions, setVersions] = useState(SYSTEM_CHANGELOG);
+  const [versions, setVersions] = useState(INITIAL_VERSION_LIST);
   const [dailyCuts, setDailyCuts] = useState(() => loadLocalSnapshot('dailyCuts', []));
   const [cutHistoryModalOpen, setCutHistoryModalOpen] = useState(false);
   const [selectedCutForSummary, setSelectedCutForSummary] = useState(null);
@@ -232,6 +266,76 @@ export const InventoryProvider = ({ children }) => {
       .then(res => (res && res.ok ? res.json() : null))
       .catch(() => null);
 
+  // Carga diferida del historial completo de versiones sin bloquear el bundle inicial
+  useEffect(() => {
+    let active = true;
+    loadSystemChangelog().then(loaded => {
+      if (active) {
+        setVersions(prev => mergeChangelog(prev, loaded));
+      }
+    });
+    return () => { active = false; };
+  }, []);
+
+  const hydrateFromBootstrapData = useCallback((bootData) => {
+    if (!bootData) return;
+    if (Array.isArray(bootData.products)) setProducts(bootData.products);
+    if (Array.isArray(bootData.movements)) setMovements(bootData.movements);
+    if (Array.isArray(bootData.users)) {
+      setUsers(bootData.users);
+      setCurrentUser(prev => {
+        if (!prev?.id) return prev;
+        const freshSelf = bootData.users.find(u => Number(u.id) === Number(prev.id));
+        if (freshSelf && freshSelf.permissions !== undefined) {
+          const hasChanged =
+            prev.role !== freshSelf.role ||
+            prev.role_id !== freshSelf.role_id ||
+            prev.roleName !== freshSelf.roleName ||
+            JSON.stringify(prev.permissions) !== JSON.stringify(freshSelf.permissions);
+
+          if (hasChanged) {
+            return {
+              ...prev,
+              permissions: freshSelf.permissions,
+              role: freshSelf.role,
+              role_id: freshSelf.role_id,
+              roleName: freshSelf.roleName
+            };
+          }
+        }
+        return prev;
+      });
+    }
+    if (Array.isArray(bootData.roles)) setRoles(bootData.roles);
+    if (Array.isArray(bootData.notifications)) {
+      setNotifications(bootData.notifications);
+      saveLocalSnapshot('notifications', bootData.notifications);
+    }
+    if (Array.isArray(bootData.dailyCuts)) setDailyCuts(bootData.dailyCuts);
+    if (bootData.config && !bootData.config.error) {
+      if (bootData.config.categories) setCategories(bootData.config.categories.map(c => c.name));
+      if (bootData.config.docTypes) setDocumentTypes(bootData.config.docTypes.map(d => d.name));
+      const units = {};
+      if (bootData.config.categories) {
+        bootData.config.categories.forEach(c => {
+          units[c.name] = c.unit_type;
+        });
+        setCategoryUnits(units);
+      }
+    }
+    if (bootData.settings && !bootData.settings.error && bootData.settings.name) {
+      setSettings(bootData.settings);
+    }
+    if (bootData.contractRates && !bootData.contractRates.error) {
+      const updated = applyDynamicContractRates(bootData.contractRates);
+      setContractRates({ ...updated });
+      saveLocalSnapshot('contractRates', updated);
+    }
+    if (Array.isArray(bootData.versions)) {
+      loadSystemChangelog().then(base => setVersions(mergeChangelog(bootData.versions, base)));
+    }
+  }, []);
+
   // Initial Fetch (con respaldo instantáneo OnDemand si no hay internet)
   useEffect(() => {
     const fetchData = async () => {
@@ -252,9 +356,6 @@ export const InventoryProvider = ({ children }) => {
         return;
       }
 
-      // Hidratación silenciosa no bloqueante de tarifas dinámicas del contrato
-      fetchContractRates();
-
       // Fail-safe: Force stop loading after 6 seconds (o instantáneo si ya hay snapshot local)
       const hasCachedProducts = loadLocalSnapshot('products', []).length > 0;
       if (hasCachedProducts) {
@@ -266,6 +367,15 @@ export const InventoryProvider = ({ children }) => {
 
       try {
         if (!hasCachedProducts) setLoading(true);
+        const bootData = await fetchJsonOrNull(`${API_BASE_URL}/api/bootstrap`);
+        if (bootData && bootData.success) {
+          clearTimeout(timeoutId);
+          hydrateFromBootstrapData(bootData);
+          return;
+        }
+
+        // Fallback a endpoints individuales si /api/bootstrap no está disponible
+        fetchContractRates();
         const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes, rolesRes, notifRes, cutsRes] = await Promise.all([
           fetchJsonOrNull(`${API_BASE_URL}/api/products`),
           fetchJsonOrNull(`${API_BASE_URL}/api/movements`),
@@ -280,33 +390,17 @@ export const InventoryProvider = ({ children }) => {
         
         clearTimeout(timeoutId);
 
-        if (Array.isArray(prodRes)) setProducts(prodRes);
-        if (Array.isArray(movRes)) setMovements(movRes);
-        if (Array.isArray(userRes)) setUsers(userRes);
-        if (Array.isArray(versionsRes)) setVersions(mergeChangelog(versionsRes));
-        if (Array.isArray(rolesRes)) setRoles(rolesRes);
-        if (Array.isArray(notifRes)) {
-          setNotifications(notifRes);
-          saveLocalSnapshot('notifications', notifRes);
-        }
-        if (Array.isArray(cutsRes)) setDailyCuts(cutsRes);
-
-        if (configRes && !configRes.error) {
-          if (configRes.categories) setCategories(configRes.categories.map(c => c.name));
-          if (configRes.docTypes) setDocumentTypes(configRes.docTypes.map(d => d.name));
-          
-          const units = {};
-          if (configRes.categories) {
-            configRes.categories.forEach(c => {
-              units[c.name] = c.unit_type;
-            });
-            setCategoryUnits(units);
-          }
-        }
-        
-        if (settingsRes && !settingsRes.error && settingsRes.name) {
-          setSettings(settingsRes);
-        }
+        hydrateFromBootstrapData({
+          products: prodRes,
+          movements: movRes,
+          users: userRes,
+          config: configRes,
+          settings: settingsRes,
+          versions: versionsRes,
+          roles: rolesRes,
+          notifications: notifRes,
+          dailyCuts: cutsRes
+        });
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -316,7 +410,7 @@ export const InventoryProvider = ({ children }) => {
     };
 
     fetchData();
-  }, []);
+  }, [hydrateFromBootstrapData]);
 
   // Heartbeat for active session tracking (every 20 seconds)
   useEffect(() => {
@@ -347,7 +441,7 @@ export const InventoryProvider = ({ children }) => {
     sendHeartbeat();
     const interval = setInterval(sendHeartbeat, 20000); // Every 20 seconds
     return () => clearInterval(interval);
-  }, [currentUser?.id, sessionId]);
+  }, [currentUser?.id, currentUser?.username, sessionId]);
 
   const fetchProducts = async () => {
     try {
@@ -421,6 +515,12 @@ export const InventoryProvider = ({ children }) => {
   const refreshData = useCallback(async () => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) return;
     try {
+      const bootData = await fetchJsonOrNull(`${API_BASE_URL}/api/bootstrap`);
+      if (bootData && bootData.success) {
+        hydrateFromBootstrapData(bootData);
+        return;
+      }
+
       fetchContractRates();
       const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes, rolesRes, notifRes] = await Promise.all([
         fetchJsonOrNull(`${API_BASE_URL}/api/products`),
@@ -433,51 +533,20 @@ export const InventoryProvider = ({ children }) => {
         fetchJsonOrNull(`${API_BASE_URL}/api/notifications`)
       ]);
 
-      if (Array.isArray(prodRes)) setProducts(prodRes);
-      if (Array.isArray(movRes)) setMovements(movRes);
-      if (Array.isArray(userRes)) {
-        setUsers(userRes);
-        if (currentUser?.id) {
-          const freshSelf = userRes.find(u => Number(u.id) === Number(currentUser.id));
-          if (freshSelf && freshSelf.permissions !== undefined) {
-            const hasChanged = 
-              currentUser.role !== freshSelf.role ||
-              currentUser.role_id !== freshSelf.role_id ||
-              currentUser.roleName !== freshSelf.roleName ||
-              JSON.stringify(currentUser.permissions) !== JSON.stringify(freshSelf.permissions);
-
-            if (hasChanged) {
-              setCurrentUser(prev => ({
-                ...prev,
-                permissions: freshSelf.permissions,
-                role: freshSelf.role,
-                role_id: freshSelf.role_id,
-                roleName: freshSelf.roleName
-              }));
-            }
-          }
-        }
-      }
-      if (Array.isArray(versionsRes)) setVersions(mergeChangelog(versionsRes));
-      if (Array.isArray(rolesRes)) setRoles(rolesRes);
-      if (Array.isArray(notifRes)) {
-        setNotifications(notifRes);
-        saveLocalSnapshot('notifications', notifRes);
-      }
-      if (configRes && !configRes.error) {
-        if (configRes.categories) setCategories(configRes.categories.map(c => c.name));
-        if (configRes.docTypes) setDocumentTypes(configRes.docTypes.map(d => d.name));
-        const units = {};
-        if (configRes.categories) {
-          configRes.categories.forEach(c => { units[c.name] = c.unit_type; });
-          setCategoryUnits(units);
-        }
-      }
-      if (settingsRes && !settingsRes.error && settingsRes.name) setSettings(settingsRes);
+      hydrateFromBootstrapData({
+        products: prodRes,
+        movements: movRes,
+        users: userRes,
+        config: configRes,
+        settings: settingsRes,
+        versions: versionsRes,
+        roles: rolesRes,
+        notifications: notifRes
+      });
     } catch (error) {
       console.error('Error refreshing data:', error);
     }
-  }, [currentUser]);
+  }, [hydrateFromBootstrapData]);
 
   // Funciones públicas de sincronización y gestión de cola OnDemand
   const syncOnDemandNow = useCallback(async () => {
@@ -1218,8 +1287,11 @@ export const InventoryProvider = ({ children }) => {
         body: JSON.stringify({ description, changes, author: currentUser?.username || author })
       });
       if (res.ok) {
-        const versionsRes = await apiFetch(`${API_BASE_URL}/api/versions`).then(r => r.json());
-        setVersions(mergeChangelog(versionsRes));
+        const [versionsRes, base] = await Promise.all([
+          apiFetch(`${API_BASE_URL}/api/versions`).then(r => r.json()),
+          loadSystemChangelog()
+        ]);
+        setVersions(mergeChangelog(versionsRes, base));
         return { success: true };
       }
       return { success: false };

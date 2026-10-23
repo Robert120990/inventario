@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { 
   FileText, Download, FileSpreadsheet, FileOutput, Layers, Package, 
@@ -158,7 +158,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
   }, [startDate, endDate]);
 
   // Helper para calcular inventario diario para un grupo de productos y tipo de unidad con cuadre continuo
-  const calculateDailySeries = (targetProducts, unitField, stockField, rate, unitLabel, descText) => {
+  const calculateDailySeries = useCallback((targetProducts, unitField, stockField, rate, unitLabel, descText) => {
     if (targetProducts.length === 0 || dateList.length === 0) return [];
 
     const d0 = dateList[0];
@@ -284,7 +284,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     });
 
     return resultRows;
-  };
+  }, [dateList, dailyCuts, cutsList, movements]);
 
   // Cálculo en vivo: 1. PRODUCTOS CONGELADOS
   const liveCongeladosRows = useMemo(() => {
@@ -298,7 +298,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
       'Lbs',
       'Mantenimiento congelado (-18°)'
     );
-  }, [products, movements, dateList, categoryUnits, cutsList, dailyCuts]);
+  }, [products, dateList, categoryUnits, calculateDailySeries]);
 
   // Cálculo en vivo: 2. PRODUCTOS PREPARADOS
   const livePreparadosRows = useMemo(() => {
@@ -312,7 +312,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
       'Cst',
       'Mantenimiento congelado (Preparados)'
     );
-  }, [products, movements, dateList, categoryUnits, cutsList, dailyCuts]);
+  }, [products, dateList, categoryUnits, calculateDailySeries]);
 
 
   // Cálculo en vivo: 3. SERVICIOS EXTRAORDINARIOS (Resueltos con libras y tarifas reales)
@@ -905,7 +905,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
   };
 
   // Sincronizar todo el corte (lecturas diarias + servicios extraordinarios) con los movimientos reales
-  const _handleSyncCutFromLive = () => {
+  const handleSyncCutFromLive = () => {
     if (!activeCut) return;
     const syncedCong = ensureCascadingIntegrity(liveCongeladosRows, 0.001);
     const syncedPrep = ensureCascadingIntegrity(livePreparadosRows, 0.038);
@@ -946,7 +946,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
       toast.success(`Corte '${selectedCutForSummary.title}' cargado.`);
       setSelectedCutForSummary(null);
     }
-  }, [selectedCutForSummary]);
+  }, [selectedCutForSummary, setSelectedCutForSummary]);
 
   useEffect(() => {
     if (openHistoryOnLoad) {
@@ -1482,7 +1482,22 @@ const Summary2 = ({ openHistoryOnLoad }) => {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            {!isLocked && (
+              <button
+                className="btn btn-outline"
+                style={{
+                  fontSize: '0.8rem',
+                  padding: '0.4rem 0.75rem',
+                  borderColor: 'rgba(245, 158, 11, 0.5)',
+                  color: '#d97706'
+                }}
+                onClick={handleSyncCutFromLive}
+                title="Recalcular lecturas y servicios extraordinarios del corte con los movimientos reales del período"
+              >
+                <RefreshCw size={14} /> Sincronizar con Movimientos
+              </button>
+            )}
             <button
               className="btn btn-outline"
               style={{

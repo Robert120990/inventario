@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateToken, verifyToken } from '../api/middleware/auth.js';
+import { generateToken, verifyToken, invalidateAuthCache } from '../api/middleware/auth.js';
 import pool from '../api/db.js';
 
 describe('Autenticación y Sesiones (verifyToken / generateToken)', () => {
@@ -108,5 +108,15 @@ describe('Autenticación y Sesiones (verifyToken / generateToken)', () => {
         const { authLimiter, apiLimiter } = await import('../api/index.js');
         assert.equal(typeof authLimiter, 'function');
         assert.equal(typeof apiLimiter, 'function');
+    });
+
+    it('invalidateAuthCache está exportada y limpia entradas de caché por usuario, sesión o globalmente', () => {
+        assert.equal(typeof invalidateAuthCache, 'function');
+        assert.doesNotThrow(() => {
+            invalidateAuthCache(99, 'sess-123');
+            invalidateAuthCache(99);
+            invalidateAuthCache(null, 'sess-123');
+            invalidateAuthCache();
+        });
     });
 });

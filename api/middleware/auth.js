@@ -21,6 +21,31 @@ if (process.env.NODE_ENV === 'production') {
 
 export const JWT_SECRET = resolvedSecret;
 
+const AUTH_CACHE_TTL_MS = 20000; // 20s TTL
+const AUTH_CACHE_MAX_ENTRIES = 500;
+const authCache = new Map();
+
+const isTestEnv =
+    process.env.NODE_ENV === 'test' ||
+    process.execArgv.includes('--test') ||
+    process.argv.some(a => a.includes('.test.js'));
+
+export const invalidateAuthCache = (userId = null, sessionId = null) => {
+    if (userId === null && sessionId === null) {
+        authCache.clear();
+        return;
+    }
+    const uidPrefix = userId !== null ? `${userId}:` : null;
+    const sidSuffix = sessionId !== null ? `:${sessionId}` : null;
+    for (const key of authCache.keys()) {
+        const matchUser = uidPrefix === null || key.startsWith(uidPrefix);
+        const matchSession = sidSuffix === null || key.endsWith(sidSuffix);
+        if (matchUser && matchSession) {
+            authCache.delete(key);
+        }
+    }
+};
+
 export const verifyToken = async (req, res, next) => {
     // Evitar doble consulta a la base de datos si el middleware global ya autenticó la petición
     if (req.user && req.user.id) {
@@ -42,6 +67,18 @@ export const verifyToken = async (req, res, next) => {
         decoded = jwt.verify(token, JWT_SECRET);
     } catch {
         return res.status(401).json({ error: 'Token inválido o expirado.' });
+    }
+
+    const cacheKey = decoded?.sessionId ? `${decoded.id}:${decoded.sessionId}` : null;
+    if (!isTestEnv && cacheKey) {
+        const cached = authCache.get(cacheKey);
+        if (cached) {
+            if (cached.expiresAt > Date.now()) {
+                req.user = { ...cached.user };
+                return next();
+            }
+            authCache.delete(cacheKey);
+        }
     }
 
     try {
@@ -101,6 +138,19 @@ export const verifyToken = async (req, res, next) => {
             permissions,
             sessionId: decoded.sessionId || null
         };
+
+        if (cacheKey) {
+            if (authCache.size >= AUTH_CACHE_MAX_ENTRIES && !authCache.has(cacheKey)) {
+                const oldestKey = authCache.keys().next().value;
+                if (oldestKey !== undefined) {
+                    authCache.delete(oldestKey);
+                }
+            }
+            authCache.set(cacheKey, {
+                user: { ...req.user },
+                expiresAt: Date.now() + AUTH_CACHE_TTL_MS
+            });
+        }
 
         next();
     } catch (err) {

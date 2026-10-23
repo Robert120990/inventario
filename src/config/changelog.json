@@ -1,5 +1,23 @@
 [
   {
+    "id": "2112ad0",
+    "version": "v2.7.163",
+    "commit": "2112ad0",
+    "fullCommit": "2112ad05da6cdeb913b22a5bea8679ff5367710e",
+    "description": "Fix(auth,db): clave JWT determinista entre instancias Serverless en produccion y deduplicacion de verifyToken",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-10-23",
+    "time": "19:12",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "fix",
+        "text": "Fix(auth,db): clave JWT determinista entre instancias Serverless en produccion y deduplicacion de verifyToken"
+      }
+    ]
+  },
+  {
     "id": "b8ecc70",
     "version": "v2.7.162",
     "commit": "b8ecc70",
@@ -170,7 +188,7 @@
     "author": "Ing. Raúl Sosa",
     "date": "2026-09-30",
     "time": "21:48",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
@@ -2682,24 +2700,6 @@
       {
         "type": "improvement",
         "text": "Mejora en el dhasboard"
-      }
-    ]
-  },
-  {
-    "id": "1f428b5",
-    "version": "v2.7.13",
-    "commit": "1f428b5",
-    "fullCommit": "1f428b5f4d116e410053eea851a5b7ec759a8288",
-    "description": "Mejora usuarios y exportar pdf",
-    "author": "Roberto",
-    "date": "2026-03-19",
-    "time": "11:39",
-    "isOfficial": false,
-    "isGitCommit": true,
-    "changes": [
-      {
-        "type": "improvement",
-        "text": "Mejora usuarios y exportar pdf"
       }
     ]
   }

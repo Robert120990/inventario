@@ -442,4 +442,126 @@ describe('Seguridad y Control de Acceso (RBAC, Lockout y Escalabilidad)', () => 
         assert.ok(restoreRoute, 'POST /system/restore debe estar registrado');
     });
 
+    it('Endpoint GET /bootstrap consolida carga inicial en paralelo respetando permisos RBAC y ?summary=1 en /daily-cuts', async () => {
+        const routerStack = app._router.stack
+            .find(layer => layer.route?.path === '/api' || layer.name === 'router')
+            ?.handle?.stack || [];
+
+        const bootstrapRoute = routerStack.find(l => l.route?.path === '/bootstrap' && l.route?.methods?.get);
+        const dailyCutsRoute = routerStack.find(l => l.route?.path === '/daily-cuts' && l.route?.methods?.get);
+        assert.ok(bootstrapRoute, 'GET /bootstrap debe estar registrado');
+        assert.ok(dailyCutsRoute, 'GET /daily-cuts debe estar registrado');
+
+        const originalQuery = pool.query;
+        try {
+            pool.query = async (sql) => {
+                if (sql.includes('FROM products')) {
+                    return [[{ id: 'p-1', sku: 'SKU-01', description: 'Pollo', category: 'Congelados', stockUnits: 10, stockPounds: 50, stockBaskets: 2 }]];
+                }
+                if (sql.includes('FROM movements')) {
+                    return [[{ id: 'm-1', type: 'in', date: '2026-01-20', refNumber: 'REF-1' }]];
+                }
+                if (sql.includes('FROM movement_items')) {
+                    return [[{ id: 1, movementId: 'm-1', productId: 'p-1', qtyUnits: 10, qtyPounds: 50, qtyBaskets: 2 }]];
+                }
+                if (sql.includes('FROM services')) {
+                    return [[]];
+                }
+                if (sql.includes('FROM categories')) {
+                    return [[{ id: 1, name: 'Congelados', unit_type: 'pounds' }]];
+                }
+                if (sql.includes('FROM document_types')) {
+                    return [[{ id: 1, name: 'Factura' }]];
+                }
+                if (sql.includes('FROM settings')) {
+                    return [[{ id: 1, name: 'Inventario Pro', logo: null }]];
+                }
+                if (sql.includes('FROM system_config')) {
+                    return [[]];
+                }
+                if (sql.includes('FROM versions')) {
+                    return [[{ id: 1, version: 'V1', description: 'Init', changes: '["Cambio 1"]', author: 'Admin', date: '2026-01-01', time: '10:00' }]];
+                }
+                if (sql.includes('FROM notifications')) {
+                    return [[{ id: 'n-1', title: 'Aviso', message: 'Ok', type: 'info', isRead: 0 }]];
+                }
+                if (sql.includes('FROM daily_cuts')) {
+                    return [[
+                        {
+                            id: 'cut-latest',
+                            title: 'Corte Reciente',
+                            startDate: '2026-01-11',
+                            endDate: '2026-01-25',
+                            isLocked: 1,
+                            congeladosData: JSON.stringify([{ sku: 'SKU-01', finalPounds: 50 }]),
+                            preparadosData: JSON.stringify([{ sku: 'SKU-02', finalUnits: 10 }]),
+                            servicesData: JSON.stringify([]),
+                            totalsData: JSON.stringify({ grandTotal: 120.5 })
+                        },
+                        {
+                            id: 'cut-older',
+                            title: 'Corte Anterior',
+                            startDate: '2025-12-26',
+                            endDate: '2026-01-10',
+                            isLocked: 1,
+                            congeladosData: JSON.stringify([{ sku: 'SKU-01', finalPounds: 30 }]),
+                            preparadosData: JSON.stringify([{ sku: 'SKU-02', finalUnits: 5 }]),
+                            servicesData: JSON.stringify([]),
+                            totalsData: JSON.stringify({ grandTotal: 95.0 })
+                        }
+                    ]];
+                }
+                return [[]];
+            };
+
+            // 1. Probar /bootstrap con un usuario sin permisos de seguridad (no debe recibir lista completa de usuarios ni roles)
+            const bootstrapHandler = bootstrapRoute.route.stack[bootstrapRoute.route.stack.length - 1].handle;
+            let bootstrapJson = null;
+            await bootstrapHandler(
+                {
+                    query: {},
+                    user: {
+                        id: 7,
+                        username: 'operador',
+                        role: 'user',
+                        permissions: {
+                            products: { view: true },
+                            movements: { view: true },
+                            summary2: { view: true },
+                            'security-users': { view: false },
+                            'security-roles': { view: false }
+                        }
+                    }
+                },
+                { json(d) { bootstrapJson = d; return this; }, status() { return this; } }
+            );
+
+            assert.equal(bootstrapJson.success, true);
+            assert.equal(bootstrapJson.products.length, 1);
+            assert.equal(bootstrapJson.movements.length, 1);
+            assert.equal(bootstrapJson.movements[0].items.length, 1);
+            assert.equal(bootstrapJson.dailyCuts.length, 2);
+            assert.equal(bootstrapJson.users.length, 1);
+            assert.equal(bootstrapJson.users[0].username, 'operador');
+            assert.deepEqual(bootstrapJson.roles, []);
+
+            // 2. Probar /daily-cuts?summary=1 (índice 0 completo, índice > 0 resumido)
+            const dailyCutsHandler = dailyCutsRoute.route.stack[dailyCutsRoute.route.stack.length - 1].handle;
+            let cutsJson = null;
+            await dailyCutsHandler(
+                { query: { summary: '1' }, user: { id: 1, username: 'admin', role: 'admin' } },
+                { json(d) { cutsJson = d; return this; }, status() { return this; } }
+            );
+
+            assert.equal(cutsJson.length, 2);
+            assert.equal(cutsJson[0].congeladosData.length, 1, 'El corte más reciente (index 0) conserva congeladosData completo');
+            assert.equal(cutsJson[0].isSummaryOnly, undefined);
+            assert.deepEqual(cutsJson[1].congeladosData, [], 'Cortes anteriores (index > 0) omiten arrays pesados en modo summary=1');
+            assert.equal(cutsJson[1].isSummaryOnly, true);
+            assert.equal(cutsJson[1].totals.grandTotal, 95.0);
+        } finally {
+            pool.query = originalQuery;
+        }
+    });
+
 });

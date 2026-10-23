@@ -9,7 +9,7 @@ import path from 'node:path';
 import pool, { ensureSchema } from './db.js';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { verifyToken, generateToken } from './middleware/auth.js';
+import { verifyToken, generateToken, invalidateAuthCache } from './middleware/auth.js';
 import { requirePermission, requireAdmin } from './middleware/permissions.js';
 
 const _require = createRequire(import.meta.url);
@@ -199,9 +199,20 @@ export const ensureTableColumns = async () => {
             )
         `);
 
-        // Índices de rendimiento para movimientos e ítems de movimiento
+        // Índices de rendimiento para movimientos, sesiones activas e ítems de movimiento
         await addIndexIfMissing('movements', 'idx_movements_date', 'date');
         await addIndexIfMissing('movement_items', 'idx_movement_items_mov_prod', 'movementId, productId');
+        await addIndexIfMissing('active_sessions', 'idx_active_sessions_activity', 'last_activity');
+
+        // Eliminar índice duplicado idx_products_sku si coexiste junto al índice UNIQUE de sku
+        const [prodIndexes] = await connection.query('SHOW INDEX FROM products');
+        const hasUniqueSku = prodIndexes.some(
+            idx => idx.Key_name === 'sku' || (idx.Column_name === 'sku' && idx.Key_name !== 'idx_products_sku' && Number(idx.Non_unique) === 0)
+        );
+        const hasDuplicateSkuIdx = prodIndexes.some(idx => idx.Key_name === 'idx_products_sku');
+        if (hasUniqueSku && hasDuplicateSkuIdx) {
+            await connection.query('ALTER TABLE products DROP INDEX idx_products_sku');
+        }
 
         return true;
     } catch (err) {
@@ -298,6 +309,236 @@ router.get('/version', (req, res) => {
         // Ignorar error al leer versión estática
     }
     res.json({ version: '1.3.98', displayVersion: 'v1.3.98', build: 98, commit: 'local' });
+});
+
+// Helper para mapear filas de daily_cuts (con soporte opcional de modo resumen ?summary=1)
+const formatDailyCutRow = (r, index = 0, summaryOnly = false) => {
+    let totals = {};
+    try {
+        totals = typeof r.totalsData === 'string' ? JSON.parse(r.totalsData) : (r.totalsData || {});
+    } catch { totals = {}; }
+
+    const cleanStart = r.startDate instanceof Date
+        ? r.startDate.toISOString().split('T')[0]
+        : String(r.startDate || '').split('T')[0];
+    const cleanEnd = r.endDate instanceof Date
+        ? r.endDate.toISOString().split('T')[0]
+        : String(r.endDate || '').split('T')[0];
+
+    if (summaryOnly && index > 0) {
+        return {
+            ...r,
+            startDate: cleanStart,
+            endDate: cleanEnd,
+            isLocked: Boolean(r.isLocked),
+            congeladosData: [],
+            preparadosData: [],
+            servicesData: [],
+            isSummaryOnly: true,
+            totals,
+            totalsData: totals,
+            sipeSaleId: r.sipe_sale_id ?? null,
+            dteCodigoGeneracion: r.dte_codigo_generacion ?? null,
+            dteNumeroControl: r.dte_numero_control ?? null,
+            dteSelloRecepcion: r.dte_sello_recepcion ?? null,
+            dteStatus: r.dte_status || 'UNBILLED',
+            dteEmittedAt: r.dte_emitted_at ?? null
+        };
+    }
+
+    let congelados = [];
+    let preparados = [];
+    let services = [];
+    try {
+        congelados = typeof r.congeladosData === 'string' ? JSON.parse(r.congeladosData) : (r.congeladosData || []);
+    } catch { congelados = []; }
+    try {
+        preparados = typeof r.preparadosData === 'string' ? JSON.parse(r.preparadosData) : (r.preparadosData || []);
+    } catch { preparados = []; }
+    try {
+        services = typeof r.servicesData === 'string' ? JSON.parse(r.servicesData) : (r.servicesData || []);
+    } catch { services = []; }
+
+    return {
+        ...r,
+        startDate: cleanStart,
+        endDate: cleanEnd,
+        isLocked: Boolean(r.isLocked),
+        congeladosData: congelados,
+        preparadosData: preparados,
+        servicesData: services,
+        totals,
+        totalsData: totals,
+        sipeSaleId: r.sipe_sale_id ?? null,
+        dteCodigoGeneracion: r.dte_codigo_generacion ?? null,
+        dteNumeroControl: r.dte_numero_control ?? null,
+        dteSelloRecepcion: r.dte_sello_recepcion ?? null,
+        dteStatus: r.dte_status || 'UNBILLED',
+        dteEmittedAt: r.dte_emitted_at ?? null
+    };
+};
+
+// Endpoint unificado de arranque (/api/bootstrap) para consolidar consultas iniciales en paralelo
+router.get('/bootstrap', async (req, res) => {
+    try {
+        const canView = (mod) =>
+            req.user?.role === 'admin' ||
+            req.user?.permissions?.[mod]?.view === true ||
+            req.user?.permissions?.[mod]?.all === true ||
+            (mod === 'summary2' && (req.user?.permissions?.summary?.view === true || req.user?.permissions?.summary?.all === true)) ||
+            (mod.startsWith('security-') && (req.user?.permissions?.security?.view === true || req.user?.permissions?.security?.all === true));
+
+        const [
+            products,
+            movements,
+            categories,
+            docTypes,
+            settingsRow,
+            contractRates,
+            versions,
+            notifications,
+            dailyCuts,
+            users,
+            roles
+        ] = await Promise.all([
+            (canView('products') || canView('movements') || canView('summary2') || canView('insurance') || canView('inventory-count'))
+                ? pool.query('SELECT * FROM products ORDER BY created_at DESC').then(([rows]) => rows)
+                : Promise.resolve([]),
+            (canView('movements') || canView('summary') || canView('summary2') || canView('insurance'))
+                ? (async () => {
+                    const [rows] = await pool.query(
+                        "SELECT id, type, equipment, carrier, seal, refType, refNumber, DATE_FORMAT(date, '%Y-%m-%d') as date, timeStart, timeEnd, auditUser, created_at FROM movements WHERE 1=1 ORDER BY date DESC, created_at DESC"
+                    );
+                    if (rows.length === 0) return [];
+                    const movIds = rows.map(m => m.id);
+                    const [[allItems], [allServices]] = await Promise.all([
+                        pool.query('SELECT * FROM movement_items WHERE movementId IN (?)', [movIds]),
+                        pool.query('SELECT * FROM services WHERE movementId IN (?)', [movIds])
+                    ]);
+                    const itemsMap = allItems.reduce((acc, item) => {
+                        if (!acc[item.movementId]) acc[item.movementId] = [];
+                        acc[item.movementId].push(item);
+                        return acc;
+                    }, {});
+                    const servicesMap = allServices.reduce((acc, s) => {
+                        if (!acc[s.movementId]) acc[s.movementId] = [];
+                        acc[s.movementId].push(s);
+                        return acc;
+                    }, {});
+                    return rows.map(mov => ({
+                        ...mov,
+                        items: itemsMap[mov.id] || [],
+                        services: servicesMap[mov.id] || []
+                    }));
+                })()
+                : Promise.resolve([]),
+            pool.query('SELECT * FROM categories').then(([rows]) => rows),
+            pool.query('SELECT * FROM document_types').then(([rows]) => rows),
+            pool.query('SELECT * FROM settings WHERE id = 1').then(([rows]) => rows[0] || null),
+            (async () => {
+                const [rows] = await pool.query(
+                    "SELECT config_value, updated_by, DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') as updated_at FROM system_config WHERE config_key = 'contract_rates' LIMIT 1"
+                );
+                let stored = {};
+                if (rows.length > 0 && rows[0].config_value) {
+                    try {
+                        stored = typeof rows[0].config_value === 'string'
+                            ? JSON.parse(rows[0].config_value)
+                            : (rows[0].config_value || {});
+                    } catch {
+                        stored = {};
+                    }
+                }
+                return {
+                    ...DEFAULT_CONTRACT_RATES,
+                    ...stored,
+                    temperatureRates: {
+                        ...DEFAULT_CONTRACT_RATES.temperatureRates,
+                        ...(stored.temperatureRates || {})
+                    },
+                    extraServicePresets: Array.isArray(stored.extraServicePresets) && stored.extraServicePresets.length > 0
+                        ? stored.extraServicePresets
+                        : DEFAULT_CONTRACT_RATES.extraServicePresets,
+                    updatedBy: rows[0]?.updated_by || 'Sistema',
+                    updatedAt: rows[0]?.updated_at || null
+                };
+            })(),
+            pool.query(
+                "SELECT id, version, description, changes, author, DATE_FORMAT(created_at, '%Y-%m-%d') as date, DATE_FORMAT(created_at, '%H:%i') as time FROM versions ORDER BY id DESC"
+            ).then(([rows]) => rows.map(v => {
+                let chList = [];
+                if (v.changes) {
+                    try { chList = JSON.parse(v.changes); } catch { chList = [v.changes]; }
+                }
+                return { ...v, changes: chList };
+            })),
+            pool.query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50').then(([rows]) => rows.map(n => ({
+                ...n,
+                date: n.date || (n.created_at instanceof Date ? n.created_at.toISOString().slice(0, 16).replace('T', ' ') : (n.created_at ? String(n.created_at).slice(0, 16) : null))
+            }))),
+            canView('summary2')
+                ? pool.query('SELECT * FROM daily_cuts ORDER BY startDate DESC, created_at DESC').then(([rows]) => {
+                    const isSummaryMode = req.query?.summary === '1' || req.query?.summary === 'true';
+                    return rows.map((r, idx) => formatDailyCutRow(r, idx, isSummaryMode));
+                })
+                : Promise.resolve([]),
+            canView('security-users')
+                ? pool.query(`
+                    SELECT u.id, u.username, u.role, u.role_id, u.isActive, u.permissions, u.last_login, u.created_at,
+                           r.name as roleName, r.permissions as rolePermissions
+                    FROM users u
+                    LEFT JOIN roles r ON u.role_id = r.id
+                    ORDER BY u.id ASC
+                `).then(([rows]) => rows.map(u => {
+                    let perms = null;
+                    if (u.permissions) {
+                        try { perms = typeof u.permissions === 'string' ? JSON.parse(u.permissions) : u.permissions; } catch { perms = null; }
+                    } else if (u.rolePermissions) {
+                        try { perms = typeof u.rolePermissions === 'string' ? JSON.parse(u.rolePermissions) : u.rolePermissions; } catch { perms = null; }
+                    }
+                    return {
+                        id: u.id,
+                        username: u.username,
+                        role: u.role,
+                        role_id: u.role_id,
+                        roleName: u.roleName || (u.role === 'admin' ? 'Administrador' : 'Usuario'),
+                        isActive: u.isActive,
+                        permissions: perms,
+                        last_login: u.last_login,
+                        created_at: u.created_at
+                    };
+                }))
+                : Promise.resolve(req.user ? [req.user] : []),
+            canView('security-roles')
+                ? pool.query('SELECT * FROM roles ORDER BY id ASC').then(([rows]) => rows.map(r => {
+                    let perms = {};
+                    if (r.permissions) {
+                        try { perms = typeof r.permissions === 'string' ? JSON.parse(r.permissions) : r.permissions; } catch { perms = {}; }
+                    }
+                    return {
+                        ...r,
+                        permissions: perms
+                    };
+                }))
+                : Promise.resolve([])
+        ]);
+
+        res.json({
+            success: true,
+            products,
+            movements,
+            config: { categories, docTypes },
+            settings: settingsRow || {},
+            contractRates,
+            versions,
+            notifications,
+            dailyCuts,
+            users,
+            roles
+        });
+    } catch (error) {
+        sendApiError(res, error, 'Error al cargar datos iniciales (bootstrap)');
+    }
 });
 
 // Products con soporte de paginación y búsqueda server-side
@@ -1270,6 +1511,7 @@ router.post('/auth/logout', async (req, res) => {
         } else if (actorId) {
             await pool.query('DELETE FROM active_sessions WHERE userId = ?', [actorId]);
         }
+        invalidateAuthCache(actorId || null, currentSession || null);
 
         await logSystemEvent({
             userId: actorId,
@@ -1426,6 +1668,7 @@ router.put('/users/:id', requirePermission('security-users', 'edit'), async (req
         if (willBeInactive) {
             await pool.query('DELETE FROM active_sessions WHERE userId = ?', [id]);
         }
+        invalidateAuthCache(id);
 
         await logSystemEvent({
             userId: actorId,
@@ -1454,6 +1697,7 @@ router.put('/users/:id/permissions', requirePermission('security-access', 'edit'
     try {
         const permJson = permissions ? JSON.stringify(permissions) : null;
         await pool.query('UPDATE users SET permissions=? WHERE id=?', [permJson, id]);
+        invalidateAuthCache(id);
         await logSystemEvent({
             userId: actorId,
             username: actor,
@@ -1499,6 +1743,7 @@ router.delete('/users/:id', requirePermission('security-users', 'delete'), async
         // Revocar sesiones activas asociadas al usuario eliminado
         await pool.query('DELETE FROM active_sessions WHERE userId = ?', [req.params.id]);
         await pool.query('DELETE FROM users WHERE id=?', [req.params.id]);
+        invalidateAuthCache(req.params.id);
 
         await logSystemEvent({
             userId: actorId,
@@ -1564,6 +1809,7 @@ router.put('/roles/:id', requirePermission('security-roles', 'edit'), async (req
             'UPDATE roles SET name=?, description=?, permissions=? WHERE id=?',
             [name.trim(), description || '', permJson, id]
         );
+        invalidateAuthCache();
         await logSystemEvent({
             userId: actorId,
             username: actor,
@@ -1583,6 +1829,7 @@ router.delete('/roles/:id', requirePermission('security-roles', 'delete'), async
 
     try {
         await pool.query('DELETE FROM roles WHERE id=?', [req.params.id]);
+        invalidateAuthCache();
         await logSystemEvent({
             userId: actorId,
             username: actor,
@@ -1703,6 +1950,7 @@ router.delete('/active-sessions/:id', requirePermission('security-sessions', 'de
 
     try {
         await pool.query('DELETE FROM active_sessions WHERE id = ?', [req.params.id]);
+        invalidateAuthCache(null, req.params.id);
         await logSystemEvent({
             userId: actorId,
             username: actor,
@@ -2062,48 +2310,8 @@ router.get('/daily-cuts', requirePermission('summary2', 'view'), async (req, res
             ORDER BY startDate DESC, created_at DESC
         `);
 
-        const cuts = rows.map(r => {
-            let totals = {};
-            let congelados = [];
-            let preparados = [];
-            let services = [];
-            try {
-                totals = typeof r.totalsData === 'string' ? JSON.parse(r.totalsData) : (r.totalsData || {});
-            } catch { totals = {}; }
-            try {
-                congelados = typeof r.congeladosData === 'string' ? JSON.parse(r.congeladosData) : (r.congeladosData || []);
-            } catch { congelados = []; }
-            try {
-                preparados = typeof r.preparadosData === 'string' ? JSON.parse(r.preparadosData) : (r.preparadosData || []);
-            } catch { preparados = []; }
-            try {
-                services = typeof r.servicesData === 'string' ? JSON.parse(r.servicesData) : (r.servicesData || []);
-            } catch { services = []; }
-
-            const cleanStart = r.startDate instanceof Date 
-                ? r.startDate.toISOString().split('T')[0] 
-                : String(r.startDate || '').split('T')[0];
-            const cleanEnd = r.endDate instanceof Date 
-                ? r.endDate.toISOString().split('T')[0] 
-                : String(r.endDate || '').split('T')[0];
-
-            return {
-                ...r,
-                startDate: cleanStart,
-                endDate: cleanEnd,
-                isLocked: Boolean(r.isLocked),
-                congeladosData: congelados,
-                preparadosData: preparados,
-                servicesData: services,
-                totals,
-                sipeSaleId: r.sipe_sale_id ?? null,
-                dteCodigoGeneracion: r.dte_codigo_generacion ?? null,
-                dteNumeroControl: r.dte_numero_control ?? null,
-                dteSelloRecepcion: r.dte_sello_recepcion ?? null,
-                dteStatus: r.dte_status || 'UNBILLED',
-                dteEmittedAt: r.dte_emitted_at ?? null
-            };
-        });
+        const isSummaryMode = req.query?.summary === '1' || req.query?.summary === 'true';
+        const cuts = rows.map((r, index) => formatDailyCutRow(r, index, isSummaryMode));
 
         res.json(cuts);
     } catch (error) {
@@ -2859,9 +3067,9 @@ router.post('/billing/emit', verifyToken, requireBillingPermission('edit'), asyn
         await logSystemEvent({
             userId: actorId,
             username: actor,
-            action: 'EMIT_DTE_SIPE',
+            action: 'EMIT_SIPE_DTE',
             module: normalizedType === 'insurance' ? 'insurance' : 'summary2',
-            details: `Emisión de DTE 03 en SIPE para corte ${normalizedType === 'insurance' ? 'de seguro' : 'diario'} ID '${cutId}' (Control: ${numeroControl || 'N/A'}, Gen: ${codigoGeneracion || 'N/A'}, Venta SIPE #${sipeSaleId || 'N/A'})`,
+            details: `Emisión de DTE 03 en SIPE para corte ${normalizedType === 'insurance' ? 'de seguro' : 'diario'} ID '${effectiveCutId}' (Control: ${numeroControl || 'N/A'}, Gen: ${codigoGeneracion || 'N/A'}, Venta SIPE #${sipeSaleId || 'N/A'})`,
             ip
         });
 
