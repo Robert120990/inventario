@@ -128,7 +128,7 @@ export const ensureTableColumns = async () => {
             `SELECT TABLE_NAME, COLUMN_NAME
              FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME IN ('services', 'daily_cuts', 'insurance_cuts')`
+               AND TABLE_NAME IN ('products', 'movements', 'services', 'daily_cuts', 'insurance_cuts')`
         );
         const existingCols = new Set(
             existingColRows.map(r => `${r.TABLE_NAME}.${r.COLUMN_NAME}`)
@@ -148,6 +148,8 @@ export const ensureTableColumns = async () => {
             }
         };
 
+        await addColIfMissing('products', 'updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+        await addColIfMissing('movements', 'updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
         await addColIfMissing('services', 'quantity', 'DECIMAL(15, 3) DEFAULT 1.000 AFTER description');
         await addColIfMissing('services', 'unitPrice', 'DECIMAL(15, 4) DEFAULT 0.0000 AFTER quantity');
 
@@ -196,6 +198,32 @@ export const ensureTableColumns = async () => {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_audit_logs_module (module),
                 INDEX idx_audit_logs_created (created_at)
+            )
+        `);
+
+        // Tabla de llaves de idempotencia (prevención de duplicación en reintentos offline)
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS idempotency_keys (
+                idempotency_key VARCHAR(100) PRIMARY KEY,
+                user_id INT NOT NULL,
+                method VARCHAR(10) NOT NULL,
+                endpoint VARCHAR(255) NOT NULL,
+                status_code INT NOT NULL,
+                response_body JSON NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_idempotency_user_created (user_id, created_at)
+            )
+        `);
+
+        // Tabla de tombstones para sincronización incremental de eliminaciones
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS sync_tombstones (
+                entity_type VARCHAR(50) NOT NULL,
+                entity_id VARCHAR(50) NOT NULL,
+                deleted_by VARCHAR(50) DEFAULT 'Sistema',
+                deleted_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP(3),
+                PRIMARY KEY (entity_type, entity_id),
+                INDEX idx_sync_tombstones_deleted (deleted_at)
             )
         `);
 
@@ -277,6 +305,136 @@ const sendApiError = (res, error, defaultMessage = 'Error interno en el servidor
     }
     return res.status(statusCode).json({ error: error?.message || defaultMessage });
 };
+
+// Helper para registrar eliminaciones en sync_tombstones (sincronización incremental multi-dispositivo)
+const recordSyncTombstone = async (entityType, entityId, deletedBy = 'Sistema', connection = null) => {
+    if (!entityType || entityId === undefined || entityId === null || entityId === '') return;
+    try {
+        const executor = connection || pool;
+        await executor.query(
+            `INSERT INTO sync_tombstones (entity_type, entity_id, deleted_by, deleted_at)
+             VALUES (?, ?, ?, NOW(3))
+             ON DUPLICATE KEY UPDATE deleted_by = VALUES(deleted_by), deleted_at = VALUES(deleted_at)`,
+            [entityType, String(entityId), deletedBy]
+        );
+    } catch {
+        // Ignorar errores silenciosamente si la tabla aún no existe o en mocks de pruebas
+    }
+};
+
+// Helper de concurrencia optimista (detecta conflictos 409 VERSION_CONFLICT al sincronizar ediciones offline)
+export const checkEntityVersionConflict = (req, currentRow) => {
+    if (!currentRow) return null;
+    const forceOverwrite = req.body?.forceOverwrite === true || req.headers?.['x-force-overwrite'] === 'true';
+    if (forceOverwrite) return null;
+
+    let baseVersion = req.body?.baseVersion;
+    if (!baseVersion && req.headers?.['x-base-version']) {
+        try {
+            baseVersion = JSON.parse(req.headers['x-base-version']);
+        } catch {
+            baseVersion = req.headers['x-base-version'];
+        }
+    }
+    if (!baseVersion) return null;
+
+    const clientUpdatedAt = typeof baseVersion === 'object'
+        ? (baseVersion.updatedAt || baseVersion.updated_at || null)
+        : (typeof baseVersion === 'string' ? baseVersion : null);
+    const serverUpdatedAt = currentRow.updated_at || currentRow.updatedAt || null;
+
+    if (clientUpdatedAt && serverUpdatedAt) {
+        const serverMs = new Date(serverUpdatedAt).getTime();
+        const clientMs = new Date(clientUpdatedAt).getTime();
+        if (Number.isFinite(serverMs) && Number.isFinite(clientMs) && (serverMs - clientMs > 1000)) {
+            return { conflict: true, serverUpdatedAt, clientUpdatedAt };
+        }
+    }
+
+    if (typeof baseVersion === 'object' && !clientUpdatedAt && baseVersion.sku !== undefined && currentRow.sku !== undefined && baseVersion.price !== undefined) {
+        if (String(baseVersion.sku) !== String(currentRow.sku) || Number(baseVersion.price) !== Number(currentRow.price)) {
+            return { conflict: true };
+        }
+    }
+
+    return null;
+};
+
+// Middleware de Idempotencia Server-Side y Protección contra Mezcla de Cuentas Offline
+export const idempotencyMiddleware = async (req, res, next) => {
+    const method = String(req.method || '').toUpperCase();
+    if (!['POST', 'PUT', 'DELETE'].includes(method)) {
+        return next();
+    }
+
+    const opUserId = req.headers?.['x-operation-user-id'] ?? req.body?.operationUserId;
+    if (opUserId !== undefined && opUserId !== null && opUserId !== '' && req.user?.id !== undefined && String(opUserId) !== String(req.user.id)) {
+        return res.status(403).json({
+            error: 'Esta operación offline pertenece a otra cuenta de usuario y solo esa cuenta puede sincronizarla.',
+            code: 'USER_MISMATCH'
+        });
+    }
+
+    const rawKey = req.headers?.['x-idempotency-key'] || req.body?.idempotencyKey;
+    if (!rawKey || !req.user?.id) {
+        return next();
+    }
+
+    const idempKey = String(rawKey).trim().slice(0, 100);
+    if (!idempKey) {
+        return next();
+    }
+
+    try {
+        const [rows] = await pool.query(
+            'SELECT user_id, status_code, response_body FROM idempotency_keys WHERE idempotency_key = ? LIMIT 1',
+            [idempKey]
+        );
+        if (rows && rows.length > 0) {
+            const row = rows[0];
+            if (String(row.user_id) !== String(req.user.id)) {
+                return res.status(403).json({
+                    error: 'El identificador de operación pertenece a otro usuario.',
+                    code: 'USER_MISMATCH'
+                });
+            }
+            let parsed = row.response_body;
+            if (typeof parsed === 'string') {
+                try { parsed = JSON.parse(parsed); } catch { parsed = { success: true }; }
+            }
+            return res.status(row.status_code || 200).json({
+                ...(typeof parsed === 'object' && parsed !== null ? parsed : { success: true }),
+                idempotentReplay: true
+            });
+        }
+    } catch {
+        // Si la tabla aún no existe o el mock no la contempla, continuar normalmente
+    }
+
+    if (typeof res.status === 'function') {
+        const origStatus = res.status.bind(res);
+        res.status = (code) => {
+            res.statusCode = code;
+            return origStatus(code);
+        };
+    }
+
+    const origJson = res.json.bind(res);
+    res.json = (body) => {
+        const statusCode = res.statusCode || 200;
+        if (statusCode >= 200 && statusCode < 300) {
+            pool.query(
+                'INSERT IGNORE INTO idempotency_keys (idempotency_key, user_id, method, endpoint, status_code, response_body) VALUES (?, ?, ?, ?, ?, ?)',
+                [idempKey, req.user.id, method, req.originalUrl || req.url || req.path || '', statusCode, JSON.stringify(body ?? { success: true })]
+            ).catch(() => {});
+        }
+        return origJson(body);
+    };
+
+    return next();
+};
+
+router.use(idempotencyMiddleware);
 
 // Diagnostics (Sanitizado sin exposición de conteos ni errores de SQL en endpoints públicos)
 router.get('/health', async (req, res) => {
@@ -407,7 +565,7 @@ router.get('/bootstrap', async (req, res) => {
             (canView('movements') || canView('summary') || canView('summary2') || canView('insurance'))
                 ? (async () => {
                     const [rows] = await pool.query(
-                        "SELECT id, type, equipment, carrier, seal, refType, refNumber, DATE_FORMAT(date, '%Y-%m-%d') as date, timeStart, timeEnd, auditUser, created_at FROM movements WHERE 1=1 ORDER BY date DESC, created_at DESC"
+                        "SELECT id, type, equipment, carrier, seal, refType, refNumber, DATE_FORMAT(date, '%Y-%m-%d') as date, timeStart, timeEnd, auditUser, created_at, updated_at FROM movements WHERE 1=1 ORDER BY date DESC, created_at DESC"
                     );
                     if (rows.length === 0) return [];
                     const movIds = rows.map(m => m.id);
@@ -525,6 +683,7 @@ router.get('/bootstrap', async (req, res) => {
 
         res.json({
             success: true,
+            syncCursor: new Date().toISOString(),
             products,
             movements,
             config: { categories, docTypes },
@@ -538,6 +697,178 @@ router.get('/bootstrap', async (req, res) => {
         });
     } catch (error) {
         sendApiError(res, error, 'Error al cargar datos iniciales (bootstrap)');
+    }
+});
+
+// Endpoint de sincronización incremental multi-dispositivo (/api/sync/changes?since=...)
+router.get('/sync/changes', async (req, res) => {
+    try {
+        const sinceRaw = req.query?.since;
+        const sinceTime = sinceRaw ? new Date(sinceRaw) : new Date(Date.now() - 60000);
+        const safeSince = new Date((Number.isNaN(sinceTime.getTime()) ? Date.now() - 60000 : sinceTime.getTime()) - 1000);
+        const safeSinceIso = safeSince.toISOString().slice(0, 19).replace('T', ' ');
+
+        const canView = (mod) =>
+            req.user?.role === 'admin' ||
+            req.user?.permissions?.[mod]?.view === true ||
+            req.user?.permissions?.[mod]?.all === true ||
+            (mod === 'summary2' && (req.user?.permissions?.summary?.view === true || req.user?.permissions?.summary?.all === true)) ||
+            (mod.startsWith('security-') && (req.user?.permissions?.security?.view === true || req.user?.permissions?.security?.all === true));
+
+        const [
+            products,
+            movements,
+            dailyCuts,
+            insuranceCuts,
+            notifications,
+            contractRates,
+            tombstones
+        ] = await Promise.all([
+            (canView('products') || canView('movements') || canView('summary2') || canView('insurance') || canView('inventory-count'))
+                ? pool.query(
+                    'SELECT * FROM products WHERE updated_at >= ? OR created_at >= ? ORDER BY updated_at DESC',
+                    [safeSinceIso, safeSinceIso]
+                ).then(([rows]) => rows)
+                : Promise.resolve([]),
+            (canView('movements') || canView('summary') || canView('summary2') || canView('insurance'))
+                ? (async () => {
+                    const [rows] = await pool.query(
+                        "SELECT id, type, equipment, carrier, seal, refType, refNumber, DATE_FORMAT(date, '%Y-%m-%d') as date, timeStart, timeEnd, auditUser, created_at, updated_at FROM movements WHERE updated_at >= ? OR created_at >= ? ORDER BY date DESC, created_at DESC",
+                        [safeSinceIso, safeSinceIso]
+                    );
+                    if (rows.length === 0) return [];
+                    const movIds = rows.map(m => m.id);
+                    const [[allItems], [allServices]] = await Promise.all([
+                        pool.query('SELECT * FROM movement_items WHERE movementId IN (?)', [movIds]),
+                        pool.query('SELECT * FROM services WHERE movementId IN (?)', [movIds])
+                    ]);
+                    const itemsMap = allItems.reduce((acc, item) => {
+                        if (!acc[item.movementId]) acc[item.movementId] = [];
+                        acc[item.movementId].push(item);
+                        return acc;
+                    }, {});
+                    const servicesMap = allServices.reduce((acc, s) => {
+                        if (!acc[s.movementId]) acc[s.movementId] = [];
+                        acc[s.movementId].push(s);
+                        return acc;
+                    }, {});
+                    return rows.map(mov => ({
+                        ...mov,
+                        items: itemsMap[mov.id] || [],
+                        services: servicesMap[mov.id] || []
+                    }));
+                })()
+                : Promise.resolve([]),
+            canView('summary2')
+                ? pool.query(
+                    'SELECT * FROM daily_cuts WHERE updated_at >= ? OR created_at >= ? ORDER BY startDate DESC, created_at DESC',
+                    [safeSinceIso, safeSinceIso]
+                ).then(([rows]) => rows.map((r, idx) => formatDailyCutRow(r, idx, false)))
+                : Promise.resolve([]),
+            canView('insurance')
+                ? pool.query(
+                    'SELECT * FROM insurance_cuts WHERE updated_at >= ? OR created_at >= ? ORDER BY cutoffDate DESC, created_at DESC',
+                    [safeSinceIso, safeSinceIso]
+                ).then(([rows]) => rows.map(r => {
+                    let totals = {};
+                    let rowsData = [];
+                    try { totals = typeof r.totalsData === 'string' ? JSON.parse(r.totalsData) : (r.totalsData || {}); } catch { totals = {}; }
+                    try { rowsData = typeof r.rowsData === 'string' ? JSON.parse(r.rowsData) : (r.rowsData || []); } catch { rowsData = []; }
+                    const cleanStart = r.startDate ? (r.startDate instanceof Date ? r.startDate.toISOString().split('T')[0] : String(r.startDate).split('T')[0]) : null;
+                    const cleanCutoff = r.cutoffDate instanceof Date ? r.cutoffDate.toISOString().split('T')[0] : String(r.cutoffDate || '').split('T')[0];
+                    return {
+                        ...r,
+                        startDate: cleanStart,
+                        cutoffDate: cleanCutoff,
+                        premiumRate: Number(r.premiumRate || 0.10),
+                        isLocked: Boolean(r.isLocked),
+                        rowsData,
+                        totals,
+                        sipeSaleId: r.sipe_sale_id ?? null,
+                        dteCodigoGeneracion: r.dte_codigo_generacion ?? null,
+                        dteNumeroControl: r.dte_numero_control ?? null,
+                        dteSelloRecepcion: r.dte_sello_recepcion ?? null,
+                        dteStatus: r.dte_status || 'UNBILLED',
+                        dteEmittedAt: r.dte_emitted_at ?? null
+                    };
+                }))
+                : Promise.resolve([]),
+            pool.query(
+                'SELECT * FROM notifications WHERE created_at >= ? ORDER BY created_at DESC LIMIT 50',
+                [safeSinceIso]
+            ).then(([rows]) => rows.map(n => ({
+                ...n,
+                date: n.date || (n.created_at instanceof Date ? n.created_at.toISOString().slice(0, 16).replace('T', ' ') : (n.created_at ? String(n.created_at).slice(0, 16) : null))
+            }))),
+            (async () => {
+                const [rows] = await pool.query(
+                    "SELECT config_value, updated_by, DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') as updated_at FROM system_config WHERE config_key = 'contract_rates' AND updated_at >= ? LIMIT 1",
+                    [safeSinceIso]
+                );
+                if (rows.length === 0) return null;
+                let stored = {};
+                if (rows[0].config_value) {
+                    try {
+                        stored = typeof rows[0].config_value === 'string'
+                            ? JSON.parse(rows[0].config_value)
+                            : (rows[0].config_value || {});
+                    } catch {
+                        stored = {};
+                    }
+                }
+                return {
+                    ...DEFAULT_CONTRACT_RATES,
+                    ...stored,
+                    temperatureRates: {
+                        ...DEFAULT_CONTRACT_RATES.temperatureRates,
+                        ...(stored.temperatureRates || {})
+                    },
+                    extraServicePresets: Array.isArray(stored.extraServicePresets) && stored.extraServicePresets.length > 0
+                        ? stored.extraServicePresets
+                        : DEFAULT_CONTRACT_RATES.extraServicePresets,
+                    updatedBy: rows[0]?.updated_by || 'Sistema',
+                    updatedAt: rows[0]?.updated_at || null
+                };
+            })(),
+            pool.query(
+                'SELECT entity_type, entity_id, deleted_at FROM sync_tombstones WHERE deleted_at >= ?',
+                [safeSinceIso]
+            ).then(([rows]) => rows).catch(() => [])
+        ]);
+
+        const deletions = { products: [], movements: [], dailyCuts: [], insuranceCuts: [] };
+        for (const t of tombstones) {
+            if (t && t.entity_type && deletions[t.entity_type]) {
+                deletions[t.entity_type].push(t.entity_id);
+            }
+        }
+
+        const hasChanges =
+            products.length > 0 ||
+            movements.length > 0 ||
+            dailyCuts.length > 0 ||
+            insuranceCuts.length > 0 ||
+            notifications.length > 0 ||
+            Boolean(contractRates) ||
+            tombstones.length > 0;
+
+        res.json({
+            success: true,
+            syncCursor: new Date().toISOString(),
+            since: sinceRaw || null,
+            hasChanges,
+            changes: {
+                products,
+                movements,
+                dailyCuts,
+                insuranceCuts,
+                notifications,
+                contractRates
+            },
+            deletions
+        });
+    } catch (error) {
+        sendApiError(res, error, 'Error al consultar cambios incrementales');
     }
 });
 
@@ -634,6 +965,17 @@ router.put('/products/:id', requirePermission('products', 'edit'), async (req, r
     const actor = req.user?.username || 'Sistema';
     const actorId = req.user?.id || null;
     try {
+        if (req.body?.baseVersion || req.headers?.['x-base-version']) {
+            const [existingRows] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
+            if (existingRows.length > 0 && checkEntityVersionConflict(req, existingRows[0])) {
+                return res.status(409).json({
+                    error: 'El producto fue modificado en el servidor mientras trabajabas sin conexión.',
+                    code: 'VERSION_CONFLICT',
+                    serverRecord: existingRows[0]
+                });
+            }
+        }
+
         // Las existencias físicas (stockUnits, stockPounds, stockBaskets) no pueden modificarse aquí.
         // Se gestionan exclusivamente por /api/movements y /api/inventory-adjustments auditados.
         await pool.query('UPDATE products SET sku=?, description=?, category=?, price=? WHERE id=?', 
@@ -664,6 +1006,7 @@ router.delete('/products/:id', requirePermission('products', 'delete'), async (r
         const prod = rows[0] || { sku: req.params.id };
 
         await pool.query('DELETE FROM products WHERE id=?', [req.params.id]);
+        await recordSyncTombstone('products', req.params.id, actor);
 
         await logSystemEvent({
             userId: actorId,
@@ -877,7 +1220,7 @@ router.get('/movements', requirePermission('movements', 'view'), async (req, res
         const hasLimitOrOffset = (limit !== undefined && limit !== '') || (rawOffset !== undefined && rawOffset !== '') || (page !== undefined && page !== '');
         const useEnvelope = (page !== undefined && page !== '') || envelope === 'true';
 
-        let query = "SELECT id, type, equipment, carrier, seal, refType, refNumber, DATE_FORMAT(date, '%Y-%m-%d') as date, timeStart, timeEnd, auditUser, created_at FROM movements WHERE 1=1";
+        let query = "SELECT id, type, equipment, carrier, seal, refType, refNumber, DATE_FORMAT(date, '%Y-%m-%d') as date, timeStart, timeEnd, auditUser, created_at, updated_at FROM movements WHERE 1=1";
         let countQuery = "SELECT COUNT(*) as total FROM movements WHERE 1=1";
         const params = [];
         const countParams = [];
@@ -1161,7 +1504,7 @@ router.put('/movements/:id', requirePermission('movements', 'edit'), async (req,
         await connection.beginTransaction();
 
         const [movementRows] = await connection.query(
-            'SELECT type, DATE_FORMAT(date, "%Y-%m-%d") as date FROM movements WHERE id = ? FOR UPDATE',
+            'SELECT type, DATE_FORMAT(date, "%Y-%m-%d") as date, updated_at FROM movements WHERE id = ? FOR UPDATE',
             [id]
         );
 
@@ -1171,6 +1514,15 @@ router.put('/movements/:id', requirePermission('movements', 'edit'), async (req,
         }
 
         const existingMov = movementRows[0];
+
+        if (checkEntityVersionConflict(req, existingMov)) {
+            await connection.rollback();
+            return res.status(409).json({
+                error: 'El movimiento fue modificado por otro usuario mientras trabajabas sin conexión.',
+                code: 'VERSION_CONFLICT',
+                serverRecord: existingMov
+            });
+        }
 
         // Verificar bloqueo de cortes en la fecha previa y en la nueva fecha
         const lockOldError = await checkLockedCuts(connection, existingMov.date);
@@ -1374,6 +1726,7 @@ router.delete('/movements/:id', requirePermission('movements', 'delete'), async 
         }
         
         await connection.query('DELETE FROM movements WHERE id=?', [id]);
+        await recordSyncTombstone('movements', id, actor, connection);
 
         await logSystemEvent({
             userId: actorId,
@@ -2454,6 +2807,14 @@ router.put('/daily-cuts/:id', requirePermission('summary2', 'edit'), async (req,
             });
         }
 
+        if (checkEntityVersionConflict(req, current)) {
+            return res.status(409).json({
+                error: 'El corte fue modificado en el servidor mientras trabajabas sin conexión.',
+                code: 'VERSION_CONFLICT',
+                serverRecord: current
+            });
+        }
+
         const newTitle = title !== undefined ? title : current.title;
         const newClient = clientName !== undefined ? clientName : current.clientName;
         const newStartDate = startDate !== undefined ? startDate : current.startDate;
@@ -2564,6 +2925,7 @@ router.delete('/daily-cuts/:id', requirePermission('summary2', 'edit'), async (r
         }
 
         await pool.query('DELETE FROM daily_cuts WHERE id = ?', [req.params.id]);
+        await recordSyncTombstone('dailyCuts', req.params.id, actor);
 
         await logSystemEvent({
             userId: actorId,
@@ -2763,6 +3125,14 @@ router.put('/insurance-cuts/:id', requirePermission('insurance', 'edit'), async 
             });
         }
 
+        if (checkEntityVersionConflict(req, current)) {
+            return res.status(409).json({
+                error: 'El corte fue modificado en el servidor mientras trabajabas sin conexión.',
+                code: 'VERSION_CONFLICT',
+                serverRecord: current
+            });
+        }
+
         const newTitle = title !== undefined ? title : current.title;
         const newCustomer = customerName !== undefined ? customerName : current.customerName;
         const newWarehouse = warehouseName !== undefined ? warehouseName : current.warehouseName;
@@ -2867,6 +3237,7 @@ router.delete('/insurance-cuts/:id', requirePermission('insurance', 'edit'), asy
         }
 
         await pool.query('DELETE FROM insurance_cuts WHERE id = ?', [req.params.id]);
+        await recordSyncTombstone('insuranceCuts', req.params.id, actor);
 
         await logSystemEvent({
             userId: actorId,

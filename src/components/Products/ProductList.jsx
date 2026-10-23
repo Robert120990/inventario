@@ -32,7 +32,7 @@ const matchesSearchTerms = (product, searchTerm) => {
 const number = (value) => Number(value) || 0;
 
 const ProductList = () => {
-  const { products, deleteProduct, categories, categoryUnits, canCreate, canEdit, canDelete, canExport } = useInventory();
+  const { products, deleteProduct, categories, categoryUnits, getEntitySyncState, canCreate, canEdit, canDelete, canExport } = useInventory();
   const [isAdding, setIsAdding] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -245,9 +245,60 @@ const ProductList = () => {
                     {hasActiveFilters ? 'No se encontraron productos con los filtros seleccionados.' : 'No hay productos registrados.'}
                   </td>
                 </tr>
-              ) : filteredProducts.map((product) => (
+              ) : filteredProducts.map((product) => {
+                const syncInfo = typeof getEntitySyncState === 'function'
+                  ? getEntitySyncState('products', product.id)
+                  : { state: 'synced' };
+                return (
                 <tr key={product.id}>
-                  <td style={{ fontWeight: '500' }}>{product.sku}</td>
+                  <td style={{ fontWeight: '500' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      <span>{product.sku}</span>
+                      {syncInfo.state === 'conflict' ? (
+                        <span
+                          title={syncInfo.operation?.error || 'Conflicto al sincronizar este producto'}
+                          style={{
+                            fontSize: '0.65rem',
+                            padding: '0.08rem 0.4rem',
+                            borderRadius: '999px',
+                            backgroundColor: 'rgba(239, 68, 68, 0.14)',
+                            color: '#dc2626',
+                            fontWeight: 700
+                          }}
+                        >
+                          Requiere revisión
+                        </span>
+                      ) : syncInfo.state === 'pending' ? (
+                        <span
+                          title="Cambio local pendiente de sincronizar con el servidor"
+                          style={{
+                            fontSize: '0.65rem',
+                            padding: '0.08rem 0.4rem',
+                            borderRadius: '999px',
+                            backgroundColor: 'rgba(245, 158, 11, 0.16)',
+                            color: '#b45309',
+                            fontWeight: 700
+                          }}
+                        >
+                          Pendiente
+                        </span>
+                      ) : (
+                        <span
+                          title="Sincronizado con el servidor central"
+                          style={{
+                            fontSize: '0.63rem',
+                            padding: '0.06rem 0.36rem',
+                            borderRadius: '999px',
+                            backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                            color: '#059669',
+                            fontWeight: 600
+                          }}
+                        >
+                          Sincronizado
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td>{product.description}</td><td>{product.category}</td>
                   <td>${formatPrice(product.price)}</td>
                   <td style={{ textAlign: 'center' }}>{product.stockUnits}</td>
@@ -283,7 +334,8 @@ const ProductList = () => {
                     </td>
                   )}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

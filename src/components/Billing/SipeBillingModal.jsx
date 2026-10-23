@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   X, ShieldCheck, AlertTriangle, RefreshCw, FileCheck2,
   Copy, Download, CheckCircle2, Clock, CreditCard, Layers, Send,
-  FileJson, Receipt, Info
+  FileJson, Receipt, Info, WifiOff
 } from 'lucide-react';
-import { apiFetch } from '../../context/InventoryContext';
+import { apiFetch, useInventory } from '../../context/InventoryContext';
 import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils';
 import { CONTRACT_INFO, resolveServiceDetails } from '../../utils/contractRates';
 import { toast } from 'react-hot-toast';
@@ -242,6 +242,13 @@ export default function SipeBillingModal({
   cutData,
   onBillingSuccess
 }) {
+  const inventoryCtx = useInventory();
+  const onDemandStatus = inventoryCtx?.onDemandStatus;
+  const isOfflineForDte =
+    (typeof navigator !== 'undefined' && navigator.onLine === false) ||
+    onDemandStatus?.isOnline === false ||
+    onDemandStatus?.isPageAccessible === false;
+
   // Estado del contrato en vivo con sys.sipesv.com
   const [contractStatus, setContractStatus] = useState(null);
   const [checkingContract, setCheckingContract] = useState(false);
@@ -515,8 +522,12 @@ export default function SipeBillingModal({
   };
 
   const handleEmitDte = async () => {
-    if (!cutData?.id) {
-      toast.error('El corte debe estar congelado y guardado antes de facturar.');
+    if (isOfflineForDte) {
+      toast.error('La emisión de documentos fiscales DTE-03 requiere conexión activa con el servidor.');
+      return;
+    }
+    if (!cutData?.id || String(cutData.id).startsWith('offline-')) {
+      toast.error('El corte debe estar congelado y sincronizado con el servidor antes de facturar.');
       return;
     }
     if (activePreview.totalPagar <= 0) {
@@ -771,6 +782,27 @@ export default function SipeBillingModal({
             </button>
           </div>
         </div>
+
+        {/* Alerta de Modo Offline: La emisión DTE requiere conexión en vivo */}
+        {isOfflineForDte && (
+          <div
+            style={{
+              backgroundColor: 'rgba(220, 38, 38, 0.12)',
+              borderBottom: '1px solid rgba(220, 38, 38, 0.35)',
+              padding: '0.65rem 1.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.65rem',
+              fontSize: '0.8rem',
+              color: '#dc2626'
+            }}
+          >
+            <WifiOff size={18} style={{ flexShrink: 0 }} />
+            <div>
+              <strong>Conexión requerida para emitir DTE-03:</strong> Este dispositivo se encuentra en modo sin conexión (Offline). Puedes revisar y exportar la vista previa JSON del corte, pero la transmisión fiscal hacia <code>sys.sipesv.com</code> y el Ministerio de Hacienda requiere conexión activa con el servidor.
+            </div>
+          </div>
+        )}
 
         {/* Alerta de Drift si la API de sys.sipesv.com cambió */}
         {driftDetected && (
@@ -1329,15 +1361,16 @@ export default function SipeBillingModal({
                 type="button"
                 className="btn btn-primary"
                 onClick={handleEmitDte}
-                disabled={emitting || activePreview.totalPagar <= 0}
+                disabled={emitting || activePreview.totalPagar <= 0 || isOfflineForDte}
+                title={isOfflineForDte ? 'Requiere conexión activa con el servidor para emitir DTE fiscal' : ''}
                 style={{
                   padding: '0.55rem 1.25rem',
                   fontWeight: 700,
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.45rem',
-                  backgroundColor: '#059669',
-                  borderColor: '#059669'
+                  backgroundColor: isOfflineForDte ? '#64748b' : '#059669',
+                  borderColor: isOfflineForDte ? '#64748b' : '#059669'
                 }}
               >
                 {emitting ? (

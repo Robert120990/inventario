@@ -1,6 +1,24 @@
 // Registro cronológico maestro y automático de versiones del sistema generado desde Git
 export const SYSTEM_CHANGELOG = [
   {
+    "id": "0f52cfb",
+    "version": "v2.7.165",
+    "commit": "0f52cfb",
+    "fullCommit": "0f52cfb7c435479efbb522a3aa07be9e53cb7df6",
+    "description": "Bump version to v2.7.164",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-10-23",
+    "time": "19:37",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "improvement",
+        "text": "Bump version to v2.7.164"
+      }
+    ]
+  },
+  {
     "id": "318efb7",
     "version": "v2.7.164",
     "commit": "318efb7",
@@ -171,7 +189,7 @@ export const SYSTEM_CHANGELOG = [
     "author": "Ing. Raúl Sosa",
     "date": "2026-10-14",
     "time": "05:36",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
@@ -2683,24 +2701,6 @@ export const SYSTEM_CHANGELOG = [
       {
         "type": "improvement",
         "text": "Logo y nombre"
-      }
-    ]
-  },
-  {
-    "id": "ac28c2a",
-    "version": "v2.7.15",
-    "commit": "ac28c2a",
-    "fullCommit": "ac28c2ac3c8210c8e08b7c8b43a4f3a73a05862d",
-    "description": "Mejora en gestion de usuario",
-    "author": "Roberto",
-    "date": "2026-03-19",
-    "time": "12:32",
-    "isOfficial": false,
-    "isGitCommit": true,
-    "changes": [
-      {
-        "type": "improvement",
-        "text": "Mejora en gestion de usuario"
       }
     ]
   }

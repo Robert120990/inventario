@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import pool from '../api/db.js';
-import app from '../api/index.js';
+import app, { idempotencyMiddleware } from '../api/index.js';
 
 describe('Seguridad y Control de Acceso (RBAC, Lockout y Escalabilidad)', () => {
 
@@ -559,6 +559,198 @@ describe('Seguridad y Control de Acceso (RBAC, Lockout y Escalabilidad)', () => 
             assert.deepEqual(cutsJson[1].congeladosData, [], 'Cortes anteriores (index > 0) omiten arrays pesados en modo summary=1');
             assert.equal(cutsJson[1].isSummaryOnly, true);
             assert.equal(cutsJson[1].totals.grandTotal, 95.0);
+        } finally {
+            pool.query = originalQuery;
+        }
+    });
+
+    it('Middleware de idempotencia previene duplicación en reintentos y rechaza operaciones de otro usuario con 403 USER_MISMATCH', async () => {
+        const originalQuery = pool.query;
+        const storedKeys = new Map();
+        try {
+            pool.query = async (sql, params) => {
+                if (sql.includes('FROM idempotency_keys WHERE idempotency_key = ?')) {
+                    const row = storedKeys.get(params[0]);
+                    return [row ? [row] : []];
+                }
+                if (sql.includes('INSERT IGNORE INTO idempotency_keys')) {
+                    storedKeys.set(params[0], {
+                        idempotency_key: params[0],
+                        user_id: params[1],
+                        method: params[2],
+                        endpoint: params[3],
+                        status_code: params[4],
+                        response_body: params[5]
+                    });
+                    return [{ affectedRows: 1 }];
+                }
+                return [[]];
+            };
+
+            // 1. Primera ejecución con llave idemp-001 por usuario 10
+            let nextCalled1 = false;
+            let json1 = null;
+            let status1 = 200;
+            const req1 = {
+                method: 'POST',
+                url: '/api/movements',
+                headers: { 'x-idempotency-key': 'idemp-001', 'x-operation-user-id': '10' },
+                user: { id: 10, username: 'operador10' }
+            };
+            const res1 = {
+                statusCode: 200,
+                status(c) { status1 = c; this.statusCode = c; return this; },
+                json(d) { json1 = d; return this; }
+            };
+
+            await idempotencyMiddleware(req1, res1, () => {
+                nextCalled1 = true;
+                res1.status(200).json({ success: true, id: 'mov-999' });
+            });
+
+            assert.equal(nextCalled1, true, 'Primera petición debe invocar next()');
+            assert.equal(status1, 200);
+            assert.equal(json1.id, 'mov-999');
+            assert.equal(storedKeys.has('idemp-001'), true, 'Debe persistir la llave de idempotencia');
+
+            // 2. Reintento con la misma llave idemp-001 por el mismo usuario 10 (no debe ejecutar next())
+            let nextCalled2 = false;
+            let json2 = null;
+            const req2 = {
+                method: 'POST',
+                url: '/api/movements',
+                headers: { 'x-idempotency-key': 'idemp-001', 'x-operation-user-id': '10' },
+                user: { id: 10, username: 'operador10' }
+            };
+            const res2 = {
+                statusCode: 200,
+                status(c) { this.statusCode = c; return this; },
+                json(d) { json2 = d; return this; }
+            };
+
+            await idempotencyMiddleware(req2, res2, () => { nextCalled2 = true; });
+            assert.equal(nextCalled2, false, 'Reintento idempotente NO debe volver a ejecutar el controlador');
+            assert.equal(json2.idempotentReplay, true);
+            assert.equal(json2.id, 'mov-999');
+
+            // 3. Intento de sincronizar una operación encolada por el usuario 10 desde la sesión del usuario 99
+            let nextCalled3 = false;
+            let status3 = null;
+            let json3 = null;
+            const req3 = {
+                method: 'POST',
+                url: '/api/movements',
+                headers: { 'x-idempotency-key': 'idemp-002', 'x-operation-user-id': '10' },
+                user: { id: 99, username: 'otro_usuario' }
+            };
+            const res3 = {
+                status(c) { status3 = c; return this; },
+                json(d) { json3 = d; return this; }
+            };
+
+            await idempotencyMiddleware(req3, res3, () => { nextCalled3 = true; });
+            assert.equal(nextCalled3, false);
+            assert.equal(status3, 403);
+            assert.equal(json3.code, 'USER_MISMATCH');
+        } finally {
+            pool.query = originalQuery;
+        }
+    });
+
+    it('PUT /products/:id detecta conflictos de concurrencia optimista con 409 VERSION_CONFLICT', async () => {
+        const putProductRoute = app._router.stack
+            .find(layer => layer.route?.path === '/api' || layer.name === 'router')
+            ?.handle?.stack?.find(layer => layer.route?.path === '/products/:id' && layer.route?.methods?.put);
+
+        const originalQuery = pool.query;
+        try {
+            pool.query = async (sql) => {
+                if (sql.includes('SELECT * FROM products WHERE id = ?')) {
+                    return [[{
+                        id: 'prod-001',
+                        sku: 'PROD-SERVER',
+                        description: 'Modificado por otro usuario',
+                        category: 'Congelados',
+                        price: 40.0,
+                        updated_at: '2026-10-23T12:00:00.000Z'
+                    }]];
+                }
+                return [{ affectedRows: 1 }];
+            };
+
+            const handler = putProductRoute.route.stack[putProductRoute.route.stack.length - 1].handle;
+            let statusConflict = null;
+            let jsonConflict = null;
+
+            await handler(
+                {
+                    params: { id: 'prod-001' },
+                    headers: {},
+                    body: {
+                        sku: 'PROD-OFFLINE',
+                        description: 'Edición Offline',
+                        category: 'Congelados',
+                        price: 35.0,
+                        baseVersion: { updatedAt: '2026-10-23T10:00:00.000Z' }
+                    },
+                    user: { id: 1, username: 'admin', role: 'admin' }
+                },
+                {
+                    status(c) { statusConflict = c; return this; },
+                    json(d) { jsonConflict = d; return this; }
+                }
+            );
+
+            assert.equal(statusConflict, 409);
+            assert.equal(jsonConflict.code, 'VERSION_CONFLICT');
+            assert.equal(jsonConflict.serverRecord.sku, 'PROD-SERVER');
+        } finally {
+            pool.query = originalQuery;
+        }
+    });
+
+    it('GET /sync/changes devuelve cambios incrementales y tombstones de eliminaciones desde el cursor since', async () => {
+        const syncRoute = app._router.stack
+            .find(layer => layer.route?.path === '/api' || layer.name === 'router')
+            ?.handle?.stack?.find(layer => layer.route?.path === '/sync/changes' && layer.route?.methods?.get);
+
+        assert.ok(syncRoute, 'Ruta GET /sync/changes debe estar registrada');
+
+        const originalQuery = pool.query;
+        try {
+            pool.query = async (sql) => {
+                if (sql.includes('FROM products WHERE updated_at >=')) {
+                    return [[{ id: 'p-updated', sku: 'SKU-UPD', description: 'Actualizado', price: 15 }]];
+                }
+                if (sql.includes('FROM sync_tombstones WHERE deleted_at >=')) {
+                    return [[
+                        { entity_type: 'products', entity_id: 'p-deleted-1' },
+                        { entity_type: 'movements', entity_id: 'm-deleted-2' }
+                    ]];
+                }
+                return [[]];
+            };
+
+            const handler = syncRoute.route.stack[syncRoute.route.stack.length - 1].handle;
+            let syncJson = null;
+            await handler(
+                {
+                    query: { since: '2026-10-23T10:00:00.000Z' },
+                    user: { id: 1, username: 'admin', role: 'admin' }
+                },
+                {
+                    status() { return this; },
+                    json(d) { syncJson = d; return this; }
+                }
+            );
+
+            assert.equal(syncJson.success, true);
+            assert.equal(syncJson.hasChanges, true);
+            assert.ok(syncJson.syncCursor, 'Debe devolver un nuevo syncCursor ISO');
+            assert.equal(syncJson.changes.products.length, 1);
+            assert.equal(syncJson.changes.products[0].id, 'p-updated');
+            assert.deepEqual(syncJson.deletions.products, ['p-deleted-1']);
+            assert.deepEqual(syncJson.deletions.movements, ['m-deleted-2']);
         } finally {
             pool.query = originalQuery;
         }

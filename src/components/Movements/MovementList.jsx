@@ -3,7 +3,7 @@ import { useInventory } from '../../context/InventoryContext';
 import {
   Plus, Download, Search, FileSpreadsheet,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
-  SlidersHorizontal, ArrowDownCircle, ArrowUpCircle
+  ArrowDownCircle, ArrowUpCircle
 } from 'lucide-react';
 import { exportMovimientos } from '../../utils/exportManager';
 import MovementForm from './MovementForm';
@@ -11,7 +11,7 @@ import { formatDate } from '../../utils/formatUtils';
 import { toast } from 'react-hot-toast';
 
 const MovementList = () => {
-  const { movements, products, deleteMovement, canCreate, canEdit, canDelete, canExport } = useInventory();
+  const { movements, products, deleteMovement, getEntitySyncState, canCreate, canEdit, canDelete, canExport } = useInventory();
   const [isAdding, setIsAdding] = useState(false);
   const [editingMovement, setEditingMovement] = useState(null);
 
@@ -365,7 +365,17 @@ const MovementList = () => {
                   </td>
                 </tr>
               ) : (
-                paginatedMovements.map(mov => (
+                paginatedMovements.map(mov => {
+                  const syncInfo = typeof getEntitySyncState === 'function'
+                    ? getEntitySyncState('movements', mov.id)
+                    : { state: mov.offlinePending ? 'pending' : 'synced' };
+                  const effectiveSyncState =
+                    syncInfo.state === 'conflict'
+                      ? 'conflict'
+                      : syncInfo.state === 'pending' || mov.offlinePending
+                        ? 'pending'
+                        : 'synced';
+                  return (
                   <tr key={mov.id}>
                     <td>
                       <div style={{ fontWeight: '600', color: 'var(--color-text)' }}>{formatDate(mov.date)}</div>
@@ -380,7 +390,52 @@ const MovementList = () => {
                     </td>
                     <td>
                       <div style={{ fontWeight: '600', color: 'var(--color-text)' }}>{mov.refType}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>#{mov.refNumber}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                        <span>#{mov.refNumber}</span>
+                        {effectiveSyncState === 'conflict' ? (
+                          <span
+                            title={syncInfo.operation?.error || 'Conflicto al sincronizar con el servidor'}
+                            style={{
+                              fontSize: '0.65rem',
+                              padding: '0.08rem 0.4rem',
+                              borderRadius: '999px',
+                              backgroundColor: 'rgba(239, 68, 68, 0.14)',
+                              color: '#dc2626',
+                              fontWeight: 700
+                            }}
+                          >
+                            Requiere revisión
+                          </span>
+                        ) : effectiveSyncState === 'pending' ? (
+                          <span
+                            title="Cambio local pendiente de sincronizar con el servidor"
+                            style={{
+                              fontSize: '0.65rem',
+                              padding: '0.08rem 0.4rem',
+                              borderRadius: '999px',
+                              backgroundColor: 'rgba(245, 158, 11, 0.16)',
+                              color: '#b45309',
+                              fontWeight: 700
+                            }}
+                          >
+                            Pendiente
+                          </span>
+                        ) : (
+                          <span
+                            title="Sincronizado con el servidor central"
+                            style={{
+                              fontSize: '0.63rem',
+                              padding: '0.06rem 0.38rem',
+                              borderRadius: '999px',
+                              backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                              color: '#059669',
+                              fontWeight: 600
+                            }}
+                          >
+                            Sincronizado
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td style={{ fontWeight: '500' }}>{renderProductPreview(mov)}</td>
                     <td>
@@ -431,7 +486,8 @@ const MovementList = () => {
                       </td>
                     )}
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
