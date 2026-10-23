@@ -9,16 +9,24 @@ let resolvedSecret = process.env.JWT_SECRET || DEFAULT_SECRET;
 if (process.env.NODE_ENV === 'production') {
     const s = process.env.JWT_SECRET || '';
     if (!s) {
-        console.error('CRITICAL: JWT_SECRET no está definido en producción. Generando clave efímera aleatoria por seguridad.');
-        resolvedSecret = crypto.randomBytes(48).toString('hex');
+        console.warn('WARNING: JWT_SECRET no est\u00e1 definido en producci\u00f3n. Usando clave determinista derivada para mantener sesi\u00f3n entre instancias Serverless.');
+        resolvedSecret = crypto
+            .createHmac('sha256', DEFAULT_SECRET)
+            .update(`${process.env.DB_HOST || ''}:${process.env.DB_USER || ''}:${process.env.DB_PASS || ''}:${process.env.DB_NAME || ''}`)
+            .digest('hex');
     } else if (s.length < 32 || INSECURE_SECRET_PATTERNS.some(p => s.toLowerCase().includes(p))) {
-        console.warn('WARNING: JWT_SECRET debe tener al menos 32 caracteres y no contener palabras clave de plantilla en entorno de producción. Configura esta variable en Vercel.');
+        console.warn('WARNING: JWT_SECRET debe tener al menos 32 caracteres y no contener palabras clave de plantilla en entorno de producci\u00f3n. Configura esta variable en Vercel.');
     }
 }
 
 export const JWT_SECRET = resolvedSecret;
 
 export const verifyToken = async (req, res, next) => {
+    // Evitar doble consulta a la base de datos si el middleware global ya autenticó la petición
+    if (req.user && req.user.id) {
+        return next();
+    }
+
     const authHeader = req.headers['authorization'];
     if (!authHeader) {
         return res.status(401).json({ error: 'Un token de acceso es requerido para la autenticación.' });

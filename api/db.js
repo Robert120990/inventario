@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import mysql from 'mysql2/promise';
 
 const { DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT } = process.env;
@@ -6,7 +7,7 @@ const sslConfig = process.env.DB_SSL === 'true'
     ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
     : undefined;
 
-// Connection Pool with automatic recovery
+// Connection Pool with automatic recovery and TCP keep-alive for remote MySQL
 const pool = mysql.createPool({
     host: DB_HOST,
     user: DB_USER,
@@ -14,9 +15,13 @@ const pool = mysql.createPool({
     database: DB_NAME,
     port: DB_PORT || 3306,
     waitForConnections: true,
-    connectionLimit: 10, 
+    connectionLimit: 5,
+    maxIdle: 5,
+    idleTimeout: 60000,
     queueLimit: 0,
-    connectTimeout: 5000, // 5s timeout for remote DB
+    connectTimeout: 10000,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10000,
     ssl: sslConfig
 });
 

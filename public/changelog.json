@@ -1,5 +1,41 @@
 [
   {
+    "id": "b8ecc70",
+    "version": "v2.7.162",
+    "commit": "b8ecc70",
+    "fullCommit": "b8ecc7087bdecacf847f7a2e278bc46e9daa684e",
+    "description": "Feat(ondemand,movements,security): modo offline OnDemand con cola de sincronizacion, validacion real en guardado de movimientos y hardening integral",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-10-23",
+    "time": "18:57",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "feature",
+        "text": "Feat(ondemand,movements,security): modo offline OnDemand con cola de sincronizacion, validacion real en guardado de movimientos y hardening integral"
+      }
+    ]
+  },
+  {
+    "id": "79794ff",
+    "version": "v2.7.161",
+    "commit": "79794ff",
+    "fullCommit": "79794ffe409acd36e9ad9c97f46b4a3cd70b4926",
+    "description": "Evitar que la carga inicial sobreescriba las fechas de un corte congelado activo",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-10-20",
+    "time": "16:59",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "fix",
+        "text": "Evitar que la carga inicial sobreescriba las fechas de un corte congelado activo"
+      }
+    ]
+  },
+  {
     "id": "ac2dcaa",
     "version": "v2.7.160",
     "commit": "ac2dcaa",
@@ -152,7 +188,7 @@
     "author": "Ing. Raúl Sosa",
     "date": "2026-09-30",
     "time": "21:42",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
@@ -170,7 +206,7 @@
     "author": "Ing. Raúl Sosa",
     "date": "2026-09-29",
     "time": "17:51",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
@@ -2664,42 +2700,6 @@
       {
         "type": "improvement",
         "text": "Mejora usuarios y exportar pdf"
-      }
-    ]
-  },
-  {
-    "id": "091ea58",
-    "version": "v2.7.12",
-    "commit": "091ea58",
-    "fullCommit": "091ea58c37150827e62dfe9ac48cd4f826109a1d",
-    "description": "Multiples productos",
-    "author": "Roberto",
-    "date": "2026-03-19",
-    "time": "10:58",
-    "isOfficial": false,
-    "isGitCommit": true,
-    "changes": [
-      {
-        "type": "improvement",
-        "text": "Multiples productos"
-      }
-    ]
-  },
-  {
-    "id": "64c5b64",
-    "version": "v2.7.11",
-    "commit": "64c5b64",
-    "fullCommit": "64c5b6470389c174f50b2ce5359c298c6b230092",
-    "description": "Inicial",
-    "author": "Roberto",
-    "date": "2026-03-19",
-    "time": "10:18",
-    "isOfficial": false,
-    "isGitCommit": true,
-    "changes": [
-      {
-        "type": "improvement",
-        "text": "Inicial"
       }
     ]
   }
