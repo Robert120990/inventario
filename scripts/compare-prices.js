@@ -1,4 +1,4 @@
-import xlsx from 'xlsx';
+import xlsx from 'xlsx-js-style';
 import pool from '../api/db.js';
 
 const excelPath = 'C:\\Users\\rauls\\OneDrive\\Server Oficina Central\\Servidor Z\\ANDELSA\\AVICOLA CMI\\Cuarto frio San Martin\\CORTES COBRO SEGURO\\cortes de seguro.xlsx';

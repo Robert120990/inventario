@@ -17,7 +17,7 @@ export const BackupRestore = () => {
   const [restoring, setRestoring] = useState(false);
   
   // Archivo seleccionado para restauración
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [_selectedFile, setSelectedFile] = useState(null);
   const [parsedBackup, setParsedBackup] = useState(null);
   const [parseError, setParseError] = useState(null);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);

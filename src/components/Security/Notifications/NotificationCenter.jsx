@@ -11,7 +11,7 @@ const NOTIF_ICONS = {
 };
 
 const NotificationCenter = () => {
-  const { notifications, fetchNotifications, markNotificationAsRead, markAllNotificationsAsRead, addNotification, currentUser, canCreate } = useInventory();
+  const { notifications, fetchNotifications, markNotificationAsRead, markAllNotificationsAsRead, addNotification, canCreate } = useInventory();
   const [filter, setFilter] = useState('all'); // 'all' or 'unread'
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [title, setTitle] = useState('');

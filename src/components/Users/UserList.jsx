@@ -16,23 +16,31 @@ const UserList = ({ onConfigureAccess }) => {
   const allowAccessMatrix = canView('security-access');
 
 
-  const handleToggleActive = (user) => {
+  const handleToggleActive = async (user) => {
     if (String(user.id) === String(currentUser?.id)) {
       toast.error("No puedes desactivar tu propio usuario mientras estás en sesión.");
       return;
     }
-    updateUser(user.id, { isActive: !user.isActive, username: user.username, role: user.role, role_id: user.role_id });
-    toast.success(user.isActive ? 'Usuario desactivado' : 'Usuario reactivado');
+    const res = await updateUser(user.id, { isActive: !user.isActive, username: user.username, role: user.role, role_id: user.role_id });
+    if (res?.success) {
+      toast.success(user.isActive ? 'Usuario desactivado' : 'Usuario reactivado');
+    } else {
+      toast.error(res?.message || 'No se pudo actualizar el estado del usuario');
+    }
   };
 
-  const handleDelete = (user) => {
+  const handleDelete = async (user) => {
     if (String(user.id) === String(currentUser?.id)) {
       toast.error("No puedes eliminar tu propio usuario.");
       return;
     }
     if (window.confirm(`¿Estás seguro de eliminar permanentemente al usuario '${user.username}'?`)) {
-      deleteUser(user.id);
-      toast.success('Usuario eliminado del sistema');
+      const res = await deleteUser(user.id);
+      if (res?.success) {
+        toast.success('Usuario eliminado del sistema');
+      } else {
+        toast.error(res?.message || 'No se pudo eliminar el usuario');
+      }
     }
   };
 

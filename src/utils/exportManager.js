@@ -224,7 +224,11 @@ export const downloadCSV = (csvRows, filename) => {
  */
 export const escapeCsvCell = (val) => {
   if (val === null || val === undefined) return '';
-  const str = String(val);
+  let str = String(val);
+  // Prevención de inyección de fórmulas en CSV (CWE-1236)
+  if (typeof val !== 'number' && /^[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
   if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r') || str.includes(';')) {
     return `"${str.replace(/"/g, '""')}"`;
   }

@@ -5,12 +5,11 @@ import {
   ClipboardCheck, Shield, GitBranch, History, Bell, BookOpen, UserCheck, Sparkles, X
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
-import { formatDate } from '../utils/formatUtils';
 import { ThemeToggle } from './Theme/ThemeToggle';
 import { APP_DISPLAY_VERSION } from '../config/version';
 
 const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isMobileOpen, closeMobileMenu }) => {
-  const { currentUser, settings, logout, currentVersion, unreadNotificationsCount, canView, isAdmin, openCutHistoryModal, cutHistoryModalOpen } = useInventory();
+  const { currentUser, settings, logout, unreadNotificationsCount, canView, openCutHistoryModal, cutHistoryModalOpen } = useInventory();
   const [isSecurityOpen, setIsSecurityOpen] = useState(true);
 
   const isSecurityView = currentView.startsWith('security-') || currentView === 'users';

@@ -20,7 +20,7 @@ const ProductForm = ({ onCancel, initialData }) => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.sku || !formData.description || formData.price === '') return;
     
@@ -33,10 +33,18 @@ const ProductForm = ({ onCancel, initialData }) => {
     };
 
     if (initialData) {
-      updateProduct(initialData.id, dataToSave);
+      const res = await updateProduct(initialData.id, dataToSave);
+      if (!res?.success) {
+        toast.error(res?.message || 'Error al actualizar el producto');
+        return;
+      }
       toast.success('Producto actualizado exitosamente');
     } else {
-      addProduct(dataToSave);
+      const res = await addProduct(dataToSave);
+      if (!res?.success) {
+        toast.error(res?.message || 'Error al crear el producto');
+        return;
+      }
       toast.success('Producto creado exitosamente');
     }
     

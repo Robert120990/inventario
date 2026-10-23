@@ -45,7 +45,7 @@ describe('Autenticación y Sesiones (verifyToken / generateToken)', () => {
         // Mock pool.query para simular usuario activo pero sesión revocada
         const originalQuery = pool.query;
         try {
-            pool.query = async (sql, params) => {
+            pool.query = async (sql, _params) => {
                 if (sql.includes('FROM users')) {
                     return [[{ id: 88, username: 'revoked_user', role: 'user', isActive: 1, permissions: null }]];
                 }

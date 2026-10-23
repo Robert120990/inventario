@@ -101,6 +101,8 @@ export const MIGRATIONS = [
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     movementId VARCHAR(50),
                     description TEXT,
+                    quantity DECIMAL(15, 3) DEFAULT 1.000,
+                    unitPrice DECIMAL(15, 4) DEFAULT 0.0000,
                     value DECIMAL(15, 2) DEFAULT 0.00,
                     FOREIGN KEY (movementId) REFERENCES movements(id) ON DELETE CASCADE
                 )`,
@@ -149,19 +151,20 @@ export const MIGRATIONS = [
                     INDEX idx_notifications_user (userId)
                 )`,
                 `CREATE TABLE IF NOT EXISTS versions (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    version VARCHAR(20) UNIQUE NOT NULL,
-                    description TEXT,
+                    id VARCHAR(50) PRIMARY KEY,
+                    version VARCHAR(20) NOT NULL,
+                    date DATE NOT NULL,
+                    description TEXT NOT NULL,
                     changes LONGTEXT,
                     author VARCHAR(50) DEFAULT 'Sistema',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )`,
                 `CREATE TABLE IF NOT EXISTS daily_cuts (
                     id VARCHAR(50) PRIMARY KEY,
-                    title VARCHAR(200) NOT NULL,
-                    clientName VARCHAR(150) NOT NULL,
                     startDate DATE NOT NULL,
                     endDate DATE NOT NULL,
+                    clientName VARCHAR(255) DEFAULT 'Avícola Salvadoreña S.A. DE C.V.',
+                    status ENUM('draft', 'closed') DEFAULT 'closed',
                     isLocked TINYINT(1) DEFAULT 1,
                     congeladosData LONGTEXT NOT NULL,
                     preparadosData LONGTEXT NOT NULL,
@@ -174,9 +177,6 @@ export const MIGRATIONS = [
                 )`,
                 `CREATE TABLE IF NOT EXISTS insurance_cuts (
                     id VARCHAR(50) PRIMARY KEY,
-                    title VARCHAR(200) NOT NULL,
-                    customerName VARCHAR(150) NOT NULL,
-                    warehouseName VARCHAR(150) NOT NULL,
                     startDate DATE NULL,
                     cutoffDate DATE NOT NULL,
                     premiumRate DECIMAL(10, 4) DEFAULT 0.10,
@@ -244,9 +244,9 @@ export const MIGRATIONS = [
                     products: { view: true, create: true, edit: true, delete: true, export: true },
                     'inventory-count': { view: true, create: true, edit: true, delete: true, export: true },
                     movements: { view: true, create: true, edit: true, delete: true, export: true },
-                    insurance: { view: true, export: true },
+                    insurance: { view: true, edit: true, delete: true, export: true },
                     summary: { view: true, export: true },
-                    summary2: { view: true, export: true },
+                    summary2: { view: true, edit: true, delete: true, export: true },
                     security: { view: true, create: true, edit: true, delete: true },
                     'security-users': { view: true, create: true, edit: true, delete: true, export: true },
                     'security-access': { view: true, edit: true },
@@ -264,9 +264,9 @@ export const MIGRATIONS = [
                     products: { view: true, create: true, edit: true, delete: false, export: true },
                     'inventory-count': { view: true, create: true, edit: true, delete: false, export: true },
                     movements: { view: true, create: true, edit: true, delete: false, export: true },
-                    insurance: { view: true, export: true },
+                    insurance: { view: true, edit: true, delete: false, export: true },
                     summary: { view: true, export: true },
-                    summary2: { view: true, export: true },
+                    summary2: { view: true, edit: true, delete: false, export: true },
                     security: { view: false, create: false, edit: false, delete: false },
                     settings: { view: false, edit: false }
                 });
@@ -316,6 +316,34 @@ export const MIGRATIONS = [
             const [docRows] = await connection.query('SELECT COUNT(*) as count FROM document_types');
             if (docRows[0].count === 0) {
                 await connection.query(`INSERT IGNORE INTO document_types (name) VALUES ('Factura'), ('Remisión'), ('Orden de Compra')`);
+            }
+        }
+    },
+    {
+        version: '005_services_qty_and_cut_permissions',
+        description: 'Columnas quantity y unitPrice en tabla services y permisos de edición de cortes',
+        run: async (connection) => {
+            const addColIfMissing = async (table, colDef, colName) => {
+                const [cols] = await connection.query(`SHOW COLUMNS FROM ${table} LIKE ?`, [colName]);
+                if (cols.length === 0) {
+                    await connection.query(`ALTER TABLE ${table} ADD COLUMN ${colDef}`);
+                }
+            };
+            await addColIfMissing('services', 'quantity DECIMAL(15, 3) DEFAULT 1.000 AFTER description', 'quantity');
+            await addColIfMissing('services', 'unitPrice DECIMAL(15, 4) DEFAULT 0.0000 AFTER quantity', 'unitPrice');
+
+            // Asegurar que los roles Administrador y Supervisor tengan permisos edit/delete en cortes
+            const [roles] = await connection.query("SELECT id, name, permissions FROM roles WHERE name IN ('Administrador', 'Supervisor')");
+            for (const role of roles) {
+                try {
+                    const perms = role.permissions ? JSON.parse(role.permissions) : {};
+                    const isAdmin = role.name === 'Administrador';
+                    perms.insurance = { ...(perms.insurance || {}), view: true, edit: true, delete: isAdmin, export: true };
+                    perms.summary2 = { ...(perms.summary2 || {}), view: true, edit: true, delete: isAdmin, export: true };
+                    await connection.query('UPDATE roles SET permissions = ? WHERE id = ?', [JSON.stringify(perms), role.id]);
+                } catch {
+                    // Ignorar si permissions no es JSON válido
+                }
             }
         }
     }

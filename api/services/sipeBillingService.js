@@ -180,7 +180,7 @@ export const EXPECTED_SIPE_CONTRACT = {
     ]
 };
 
-// Pool dedicado para consultar db_sistema_saas en el mismo servidor MySQL (5.252.55.29)
+// Pool dedicado para consultar db_sistema_saas en el servidor MySQL configurado por variables de entorno
 let sipeDbPool = null;
 
 function getSipeDbPool() {
@@ -190,9 +190,9 @@ function getSipeDbPool() {
             : undefined;
 
         sipeDbPool = mysql.createPool({
-            host: process.env.SIPE_DB_HOST || process.env.DB_HOST || '5.252.55.29',
-            user: process.env.SIPE_DB_USER || process.env.DB_USER || 'sysadmin',
-            password: process.env.SIPE_DB_PASS || process.env.DB_PASS || process.env.DB_PASSWORD || 'QwErTy?123',
+            host: process.env.SIPE_DB_HOST || process.env.DB_HOST || '127.0.0.1',
+            user: process.env.SIPE_DB_USER || process.env.DB_USER || 'root',
+            password: process.env.SIPE_DB_PASS || process.env.DB_PASS || process.env.DB_PASSWORD || '',
             database: process.env.SIPE_DB_NAME || 'db_sistema_saas',
             port: Number(process.env.SIPE_DB_PORT || process.env.DB_PORT || 3306),
             waitForConnections: true,
@@ -1175,18 +1175,18 @@ export async function emitCutToSipe({ cutId, cutType = 'daily_cut', cutData = nu
     let numeroControl = null;
     let selloRecepcion = null;
     let fhProcesamiento = null;
-    let estadoHacienda = isLiveTransmitRequested ? 'EMITTED' : 'PRE_FACTURA';
+    let _estadoHacienda = isLiveTransmitRequested ? 'EMITTED' : 'PRE_FACTURA';
     let executionChannel = 'shared_db';
 
     // 4. Intentar primero vía HTTP SIPE_API_URL (/api/integration/coldroom-billing) si está disponible
     const sipeApiUrl = options.sipeApiUrl || process.env.SIPE_API_URL || 'http://127.0.0.1:4000';
     const cleanBaseUrl = String(sipeApiUrl).replace(/\/+$/, '').replace(/\/api$/, '');
-    const jwtSecret = process.env.SIPE_JWT_SECRET || 'nova_saas_secret_2026_andelsa';
-    const serviceToken = process.env.SIPE_API_TOKEN || jwt.sign(
+    const jwtSecret = process.env.SIPE_JWT_SECRET || process.env.JWT_SECRET || '';
+    const serviceToken = process.env.SIPE_API_TOKEN || (jwtSecret ? jwt.sign(
         { id: 1, username: user?.username || 'inventario_lil', company_id: 1, branch_id: builtPayload.branchId },
         jwtSecret,
         { expiresIn: '5m' }
-    );
+    ) : '');
 
     let handledViaHttp = false;
     try {
@@ -1196,10 +1196,10 @@ export async function emitCutToSipe({ cutId, cutType = 'daily_cut', cutData = nu
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${serviceToken}`,
+                ...(serviceToken ? { 'Authorization': `Bearer ${serviceToken}` } : {}),
                 'x-company-id': '1',
                 'x-branch-id': String(builtPayload.branchId || 1),
-                'x-service-key': process.env.SIPE_INTEGRATION_KEY || 'lil_coldroom_sipe_2026'
+                'x-service-key': process.env.SIPE_INTEGRATION_KEY || ''
             },
             body: JSON.stringify({
                 ...builtPayload,
@@ -1218,7 +1218,7 @@ export async function emitCutToSipe({ cutId, cutType = 'daily_cut', cutData = nu
                 numeroControl = httpData.numeroControl;
                 selloRecepcion = httpData.selloRecepcion || null;
                 fhProcesamiento = httpData.fhProcesamiento || null;
-                estadoHacienda = isLiveTransmitRequested ? 'EMITTED' : (httpData.estadoHacienda || 'PRE_FACTURA');
+                _estadoHacienda = isLiveTransmitRequested ? 'EMITTED' : (httpData.estadoHacienda || 'PRE_FACTURA');
                 executionChannel = 'http_sipe_api';
                 handledViaHttp = true;
             }

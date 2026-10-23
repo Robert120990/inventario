@@ -10,7 +10,7 @@ import pool, { ensureSchema } from './db.js';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { verifyToken, generateToken } from './middleware/auth.js';
-import { requirePermission } from './middleware/permissions.js';
+import { requirePermission, requireAdmin } from './middleware/permissions.js';
 
 const _require = createRequire(import.meta.url);
 const bcrypt = (() => {
@@ -41,7 +41,7 @@ app.use(cors({
             !origin ||
             envOrigins.includes('*') ||
             envOrigins.includes(origin) ||
-            origin.endsWith('.vercel.app') ||
+            (origin.endsWith('.vercel.app') && origin.toLowerCase().includes('inventario')) ||
             origin.includes('localhost') ||
             origin.includes('127.0.0.1')
         ) {
@@ -52,7 +52,7 @@ app.use(cors({
     credentials: true
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 
 // 4. Rate Limiting: protección contra fuerza bruta y DoS
 export const authLimiter = rateLimit({
@@ -124,10 +124,20 @@ export const ensureTableColumns = async () => {
     try {
         connection = await pool.getConnection();
 
+        const [existingColRows] = await connection.query(
+            `SELECT TABLE_NAME, COLUMN_NAME
+             FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME IN ('services', 'daily_cuts', 'insurance_cuts')`
+        );
+        const existingCols = new Set(
+            existingColRows.map(r => `${r.TABLE_NAME}.${r.COLUMN_NAME}`)
+        );
+
         const addColIfMissing = async (table, colName, colDef) => {
-            const [cols] = await connection.query(`SHOW COLUMNS FROM ${table} LIKE ?`, [colName]);
-            if (cols.length === 0) {
+            if (!existingCols.has(`${table}.${colName}`)) {
                 await connection.query(`ALTER TABLE ${table} ADD COLUMN ${colName} ${colDef}`);
+                existingCols.add(`${table}.${colName}`);
             }
         };
 
@@ -137,6 +147,9 @@ export const ensureTableColumns = async () => {
                 await connection.query(`CREATE INDEX ${indexName} ON ${table} (${colList})`);
             }
         };
+
+        await addColIfMissing('services', 'quantity', 'DECIMAL(15, 3) DEFAULT 1.000 AFTER description');
+        await addColIfMissing('services', 'unitPrice', 'DECIMAL(15, 4) DEFAULT 0.0000 AFTER quantity');
 
         const dteColumns = [
             ['sipe_sale_id', 'INT DEFAULT NULL'],
@@ -345,7 +358,7 @@ router.get('/products', requirePermission('products', 'view'), async (req, res) 
         const [rows] = await pool.query(query, params);
         res.json(rows);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -367,7 +380,10 @@ router.post('/products', requirePermission('products', 'create'), async (req, re
 
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        if (error.code === 'ER_DUP_ENTRY' || error.errno === 1062) {
+            return res.status(409).json({ error: `El código SKU "${sku}" ya existe en el catálogo.` });
+        }
+        sendApiError(res, error, 'Error al crear producto');
     }
 });
 
@@ -392,6 +408,9 @@ router.put('/products/:id', requirePermission('products', 'edit'), async (req, r
 
         res.json({ success: true });
     } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY' || error.errno === 1062) {
+            return res.status(409).json({ error: `El código SKU "${sku}" ya está asignado a otro producto.` });
+        }
         sendApiError(res, error, 'Error al actualizar producto');
     }
 });
@@ -415,7 +434,12 @@ router.delete('/products/:id', requirePermission('products', 'delete'), async (r
 
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        if (error.code === 'ER_ROW_IS_REFERENCED_2' || error.errno === 1451) {
+            return res.status(409).json({
+                error: 'No se puede eliminar este producto porque tiene movimientos o ajustes históricos asociados.'
+            });
+        }
+        sendApiError(res, error, 'Error al eliminar producto');
     }
 });
 
@@ -508,7 +532,7 @@ router.post('/inventory-adjustments', requirePermission('inventory-count', 'crea
         });
     } catch (error) {
         await connection.rollback();
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     } finally {
         connection.release();
     }
@@ -529,7 +553,7 @@ router.get('/inventory-adjustments', requirePermission('inventory-count', 'view'
         const [rows] = await pool.query(query, params);
         res.json(rows);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -599,7 +623,7 @@ router.post('/products/bulk-sync', requirePermission('products', 'edit'), async 
         });
     } catch (error) {
         await connection.rollback();
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     } finally {
         connection.release();
     }
@@ -713,7 +737,7 @@ router.get('/movements', requirePermission('movements', 'view'), async (req, res
 
         res.json(results);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -785,7 +809,9 @@ router.post('/movements', requirePermission('movements', 'create'), async (req, 
             return res.status(409).json({ error: lockError });
         }
 
-        // 2. Bloquear y verificar existencias de los productos afectados (FOR UPDATE)
+        // 2. Bloquear y verificar existencia de los productos afectados (FOR UPDATE)
+        const strictStock = req.body.strictStock === true;
+        const stockWarnings = [];
         const productIds = [...new Set(items.map(i => i.productId))];
         const [dbProducts] = await connection.query(
             'SELECT id, sku, description, stockUnits, stockPounds, stockBaskets FROM products WHERE id IN (?) FOR UPDATE',
@@ -798,29 +824,31 @@ router.post('/movements', requirePermission('movements', 'create'), async (req, 
             stockBaskets: Number(p.stockBaskets || 0)
         }]));
 
-        // Si es salida, comprobar disponibilidad
-        if (type === 'out') {
-            const requiredMap = new Map();
-            for (const item of items) {
-                const cur = requiredMap.get(item.productId) || { u: 0, p: 0, b: 0 };
-                cur.u += Number(item.qtyUnits) || 0;
-                cur.p += Number(item.qtyPounds) || 0;
-                cur.b += Number(item.qtyBaskets) || 0;
-                requiredMap.set(item.productId, cur);
-            }
+        // Verificar que todos los productos existan en el catálogo y evaluar disponibilidad en salidas
+        const requiredMap = new Map();
+        for (const item of items) {
+            const cur = requiredMap.get(item.productId) || { u: 0, p: 0, b: 0 };
+            cur.u += Number(item.qtyUnits) || 0;
+            cur.p += Number(item.qtyPounds) || 0;
+            cur.b += Number(item.qtyBaskets) || 0;
+            requiredMap.set(item.productId, cur);
+        }
 
-            for (const [prodId, reqQty] of requiredMap.entries()) {
-                const prod = prodMap.get(prodId);
-                if (!prod) {
-                    await connection.rollback();
-                    return res.status(404).json({ error: `Producto con ID '${prodId}' no existe en el catálogo.` });
-                }
-                if (prod.stockUnits < reqQty.u || prod.stockPounds < reqQty.p || prod.stockBaskets < reqQty.b) {
+        for (const [prodId, reqQty] of requiredMap.entries()) {
+            const prod = prodMap.get(prodId);
+            if (!prod) {
+                await connection.rollback();
+                return res.status(404).json({ error: `Producto con ID '${prodId}' no existe en el catálogo.` });
+            }
+            if (type === 'out' && (prod.stockUnits < reqQty.u || prod.stockPounds < reqQty.p || prod.stockBaskets < reqQty.b)) {
+                const warnMsg = `Saldo contable superado en salida de '${prod.sku}'. Solicitado: [${reqQty.u}u, ${reqQty.p}lbs, ${reqQty.b}can]. Disponible contable: [${prod.stockUnits}u, ${prod.stockPounds}lbs, ${prod.stockBaskets}can].`;
+                if (strictStock) {
                     await connection.rollback();
                     return res.status(400).json({
                         error: `Stock insuficiente para salida de '${prod.sku}'. Solicitado: [${reqQty.u}u, ${reqQty.p}lbs, ${reqQty.b}can]. Disponible actual: [${prod.stockUnits}u, ${prod.stockPounds}lbs, ${prod.stockBaskets}can].`
                     });
                 }
+                stockWarnings.push(warnMsg);
             }
         }
 
@@ -847,9 +875,11 @@ router.post('/movements', requirePermission('movements', 'create'), async (req, 
         // 5. Insertar servicios extraordinarios si aplican
         if (services && services.length > 0) {
             for (const s of services) {
+                const qty = s.quantity !== undefined && s.quantity !== null ? Number(s.quantity) : 1;
+                const uPrice = s.unitPrice !== undefined && s.unitPrice !== null ? Number(s.unitPrice) : Number(s.value || 0);
                 await connection.query(
-                    'INSERT INTO services (movementId, description, value) VALUES (?, ?, ?)',
-                    [id, s.description || '', s.value || 0]
+                    'INSERT INTO services (movementId, description, quantity, unitPrice, value) VALUES (?, ?, ?, ?, ?)',
+                    [id, s.description || '', qty, uPrice, s.value || 0]
                 );
             }
         }
@@ -865,10 +895,10 @@ router.post('/movements', requirePermission('movements', 'create'), async (req, 
         });
 
         await connection.commit();
-        res.json({ success: true, id });
+        res.json({ success: true, id, ...(stockWarnings.length > 0 ? { stockWarnings } : {}) });
     } catch (error) {
         await connection.rollback();
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     } finally {
         connection.release();
     }
@@ -962,13 +992,16 @@ router.put('/movements/:id', requirePermission('movements', 'edit'), async (req,
             p.stockBaskets += Number(nextItem.qtyBaskets || 0) * newMultiplier;
         }
 
-        // 3. Comprobar que ningún producto quede con saldo negativo
-        for (const p of prodMap.values()) {
-            if (p.stockUnits < 0 || p.stockPounds < -0.0001 || p.stockBaskets < 0) {
-                await connection.rollback();
-                return res.status(400).json({
-                    error: `La modificación del movimiento generaría existencias negativas para '${p.sku}'. Saldo resultante: [${p.stockUnits}u, ${p.stockPounds}lbs, ${p.stockBaskets}can].`
-                });
+        // 3. Comprobar que ningún producto quede con saldo negativo si strictStock está activo
+        const strictStock = req.body.strictStock === true;
+        if (strictStock) {
+            for (const p of prodMap.values()) {
+                if (p.stockUnits < 0 || p.stockPounds < -0.0001 || p.stockBaskets < 0) {
+                    await connection.rollback();
+                    return res.status(400).json({
+                        error: `La modificación del movimiento generaría existencias negativas para '${p.sku}'. Saldo resultante: [${p.stockUnits}u, ${p.stockPounds}lbs, ${p.stockBaskets}can].`
+                    });
+                }
             }
         }
 
@@ -1003,9 +1036,11 @@ router.put('/movements/:id', requirePermission('movements', 'edit'), async (req,
 
         if (services && services.length > 0) {
             for (const service of services) {
+                const qty = service.quantity !== undefined && service.quantity !== null ? Number(service.quantity) : 1;
+                const uPrice = service.unitPrice !== undefined && service.unitPrice !== null ? Number(service.unitPrice) : Number(service.value || 0);
                 await connection.query(
-                    'INSERT INTO services (movementId, description, value) VALUES (?, ?, ?)',
-                    [id, service.description || '', service.value || 0]
+                    'INSERT INTO services (movementId, description, quantity, unitPrice, value) VALUES (?, ?, ?, ?, ?)',
+                    [id, service.description || '', qty, uPrice, service.value || 0]
                 );
             }
         }
@@ -1024,7 +1059,7 @@ router.put('/movements/:id', requirePermission('movements', 'edit'), async (req,
         res.json({ success: true });
     } catch (error) {
         await connection.rollback();
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     } finally {
         connection.release();
     }
@@ -1058,8 +1093,9 @@ router.delete('/movements/:id', requirePermission('movements', 'delete'), async 
         const [items] = await connection.query('SELECT * FROM movement_items WHERE movementId=?', [id]);
         const multiplier = mov.type === 'in' ? -1 : 1;
 
-        // Si eliminamos una entrada ('in'), estamos restando existencias: verificar que no queden negativas
-        if (mov.type === 'in' && items.length > 0) {
+        // Si eliminamos una entrada ('in') y strictStock está activo, verificar que no queden negativas
+        const strictStock = req.query.strictStock === 'true' || req.body?.strictStock === true;
+        if (strictStock && mov.type === 'in' && items.length > 0) {
             const productIds = [...new Set(items.map(i => i.productId))];
             const [dbProducts] = await connection.query(
                 'SELECT id, sku, stockUnits, stockPounds, stockBaskets FROM products WHERE id IN (?) FOR UPDATE',
@@ -1111,7 +1147,7 @@ router.delete('/movements/:id', requirePermission('movements', 'delete'), async 
         res.json({ success: true });
     } catch (error) {
         await connection.rollback();
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     } finally {
         connection.release();
     }
@@ -1217,7 +1253,7 @@ router.post('/auth/login', authLimiter, async (req, res) => {
 
         res.json({ success: true, user: safeUser, sessionId, token });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1246,7 +1282,7 @@ router.post('/auth/logout', async (req, res) => {
 
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1281,7 +1317,7 @@ router.get('/users', requirePermission('security-users', 'view'), async (req, re
         });
         res.json(parsed);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1487,7 +1523,7 @@ router.get('/roles', requirePermission('security-roles', 'view'), async (req, re
         }));
         res.json(parsed);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1512,7 +1548,7 @@ router.post('/roles', requirePermission('security-roles', 'create'), async (req,
         });
         res.json({ success: true, id: result.insertId });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1537,7 +1573,7 @@ router.put('/roles/:id', requirePermission('security-roles', 'edit'), async (req
         });
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1556,7 +1592,7 @@ router.delete('/roles/:id', requirePermission('security-roles', 'delete'), async
         });
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1586,27 +1622,30 @@ router.get('/system-logs', requirePermission('security-logs', 'view'), async (re
         const [rows] = await pool.query(query, params);
         res.json(rows);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
 router.post('/system-logs', async (req, res) => {
-    const { action, module, details } = req.body;
+    const { action, module, details } = req.body || {};
     const actor = req.user?.username || 'Sistema';
     const actorId = req.user?.id || null;
     const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+    const safeAction = String(action || 'CLIENT_ACTION').trim().slice(0, 50);
+    const safeModule = String(module || 'system').trim().slice(0, 50);
+    const safeDetails = String(details || '').trim().slice(0, 1000);
     try {
         await logSystemEvent({
             userId: actorId,
             username: actor,
-            action: action || 'ACTION',
-            module: module || 'system',
-            details: details || '',
+            action: safeAction,
+            module: safeModule,
+            details: safeDetails,
             ip
         });
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error, 'Error al registrar evento en bitácora');
     }
 });
 
@@ -1623,7 +1662,7 @@ router.get('/active-sessions', requirePermission('security-sessions', 'view'), a
         `);
         res.json(rows);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1673,7 +1712,7 @@ router.delete('/active-sessions/:id', requirePermission('security-sessions', 'de
         });
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1691,7 +1730,7 @@ router.get('/notifications', async (req, res) => {
         const [rows] = await pool.query(query, params);
         res.json(rows);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1706,7 +1745,7 @@ router.post('/notifications', requirePermission('security-notifications', 'creat
         );
         res.json({ success: true, id });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1730,7 +1769,7 @@ router.put('/notifications/read-all', async (req, res) => {
         }
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1740,7 +1779,7 @@ router.get('/config', async (req, res) => {
         const [docTypes] = await pool.query('SELECT * FROM document_types');
         res.json({ categories, docTypes });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1750,7 +1789,7 @@ router.post('/config/categories', requirePermission('settings', 'edit'), async (
         await pool.query('INSERT INTO categories (name, unit_type) VALUES (?, ?)', [name, unit_type || 'units']);
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1760,7 +1799,7 @@ router.put('/config/categories/:name', requirePermission('settings', 'edit'), as
         await pool.query('UPDATE categories SET unit_type=? WHERE name=?', [unit_type, decodeURIComponent(req.params.name)]);
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1769,7 +1808,7 @@ router.delete('/config/categories/:name', requirePermission('settings', 'edit'),
         await pool.query('DELETE FROM categories WHERE name = ?', [decodeURIComponent(req.params.name)]);
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1779,7 +1818,7 @@ router.post('/config/document-types', requirePermission('settings', 'edit'), asy
         await pool.query('INSERT INTO document_types (name) VALUES (?)', [name]);
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1788,7 +1827,7 @@ router.delete('/config/document-types/:name', requirePermission('settings', 'edi
         await pool.query('DELETE FROM document_types WHERE name = ?', [decodeURIComponent(req.params.name)]);
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1797,7 +1836,7 @@ router.get('/settings', requirePermission('settings', 'view'), async (req, res) 
         const [rows] = await pool.query('SELECT * FROM settings WHERE id = 1');
         res.json(rows[0] || { name: 'Inventario Pro', logo: null });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1820,7 +1859,7 @@ router.post('/settings', requirePermission('settings', 'edit'), async (req, res)
 
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1837,7 +1876,7 @@ router.get('/versions', async (req, res) => {
         });
         res.json(parsed);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1870,7 +1909,7 @@ router.post('/versions', requirePermission('security-changelog', 'create'), asyn
         res.json({ success: true, version: nextVersion });
     } catch (error) {
         await connection.rollback();
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     } finally {
         connection.release();
     }
@@ -1891,7 +1930,7 @@ router.delete('/versions/:id', requirePermission('security-changelog', 'delete')
         });
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -1941,7 +1980,7 @@ router.get('/contract-rates', verifyToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching contract rates:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -2007,7 +2046,7 @@ router.put('/contract-rates', verifyToken, requirePermission('settings', 'edit')
         });
     } catch (error) {
         console.error('Error updating contract rates:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -2069,7 +2108,7 @@ router.get('/daily-cuts', requirePermission('summary2', 'view'), async (req, res
         res.json(cuts);
     } catch (error) {
         console.error('Error fetching daily cuts:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -2113,7 +2152,7 @@ router.get('/daily-cuts/:id', requirePermission('summary2', 'view'), async (req,
         });
     } catch (error) {
         console.error('Error fetching daily cut by id:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -2174,7 +2213,7 @@ router.post('/daily-cuts', requirePermission('summary2', 'edit'), async (req, re
         });
     } catch (error) {
         console.error('Error creating daily cut:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -2201,6 +2240,11 @@ router.put('/daily-cuts/:id', requirePermission('summary2', 'edit'), async (req,
         }
 
         const current = existing[0];
+        if (Number(current.isLocked) === 1 && isLocked !== false && isLocked !== 0) {
+            return res.status(409).json({
+                error: `El corte diario "${current.title || current.id}" se encuentra cerrado y bloqueado. Debe desbloquearse antes de modificar sus datos.`
+            });
+        }
 
         const newTitle = title !== undefined ? title : current.title;
         const newClient = clientName !== undefined ? clientName : current.clientName;
@@ -2248,7 +2292,7 @@ router.put('/daily-cuts/:id', requirePermission('summary2', 'edit'), async (req,
         });
     } catch (error) {
         console.error('Error updating daily cut:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -2284,7 +2328,7 @@ router.put('/daily-cuts/:id/lock-status', requirePermission('summary2', 'edit'),
         });
     } catch (error) {
         console.error('Error changing daily cut lock status:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -2324,7 +2368,7 @@ router.delete('/daily-cuts/:id', requirePermission('summary2', 'edit'), async (r
         res.json({ success: true, id: req.params.id });
     } catch (error) {
         console.error('Error deleting daily cut:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -2377,7 +2421,7 @@ router.get('/insurance-cuts', requirePermission('insurance', 'view'), async (req
         res.json(cuts);
     } catch (error) {
         console.error('Error fetching insurance cuts:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -2420,7 +2464,7 @@ router.get('/insurance-cuts/:id', requirePermission('insurance', 'view'), async 
         });
     } catch (error) {
         console.error('Error fetching insurance cut by id:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -2479,7 +2523,7 @@ router.post('/insurance-cuts', requirePermission('insurance', 'edit'), async (re
         });
     } catch (error) {
         console.error('Error creating insurance cut:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -2505,6 +2549,11 @@ router.put('/insurance-cuts/:id', requirePermission('insurance', 'edit'), async 
         }
 
         const current = existing[0];
+        if (Number(current.isLocked) === 1 && isLocked !== false && isLocked !== 0) {
+            return res.status(409).json({
+                error: `El corte de seguro "${current.title || current.id}" se encuentra cerrado y bloqueado. Debe desbloquearse antes de modificar sus datos.`
+            });
+        }
 
         const newTitle = title !== undefined ? title : current.title;
         const newCustomer = customerName !== undefined ? customerName : current.customerName;
@@ -2546,7 +2595,7 @@ router.put('/insurance-cuts/:id', requirePermission('insurance', 'edit'), async 
         });
     } catch (error) {
         console.error('Error updating insurance cut:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -2582,7 +2631,7 @@ router.put('/insurance-cuts/:id/lock-status', requirePermission('insurance', 'ed
         });
     } catch (error) {
         console.error('Error changing insurance cut lock status:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -2622,7 +2671,7 @@ router.delete('/insurance-cuts/:id', requirePermission('insurance', 'edit'), asy
         res.json({ success: true, id: req.params.id });
     } catch (error) {
         console.error('Error deleting insurance cut:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
@@ -2700,18 +2749,41 @@ const loadCutForBilling = async (cutType, cutId) => {
     };
 };
 
-router.get('/billing/contract-status', verifyToken, async (req, res) => {
+
+const requireBillingPermission = (action = 'view') => {
+    return (req, res, next) => {
+        if (!req.user) {
+            return res.status(401).json({ error: 'No autenticado.' });
+        }
+        if (req.user.role === 'admin') {
+            return next();
+        }
+        const perms = req.user.permissions || {};
+        const checkMod = (modName) => {
+            const m = perms[modName];
+            return Boolean(m && (m[action] === true || m.all === true));
+        };
+        if (checkMod('summary2') || checkMod('summary') || checkMod('insurance')) {
+            return next();
+        }
+        return res.status(403).json({
+            error: `Acceso denegado. Se requiere permiso "${action}" en Cortes Diarios o Cortes de Seguro para facturación SIPE.`
+        });
+    };
+};
+
+router.get('/billing/contract-status', verifyToken, requireBillingPermission('view'), async (req, res) => {
     try {
         const sipeBillingService = await getSipeBillingService();
         const status = await sipeBillingService.checkSipeContractStatus();
         res.json(status);
     } catch (error) {
         console.error('Error checking SIPE contract status:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
-router.post('/billing/preview', verifyToken, async (req, res) => {
+router.post('/billing/preview', verifyToken, requireBillingPermission('view'), async (req, res) => {
     try {
         const { cutId, cutType = 'daily', options = {} } = req.body || {};
         const normalizedType = String(cutType || 'daily').toLowerCase().includes('ins') ? 'insurance' : 'daily';
@@ -2753,11 +2825,11 @@ router.post('/billing/preview', verifyToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Error building DTE preview:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
-router.post('/billing/emit', verifyToken, async (req, res) => {
+router.post('/billing/emit', verifyToken, requireBillingPermission('edit'), async (req, res) => {
     const actor = req.user?.username || 'Sistema';
     const actorId = req.user?.id || null;
     const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
@@ -2840,7 +2912,7 @@ router.post('/billing/emit', verifyToken, async (req, res) => {
     }
 });
 
-router.get('/billing/history', verifyToken, async (req, res) => {
+router.get('/billing/history', verifyToken, requireBillingPermission('view'), async (req, res) => {
     try {
         const includeUnbilled = req.query.includeUnbilled === 'true' || req.query.all === 'true';
         const whereClause = includeUnbilled
@@ -2929,10 +3001,218 @@ router.get('/billing/history', verifyToken, async (req, res) => {
         res.json(combined);
     } catch (error) {
         console.error('Error fetching billing history:', error);
-        res.status(500).json({ error: error.message });
+        sendApiError(res, error);
     }
 });
 
+
+
+// ==========================================
+// RESPALDO Y RESTAURACIÓN DEL SISTEMA (/api/system/*)
+// ==========================================
+
+router.get('/system/database-stats', requirePermission('settings', 'view'), async (req, res) => {
+    try {
+        const [[prodCount]] = await pool.query('SELECT COUNT(*) as total FROM products');
+        const [[movCount]] = await pool.query('SELECT COUNT(*) as total FROM movements');
+        const [[itemCount]] = await pool.query('SELECT COUNT(*) as total FROM movement_items');
+        const [[adjCount]] = await pool.query('SELECT COUNT(*) as total FROM inventory_adjustments');
+        const [[catCount]] = await pool.query('SELECT COUNT(*) as total FROM categories');
+        const [[logCount]] = await pool.query('SELECT COUNT(*) as total FROM system_logs');
+        const [[usrCount]] = await pool.query('SELECT COUNT(*) as total FROM users');
+
+        const counts = {
+            products: Number(prodCount?.total || 0),
+            movements: Number(movCount?.total || 0),
+            movement_items: Number(itemCount?.total || 0),
+            adjustments: Number(adjCount?.total || 0),
+            categories: Number(catCount?.total || 0),
+            logs: Number(logCount?.total || 0),
+            system_logs: Number(logCount?.total || 0),
+            users: Number(usrCount?.total || 0)
+        };
+
+        res.json({
+            ...counts,
+            tables: counts
+        });
+    } catch (error) {
+        sendApiError(res, error, 'Error al consultar estadísticas de base de datos');
+    }
+});
+
+router.get('/system/backup', requireAdmin, async (req, res) => {
+    const actor = req.user?.username || 'admin';
+    const actorId = req.user?.id || null;
+    try {
+        const [categories] = await pool.query('SELECT * FROM categories ORDER BY id ASC');
+        const [document_types] = await pool.query('SELECT * FROM document_types ORDER BY id ASC');
+        const [products] = await pool.query('SELECT * FROM products ORDER BY sku ASC');
+        const [movements] = await pool.query('SELECT * FROM movements ORDER BY date ASC, created_at ASC');
+        const [movement_items] = await pool.query('SELECT * FROM movement_items ORDER BY id ASC');
+        const [services] = await pool.query('SELECT * FROM services ORDER BY id ASC');
+        const [inventory_adjustments] = await pool.query('SELECT * FROM inventory_adjustments ORDER BY created_at ASC');
+        const [daily_cuts] = await pool.query('SELECT * FROM daily_cuts ORDER BY startDate ASC');
+        const [insurance_cuts] = await pool.query('SELECT * FROM insurance_cuts ORDER BY cutoffDate ASC');
+        const [settings] = await pool.query('SELECT * FROM settings WHERE id = 1');
+
+        await logSystemEvent({
+            userId: actorId,
+            username: actor,
+            action: 'EXPORT_BACKUP',
+            module: 'settings',
+            details: `Descarga de respaldo completo de base de datos (${products.length} productos, ${movements.length} movimientos)`
+        });
+
+        const nowIso = new Date().toISOString();
+        const metaObj = {
+            version: '1.0',
+            exportDate: nowIso,
+            exportedAt: nowIso,
+            exportedBy: actor,
+            database: process.env.DB_NAME || 'db_web_inventory',
+            tableCounts: {
+                products: products.length,
+                movements: movements.length,
+                movement_items: movement_items.length,
+                services: services.length,
+                inventory_adjustments: inventory_adjustments.length
+            }
+        };
+        const tablesObj = {
+            categories,
+            document_types,
+            products,
+            movements,
+            movement_items,
+            services,
+            inventory_adjustments,
+            daily_cuts,
+            insurance_cuts,
+            settings
+        };
+
+        res.json({
+            meta: metaObj,
+            metadata: metaObj,
+            data: tablesObj,
+            tables: tablesObj
+        });
+    } catch (error) {
+        sendApiError(res, error, 'Error al generar el respaldo del sistema');
+    }
+});
+
+router.post('/system/restore', requireAdmin, async (req, res) => {
+    const actor = req.user?.username || 'admin';
+    const actorId = req.user?.id || null;
+    const payload = req.body?.backup || req.body || {};
+    const metadata = payload.meta || payload.metadata || {};
+    const tables = payload.data || payload.tables;
+
+    if (!tables || !Array.isArray(tables.products)) {
+        return res.status(400).json({ error: 'El archivo de respaldo no tiene una estructura válida.' });
+    }
+
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        await connection.query('SET FOREIGN_KEY_CHECKS = 0');
+
+        if (Array.isArray(tables.categories)) {
+            await connection.query('DELETE FROM categories');
+            for (const c of tables.categories) {
+                await connection.query(
+                    'INSERT INTO categories (id, name, unit_type) VALUES (?, ?, ?)',
+                    [c.id, c.name, c.unit_type || 'units']
+                );
+            }
+        }
+
+        if (Array.isArray(tables.document_types)) {
+            await connection.query('DELETE FROM document_types');
+            for (const d of tables.document_types) {
+                await connection.query(
+                    'INSERT INTO document_types (id, name) VALUES (?, ?)',
+                    [d.id, d.name]
+                );
+            }
+        }
+
+        await connection.query('DELETE FROM services');
+        await connection.query('DELETE FROM movement_items');
+        await connection.query('DELETE FROM movements');
+        await connection.query('DELETE FROM inventory_adjustments');
+        await connection.query('DELETE FROM products');
+
+        for (const p of tables.products) {
+            await connection.query(
+                'INSERT INTO products (id, sku, description, category, price, stockUnits, stockPounds, stockBaskets) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [p.id, p.sku, p.description || '', p.category || '', p.price || 0, p.stockUnits || 0, p.stockPounds || 0, p.stockBaskets || 0]
+            );
+        }
+
+        if (Array.isArray(tables.movements)) {
+            for (const m of tables.movements) {
+                const cleanDate = m.date ? String(m.date).split('T')[0] : null;
+                await connection.query(
+                    'INSERT INTO movements (id, type, equipment, carrier, seal, refType, refNumber, date, timeStart, timeEnd, auditUser) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [m.id, m.type, m.equipment || '', m.carrier || '', m.seal || '', m.refType || '', m.refNumber || '', cleanDate, m.timeStart || null, m.timeEnd || null, m.auditUser || actor]
+                );
+            }
+        }
+
+        if (Array.isArray(tables.movement_items)) {
+            for (const mi of tables.movement_items) {
+                await connection.query(
+                    'INSERT INTO movement_items (movementId, productId, temperature, qtyUnits, qtyPounds, qtyBaskets) VALUES (?, ?, ?, ?, ?, ?)',
+                    [mi.movementId, mi.productId, mi.temperature ?? null, mi.qtyUnits || 0, mi.qtyPounds || 0, mi.qtyBaskets || 0]
+                );
+            }
+        }
+
+        if (Array.isArray(tables.services)) {
+            for (const s of tables.services) {
+                await connection.query(
+                    'INSERT INTO services (movementId, description, quantity, unitPrice, value) VALUES (?, ?, ?, ?, ?)',
+                    [s.movementId, s.description || '', s.quantity ?? 1, s.unitPrice ?? (s.value || 0), s.value || 0]
+                );
+            }
+        }
+
+        if (Array.isArray(tables.inventory_adjustments)) {
+            for (const ia of tables.inventory_adjustments) {
+                await connection.query(
+                    'INSERT INTO inventory_adjustments (id, productId, previousUnits, previousPounds, previousBaskets, countedUnits, countedPounds, countedBaskets, reason, auditUser) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [ia.id, ia.productId, ia.previousUnits || 0, ia.previousPounds || 0, ia.previousBaskets || 0, ia.countedUnits || 0, ia.countedPounds || 0, ia.countedBaskets || 0, ia.reason || 'Restauración de respaldo', ia.auditUser || actor]
+                );
+            }
+        }
+
+        await connection.query('SET FOREIGN_KEY_CHECKS = 1');
+
+        await logSystemEvent({
+            userId: actorId,
+            username: actor,
+            action: 'RESTORE_BACKUP',
+            module: 'settings',
+            details: `Restauración completa de base de datos desde respaldo del ${metadata.exportedAt || 'N/A'} (${tables.products.length} productos)`,
+            connection
+        });
+
+        await connection.commit();
+        res.json({
+            success: true,
+            message: `Respaldo restaurado exitosamente (${tables.products.length} productos, ${(tables.movements || []).length} movimientos).`
+        });
+    } catch (error) {
+        try { await connection.query('SET FOREIGN_KEY_CHECKS = 1'); } catch {}
+        await connection.rollback();
+        sendApiError(res, error, 'Error al restaurar el respaldo de base de datos');
+    } finally {
+        connection.release();
+    }
+});
 
 // Mount router under /api
 app.use('/api', apiLimiter, (req, res, next) => {
@@ -2957,7 +3237,8 @@ export default app;
 const isDirectRun = import.meta.url.startsWith('file:') && 
                    (process.argv[1] && (process.argv[1].endsWith('index.js') || process.argv[1].endsWith('api\\index.js')));
 
-if (isDirectRun || process.env.NODE_ENV === 'development') {
+const isTestRun = process.env.NODE_ENV === 'test' || process.execArgv.includes('--test') || process.argv.some(a => a.includes('.test.js'));
+if (isDirectRun && !isTestRun) {
     const PORT = process.env.PORT || 3001; 
     app.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`);

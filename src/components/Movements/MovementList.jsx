@@ -410,9 +410,14 @@ const MovementList = () => {
                           )}
                           {allowDelete && (
                             <button
-                              onClick={() => {
+                              onClick={async () => {
                                 if (window.confirm('¿Seguro que deseas eliminar este movimiento? Afectará el stock disponible.')) {
-                                  deleteMovement(mov.id);
+                                  const res = await deleteMovement(mov.id);
+                                  if (res?.success) {
+                                    toast.success('Movimiento eliminado correctamente');
+                                  } else {
+                                    toast.error(res?.message || 'No fue posible eliminar el movimiento');
+                                  }
                                 }
                               }}
                               className="btn btn-danger"

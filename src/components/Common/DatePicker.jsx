@@ -22,7 +22,7 @@ export const getPresetRanges = () => {
   // Ayer
   const yest = new Date(now);
   yest.setDate(yest.getDate() - 1);
-  const yesterday = getLocalDateStr(yest);
+  const _yesterday = getLocalDateStr(yest);
   
   // Esta semana (Lunes a Hoy)
   const dayOfWeek = now.getDay();
@@ -80,7 +80,7 @@ export const DatePicker = ({
   value,
   onChange,
   label,
-  placeholder = 'YYYY-MM-DD',
+  placeholder: _placeholder = 'YYYY-MM-DD',
   min,
   max,
   className = '',
@@ -178,7 +178,7 @@ export const DatePicker = ({
     setIsOpen(false);
   };
 
-  const handleToggleOrNativePicker = (e) => {
+  const handleToggleOrNativePicker = (_e) => {
     // Si el usuario da clic en el icono o campo, intentamos abrir showPicker o alternar el menú visual
     setIsOpen(prev => !prev);
   };

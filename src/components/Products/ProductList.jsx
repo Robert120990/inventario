@@ -32,7 +32,7 @@ const matchesSearchTerms = (product, searchTerm) => {
 const number = (value) => Number(value) || 0;
 
 const ProductList = () => {
-  const { products, deleteProduct, currentUser, categories, categoryUnits, canCreate, canEdit, canDelete, canExport } = useInventory();
+  const { products, deleteProduct, categories, categoryUnits, canCreate, canEdit, canDelete, canExport } = useInventory();
   const [isAdding, setIsAdding] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -268,10 +268,14 @@ const ProductList = () => {
                           <button onClick={() => { setEditingProduct(product); setIsAdding(true); }} className="btn btn-outline" style={{ padding: '0.25rem 0.5rem' }}>Editar</button>
                         )}
                         {allowDelete && (
-                          <button onClick={() => {
+                          <button onClick={async () => {
                             if (window.confirm('¿Seguro que deseas eliminar este producto?')) {
-                              deleteProduct(product.id);
-                              toast.success('Producto eliminado');
+                              const res = await deleteProduct(product.id);
+                              if (res?.success) {
+                                toast.success('Producto eliminado');
+                              } else {
+                                toast.error(res?.message || 'No se pudo eliminar el producto');
+                              }
                             }
                           }} className="btn btn-danger" style={{ padding: '0.25rem 0.5rem' }}>Eliminar</button>
                         )}

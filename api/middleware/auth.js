@@ -1,17 +1,22 @@
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import pool from '../db.js';
 
 const DEFAULT_SECRET = 'inventario_secure_dev_jwt_secret_key_2026';
 
 const INSECURE_SECRET_PATTERNS = ['defecto', 'tu_clave', 'secret', '123456', 'cambiame'];
+let resolvedSecret = process.env.JWT_SECRET || DEFAULT_SECRET;
 if (process.env.NODE_ENV === 'production') {
     const s = process.env.JWT_SECRET || '';
-    if (s.length < 32 || INSECURE_SECRET_PATTERNS.some(p => s.toLowerCase().includes(p))) {
+    if (!s) {
+        console.error('CRITICAL: JWT_SECRET no está definido en producción. Generando clave efímera aleatoria por seguridad.');
+        resolvedSecret = crypto.randomBytes(48).toString('hex');
+    } else if (s.length < 32 || INSECURE_SECRET_PATTERNS.some(p => s.toLowerCase().includes(p))) {
         console.warn('WARNING: JWT_SECRET debe tener al menos 32 caracteres y no contener palabras clave de plantilla en entorno de producción. Configura esta variable en Vercel.');
     }
 }
 
-export const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_SECRET;
+export const JWT_SECRET = resolvedSecret;
 
 export const verifyToken = async (req, res, next) => {
     const authHeader = req.headers['authorization'];
@@ -91,7 +96,10 @@ export const verifyToken = async (req, res, next) => {
 
         next();
     } catch (err) {
-        return res.status(500).json({ error: 'Error al verificar autenticación: ' + err.message });
+        const msg = process.env.NODE_ENV === 'production'
+            ? 'Error interno al verificar autenticación.'
+            : 'Error al verificar autenticación: ' + err.message;
+        return res.status(500).json({ error: msg });
     }
 };
 
@@ -128,6 +136,13 @@ const hasModulePermission = (permissions, moduleName, action) => {
     if (moduleName === 'summary2') {
         const baseSummary = permissions['summary'];
         if (baseSummary && (baseSummary[action] === true || baseSummary.all === true)) {
+            return true;
+        }
+    }
+
+    // 4. Equivalencia operativa en toma física de inventario ('create' y 'edit' permiten registrar conteo)
+    if (moduleName === 'inventory-count' && (action === 'create' || action === 'edit')) {
+        if (mod && (mod.create === true || mod.edit === true)) {
             return true;
         }
     }

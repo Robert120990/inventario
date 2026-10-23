@@ -35,8 +35,8 @@ export const SYSTEM_MODULES = [
     id: 'insurance',
     name: 'Corte de Seguro',
     group: 'Reportes',
-    desc: 'Reporte valorizado de póliza asegurada',
-    actions: ['view', 'export']
+    desc: 'Reporte valorizado de póliza asegurada y congelamiento de cortes',
+    actions: ['view', 'edit', 'delete', 'export']
   },
   {
     id: 'summary',
@@ -49,8 +49,8 @@ export const SYSTEM_MODULES = [
     id: 'summary2',
     name: 'Resumen Diario',
     group: 'Reportes',
-    desc: 'Volumen diario y operaciones de almacén',
-    actions: ['view', 'export']
+    desc: 'Volumen diario, liquidación de cortes y facturación SIPE',
+    actions: ['view', 'edit', 'delete', 'export']
   },
 
   // 3. Seguridad

@@ -1,4 +1,4 @@
-import React, { useState, lazy, Suspense } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { Menu, ShieldAlert } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import { Toaster } from 'react-hot-toast';
@@ -7,6 +7,7 @@ import { InventoryProvider, useInventory } from './context/InventoryContext';
 import Login from './components/Login/Login';
 import { ThemeToggle } from './components/Theme/ThemeToggle';
 import UpdateNotifier from './components/Common/UpdateNotifier';
+import OnDemand from './components/Common/OnDemand';
 import ErrorBoundary from './components/Common/ErrorBoundary';
 import DailyCutsHistoryModal from './components/Summary/DailyCutsHistoryModal';
 import { APP_DISPLAY_VERSION, APP_BUILD_NUMBER, APP_COMMIT_HASH } from './config/version';
@@ -28,6 +29,25 @@ const ConnectedUsers = lazy(() => import('./components/Security/Sessions/Connect
 const ChangeHistory = lazy(() => import('./components/Security/Changelog/ChangeHistory'));
 const NotificationCenter = lazy(() => import('./components/Security/Notifications/NotificationCenter'));
 const UserManual = lazy(() => import('./components/Security/Manual/UserManual'));
+
+// Precarga inteligente en segundo plano para garantizar que todos los módulos estén en caché OnDemand sin internet
+const preloadLazyModulesForOffline = () => {
+  import('./components/Products/ProductList').catch(() => {});
+  import('./components/Movements/MovementList').catch(() => {});
+  import('./components/Summary/Summary').catch(() => {});
+  import('./components/Summary/Summary2').catch(() => {});
+  import('./components/Insurance/InsuranceReport').catch(() => {});
+  import('./components/Inventory/InventoryCount').catch(() => {});
+  import('./components/Settings/Settings').catch(() => {});
+  import('./components/Users/UserList').catch(() => {});
+  import('./components/Security/UserAccess/UserAccess').catch(() => {});
+  import('./components/Security/Roles/RoleList').catch(() => {});
+  import('./components/Security/Audit/SystemLog').catch(() => {});
+  import('./components/Security/Sessions/ConnectedUsers').catch(() => {});
+  import('./components/Security/Changelog/ChangeHistory').catch(() => {});
+  import('./components/Security/Notifications/NotificationCenter').catch(() => {});
+  import('./components/Security/Manual/UserManual').catch(() => {});
+};
 
 function ViewLoader() {
   return (
@@ -56,6 +76,14 @@ function AppContent() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  // Precargar módulos secundarios para disponibilidad inmediata cuando el usuario pierda internet
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      preloadLazyModulesForOffline();
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
   const handleSelectCutFromModal = async (cutSummary) => {
     try {
       const fullCut = await fetchDailyCutById(cutSummary.id);
@@ -70,7 +98,7 @@ function AppContent() {
   };
 
   // Refresh granular module data whenever the view changes without downloading the full database
-  React.useEffect(() => {
+  useEffect(() => {
     if (currentUser?.id) {
       refreshModule(currentView);
     }
@@ -97,7 +125,14 @@ function AppContent() {
   }
 
   if (!currentUser) {
-    return <Login />;
+    return (
+      <>
+        <div style={{ maxWidth: '900px', margin: '1rem auto 0', padding: '0 1rem' }}>
+          <OnDemand />
+        </div>
+        <Login />
+      </>
+    );
   }
 
   const renderView = () => {
@@ -191,6 +226,7 @@ function AppContent() {
           </div>
           <ThemeToggle />
         </div>
+        <OnDemand />
         <ErrorBoundary key={currentView} onGoHome={() => setCurrentView('dashboard')}>
           <Suspense fallback={<ViewLoader />}>
             {renderView()}

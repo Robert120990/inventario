@@ -57,10 +57,10 @@ describe('Protección y Bloqueo de Cortes (Cuts Lock Enforcement)', () => {
 
     it('debe impedir sobreescritura de datos si el corte está bloqueado', () => {
         const currentCut = { id: 'c1', title: 'Corte Final', isLocked: 1, congeladosData: '[]' };
-        const updateAttempt = { congeladosData: '[{"sku": "NEW"}]' };
+        const _updateAttempt = { congeladosData: '[{"sku": "NEW"}]' };
 
         // Regla: no se puede actualizar datos si isLocked === 1
-        const canUpdate = currentCut.isLocked === 0;
+        const canUpdate = currentCut.isLocked === 0 && Boolean(_updateAttempt);
         assert.equal(canUpdate, false);
     });
 

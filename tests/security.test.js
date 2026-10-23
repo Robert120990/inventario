@@ -39,7 +39,7 @@ describe('Seguridad y Control de Acceso (RBAC, Lockout y Escalabilidad)', () => 
 
         const originalQuery = pool.query;
         try {
-            pool.query = async (sql, params) => {
+            pool.query = async (sql, _params) => {
                 if (sql.includes('SELECT id, username, role, isActive FROM users WHERE id=?')) {
                     return [[{ id: 2, username: 'last_admin', role: 'admin', isActive: 1 }]];
                 }
@@ -199,10 +199,10 @@ describe('Seguridad y Control de Acceso (RBAC, Lockout y Escalabilidad)', () => 
         let executedParams = [];
 
         try {
-            pool.query = async (sql, params) => {
+            pool.query = async (sql, _params) => {
                 if (sql.includes('UPDATE products SET')) {
                     executedSql = sql;
-                    executedParams = params;
+                    executedParams = _params;
                     return [{ affectedRows: 1 }];
                 }
                 return [[]];
@@ -248,10 +248,10 @@ describe('Seguridad y Control de Acceso (RBAC, Lockout y Escalabilidad)', () => 
         let executedParams = [];
 
         try {
-            pool.query = async (sql, params) => {
+            pool.query = async (sql, _params) => {
                 if (sql.includes('UPDATE active_sessions')) {
                     executedSql = sql;
-                    executedParams = params;
+                    executedParams = _params;
                     return [{ affectedRows: 1 }];
                 }
                 return [[]];
@@ -341,6 +341,105 @@ describe('Seguridad y Control de Acceso (RBAC, Lockout y Escalabilidad)', () => 
         // Caso 6: Texto normal legítimo
         const cellText = builder.setCell(5, 0, 'Pechuga Especial');
         assert.equal(cellText.v, 'Pechuga Especial');
+    });
+
+    it('escapeCsvCell neutraliza Formula Injection (CWE-1236) en exportaciones CSV', async () => {
+        const { escapeCsvCell } = await import('../src/utils/exportManager.js');
+        assert.equal(escapeCsvCell('=1+1'), "'=1+1");
+        assert.equal(escapeCsvCell('+SUM(A1)'), "'+SUM(A1)");
+        assert.equal(escapeCsvCell('-cmd'), "'-cmd");
+        assert.equal(escapeCsvCell('@evil'), "'@evil");
+        assert.equal(escapeCsvCell(125.5), '125.5');
+        assert.equal(escapeCsvCell('Pollo Congelado'), 'Pollo Congelado');
+    });
+
+    it('PUT /daily-cuts/:id y PUT /insurance-cuts/:id rechazan modificar cortes bloqueados con 409', async () => {
+        const putDailyCutRoute = app._router.stack
+            .find(layer => layer.route?.path === '/api' || layer.name === 'router')
+            ?.handle?.stack?.find(layer => layer.route?.path === '/daily-cuts/:id' && layer.route?.methods?.put);
+
+        const putInsCutRoute = app._router.stack
+            .find(layer => layer.route?.path === '/api' || layer.name === 'router')
+            ?.handle?.stack?.find(layer => layer.route?.path === '/insurance-cuts/:id' && layer.route?.methods?.put);
+
+        const originalQuery = pool.query;
+        try {
+            pool.query = async (sql) => {
+                if (sql.includes('FROM daily_cuts WHERE id = ?')) {
+                    return [[{ id: 'dc-1', title: 'Corte Quincenal Cerrado', isLocked: 1 }]];
+                }
+                if (sql.includes('FROM insurance_cuts WHERE id = ?')) {
+                    return [[{ id: 'ic-1', title: 'Corte Seguro Cerrado', isLocked: 1 }]];
+                }
+                return [[]];
+            };
+
+            let statusDaily = null;
+            let jsonDaily = null;
+            const dailyHandler = putDailyCutRoute.route.stack[putDailyCutRoute.route.stack.length - 1].handle;
+            await dailyHandler(
+                { params: { id: 'dc-1' }, body: { title: 'Intento Sobrescribir' }, user: { id: 1, username: 'admin', role: 'admin' } },
+                { status(c) { statusDaily = c; return this; }, json(d) { jsonDaily = d; return this; } }
+            );
+            assert.equal(statusDaily, 409);
+            assert.match(jsonDaily.error, /cerrado y bloqueado/);
+
+            let statusIns = null;
+            let jsonIns = null;
+            const insHandler = putInsCutRoute.route.stack[putInsCutRoute.route.stack.length - 1].handle;
+            await insHandler(
+                { params: { id: 'ic-1' }, body: { title: 'Intento Sobrescribir Seguro' }, user: { id: 1, username: 'admin', role: 'admin' } },
+                { status(c) { statusIns = c; return this; }, json(d) { jsonIns = d; return this; } }
+            );
+            assert.equal(statusIns, 409);
+            assert.match(jsonIns.error, /cerrado y bloqueado/);
+        } finally {
+            pool.query = originalQuery;
+        }
+    });
+
+    it('POST /billing/emit exige permiso edit en summary2 o insurance (403 para rol de solo lectura)', async () => {
+        const emitBillingRoute = app._router.stack
+            .find(layer => layer.route?.path === '/api' || layer.name === 'router')
+            ?.handle?.stack?.find(layer => layer.route?.path === '/billing/emit' && layer.route?.methods?.post);
+
+        assert.ok(emitBillingRoute, 'Ruta POST /billing/emit debe existir');
+        // El middleware de permisos está en el índice 1 (después de verifyToken)
+        const rbacMiddleware = emitBillingRoute.route.stack[1].handle;
+
+        let statusSent = null;
+        let jsonSent = null;
+        let nextCalled = false;
+        await rbacMiddleware(
+            {
+                user: {
+                    id: 9,
+                    username: 'auditor_readonly',
+                    role: 'user',
+                    permissions: { summary2: { view: true, edit: false }, insurance: { view: true, edit: false } }
+                }
+            },
+            { status(c) { statusSent = c; return this; }, json(d) { jsonSent = d; return this; } },
+            () => { nextCalled = true; }
+        );
+
+        assert.equal(nextCalled, false);
+        assert.equal(statusSent, 403);
+        assert.match(jsonSent.error, /Acceso denegado/);
+    });
+
+    it('Endpoints /system/database-stats, /system/backup y /system/restore existen y están protegidos', () => {
+        const routerStack = app._router.stack
+            .find(layer => layer.route?.path === '/api' || layer.name === 'router')
+            ?.handle?.stack || [];
+
+        const statsRoute = routerStack.find(l => l.route?.path === '/system/database-stats' && l.route?.methods?.get);
+        const backupRoute = routerStack.find(l => l.route?.path === '/system/backup' && l.route?.methods?.get);
+        const restoreRoute = routerStack.find(l => l.route?.path === '/system/restore' && l.route?.methods?.post);
+
+        assert.ok(statsRoute, 'GET /system/database-stats debe estar registrado');
+        assert.ok(backupRoute, 'GET /system/backup debe estar registrado');
+        assert.ok(restoreRoute, 'POST /system/restore debe estar registrado');
     });
 
 });

@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { Save, X, Plus, Trash2, Zap, ThermometerSnowflake } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { EXTRA_SERVICE_PRESETS, calculateTemperatureService, getTemperatureRate, formatTemperatureDisplay } from '../../utils/contractRates';
+import { EXTRA_SERVICE_PRESETS, calculateTemperatureService, formatTemperatureDisplay } from '../../utils/contractRates';
 import { DatePicker } from '../Common/DatePicker';
 
 const MovementForm = ({ onCancel, initialData }) => {
@@ -176,7 +176,7 @@ const MovementForm = ({ onCancel, initialData }) => {
     setFormData({ ...formData, services: newServices });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     // Validations
@@ -204,10 +204,22 @@ const MovementForm = ({ onCancel, initialData }) => {
     };
 
     if (initialData) {
-      updateMovement(initialData.id, movementToSave);
+      const res = await updateMovement(initialData.id, movementToSave);
+      if (!res?.success) {
+        const msg = res?.message || 'Error al actualizar el movimiento.';
+        setError(msg);
+        toast.error(msg);
+        return;
+      }
       toast.success('Movimiento actualizado');
     } else {
-      addMovement(movementToSave);
+      const res = await addMovement(movementToSave);
+      if (!res?.success) {
+        const msg = res?.message || 'Error al registrar el movimiento.';
+        setError(msg);
+        toast.error(msg);
+        return;
+      }
       toast.success('Movimiento registrado exitosamente');
     }
     

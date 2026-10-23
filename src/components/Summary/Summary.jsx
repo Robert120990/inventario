@@ -16,7 +16,7 @@ const Summary = () => {
     return getLocalDateStr(d);
   });
   const [endDate, setEndDate] = useState(() => getLocalDateStr(new Date()));
-  const [clientName, setClientName] = useState(CONTRACT_INFO.clientName);
+  const [clientName, _setClientName] = useState(CONTRACT_INFO.clientName);
 
   const handleStartDateChange = (newStart) => {
     setStartDate(newStart);

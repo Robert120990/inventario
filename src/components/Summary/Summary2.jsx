@@ -905,7 +905,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
   };
 
   // Sincronizar todo el corte (lecturas diarias + servicios extraordinarios) con los movimientos reales
-  const handleSyncCutFromLive = () => {
+  const _handleSyncCutFromLive = () => {
     if (!activeCut) return;
     const syncedCong = ensureCascadingIntegrity(liveCongeladosRows, 0.001);
     const syncedPrep = ensureCascadingIntegrity(livePreparadosRows, 0.038);

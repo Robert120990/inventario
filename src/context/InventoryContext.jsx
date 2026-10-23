@@ -1,6 +1,20 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { SYSTEM_CHANGELOG } from '../config/changelog';
 import { CONTRACT_INFO, applyDynamicContractRates } from '../utils/contractRates';
+import {
+  saveLocalSnapshot,
+  loadLocalSnapshot,
+  getOfflineQueue,
+  saveOfflineQueue,
+  enqueueOfflineOperation,
+  removeOfflineOperation,
+  clearOfflineQueue,
+  isNetworkOrOfflineError,
+  setOnDemandConnectivity,
+  getOnDemandStatus,
+  checkPageAccessibility,
+  syncOfflineQueueWithServer
+} from '../utils/onDemandOffline';
 
 const InventoryContext = createContext();
 
@@ -15,14 +29,40 @@ export const apiFetch = async (url, options = {}) => {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  const response = await window.fetch(url, { ...options, headers });
-  if (response.status === 401 && !url.includes('/auth/login')) {
-    localStorage.removeItem('inv_token');
-    localStorage.removeItem('inv_current_user');
-    localStorage.removeItem('inv_session_id');
-    window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+  try {
+    const response = await window.fetch(url, { ...options, headers });
+    if (response.status === 502 || response.status === 503 || response.status === 504) {
+      setOnDemandConnectivity({
+        isOnline: typeof navigator !== 'undefined' ? Boolean(navigator.onLine) : true,
+        isPageAccessible: false,
+        lastError: `El servidor de la página no está disponible (HTTP ${response.status}).`
+      });
+    } else {
+      setOnDemandConnectivity({
+        isOnline: true,
+        isPageAccessible: true,
+        lastError: null
+      });
+    }
+    if (response.status === 401 && !url.includes('/auth/login')) {
+      localStorage.removeItem('inv_token');
+      localStorage.removeItem('inv_current_user');
+      localStorage.removeItem('inv_session_id');
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+    }
+    return response;
+  } catch (err) {
+    if (isNetworkOrOfflineError(err)) {
+      setOnDemandConnectivity({
+        isOnline: typeof navigator !== 'undefined' ? Boolean(navigator.onLine) : false,
+        isPageAccessible: false,
+        lastError: typeof navigator !== 'undefined' && !navigator.onLine
+          ? 'Sin conexión a Internet en el dispositivo.'
+          : 'La página web o el servidor no son accesibles en este momento.'
+      });
+    }
+    throw err;
   }
-  return response;
 };
 
 // Fusionador seguro de versiones oficiales y creadas dinámicamente en BD
@@ -43,15 +83,16 @@ const mergeChangelog = (dbVersions = []) => {
 };
 
 export const InventoryProvider = ({ children }) => {
-  const [products, setProducts] = useState([]);
-  const [movements, setMovements] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [documentTypes, setDocumentTypes] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [roles, setRoles] = useState([]);
+  // Hidratación inicial inmediata desde instantáneas locales OnDemand para funcionar sin internet
+  const [products, setProducts] = useState(() => loadLocalSnapshot('products', []));
+  const [movements, setMovements] = useState(() => loadLocalSnapshot('movements', []));
+  const [categories, setCategories] = useState(() => loadLocalSnapshot('categories', []));
+  const [documentTypes, setDocumentTypes] = useState(() => loadLocalSnapshot('documentTypes', []));
+  const [users, setUsers] = useState(() => loadLocalSnapshot('users', []));
+  const [roles, setRoles] = useState(() => loadLocalSnapshot('roles', []));
   const [systemLogs, setSystemLogs] = useState([]);
   const [activeSessions, setActiveSessions] = useState([]);
-  const [notifications, setNotifications] = useState([]);
+  const [notifications, setNotifications] = useState(() => loadLocalSnapshot('notifications', []));
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('inv_current_user');
     return saved ? JSON.parse(saved) : null;
@@ -59,19 +100,38 @@ export const InventoryProvider = ({ children }) => {
   const [sessionId, setSessionId] = useState(() => {
     return localStorage.getItem('inv_session_id') || null;
   });
-  const [settings, setSettings] = useState({
+  const [settings, setSettings] = useState(() => loadLocalSnapshot('settings', {
     name: 'Inventario Pro',
     logo: null
-  });
-  const [categoryUnits, setCategoryUnits] = useState({});
+  }));
+  const [categoryUnits, setCategoryUnits] = useState(() => loadLocalSnapshot('categoryUnits', {}));
   const [versions, setVersions] = useState(SYSTEM_CHANGELOG);
-  const [dailyCuts, setDailyCuts] = useState([]);
+  const [dailyCuts, setDailyCuts] = useState(() => loadLocalSnapshot('dailyCuts', []));
   const [cutHistoryModalOpen, setCutHistoryModalOpen] = useState(false);
   const [selectedCutForSummary, setSelectedCutForSummary] = useState(null);
-  const [contractRates, setContractRates] = useState(CONTRACT_INFO);
+  const [contractRates, setContractRates] = useState(() => loadLocalSnapshot('contractRates', CONTRACT_INFO));
   const [sipeContractStatus, setSipeContractStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [theme, setThemeState] = useState(() => localStorage.getItem('inv_theme') || 'light');
+
+  // Estados reactivos de OnDemand (Offline + Sincronización diferida)
+  const [onDemandStatus, setOnDemandStatus] = useState(() => getOnDemandStatus());
+  const [offlineQueue, setOfflineQueue] = useState(() => getOfflineQueue());
+
+  // Persistir instantáneas locales cada vez que cambian las colecciones principales
+  useEffect(() => { if (products.length > 0) saveLocalSnapshot('products', products); }, [products]);
+  useEffect(() => { if (movements.length > 0) saveLocalSnapshot('movements', movements); }, [movements]);
+  useEffect(() => { if (categories.length > 0) saveLocalSnapshot('categories', categories); }, [categories]);
+  useEffect(() => { if (documentTypes.length > 0) saveLocalSnapshot('documentTypes', documentTypes); }, [documentTypes]);
+  useEffect(() => { if (users.length > 0) saveLocalSnapshot('users', users); }, [users]);
+  useEffect(() => { if (roles.length > 0) saveLocalSnapshot('roles', roles); }, [roles]);
+  useEffect(() => { if (dailyCuts.length > 0) saveLocalSnapshot('dailyCuts', dailyCuts); }, [dailyCuts]);
+  useEffect(() => { if (settings?.name) saveLocalSnapshot('settings', settings); }, [settings]);
+  useEffect(() => {
+    if (categoryUnits && Object.keys(categoryUnits).length > 0) {
+      saveLocalSnapshot('categoryUnits', categoryUnits);
+    }
+  }, [categoryUnits]);
 
   const fetchContractRates = async () => {
     try {
@@ -81,6 +141,7 @@ export const InventoryProvider = ({ children }) => {
         if (data && !data.error) {
           const updated = applyDynamicContractRates(data);
           setContractRates({ ...updated });
+          saveLocalSnapshot('contractRates', updated);
           return updated;
         }
       }
@@ -126,7 +187,52 @@ export const InventoryProvider = ({ children }) => {
     return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
   }, []);
 
-  // Initial Fetch
+  // Listeners para estado de conectividad y cola de operaciones de OnDemand
+  useEffect(() => {
+    const handleStatusChange = (e) => {
+      if (e?.detail) setOnDemandStatus(e.detail);
+    };
+    const handleQueueChange = (e) => {
+      if (e?.detail?.queue) setOfflineQueue(e.detail.queue);
+    };
+    const handleBrowserOnline = () => {
+      setOnDemandConnectivity({ isOnline: true });
+      checkPageAccessibility(API_BASE_URL);
+    };
+    const handleBrowserOffline = () => {
+      setOnDemandConnectivity({
+        isOnline: false,
+        isPageAccessible: false,
+        lastError: 'Sin conexión a Internet en el dispositivo.'
+      });
+    };
+
+    window.addEventListener('ondemand:status-change', handleStatusChange);
+    window.addEventListener('ondemand:queue-change', handleQueueChange);
+    window.addEventListener('online', handleBrowserOnline);
+    window.addEventListener('offline', handleBrowserOffline);
+
+    // Chequeo inicial y monitoreo periódico de accesibilidad de la página
+    checkPageAccessibility(API_BASE_URL);
+    const healthTimer = setInterval(() => {
+      checkPageAccessibility(API_BASE_URL);
+    }, 25000);
+
+    return () => {
+      window.removeEventListener('ondemand:status-change', handleStatusChange);
+      window.removeEventListener('ondemand:queue-change', handleQueueChange);
+      window.removeEventListener('online', handleBrowserOnline);
+      window.removeEventListener('offline', handleBrowserOffline);
+      clearInterval(healthTimer);
+    };
+  }, []);
+
+  const fetchJsonOrNull = (url) =>
+    apiFetch(url)
+      .then(res => (res && res.ok ? res.json() : null))
+      .catch(() => null);
+
+  // Initial Fetch (con respaldo instantáneo OnDemand si no hay internet)
   useEffect(() => {
     const fetchData = async () => {
       const token = localStorage.getItem('inv_token');
@@ -135,27 +241,41 @@ export const InventoryProvider = ({ children }) => {
         return;
       }
 
+      // Si el navegador reporta estar sin internet y ya tenemos caché local, no bloquear la interfaz
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setOnDemandConnectivity({
+          isOnline: false,
+          isPageAccessible: false,
+          lastError: 'Sin conexión a Internet. Operando con datos locales OnDemand.'
+        });
+        setLoading(false);
+        return;
+      }
+
       // Hidratación silenciosa no bloqueante de tarifas dinámicas del contrato
       fetchContractRates();
 
-      // Fail-safe: Force stop loading after 8 seconds
+      // Fail-safe: Force stop loading after 6 seconds (o instantáneo si ya hay snapshot local)
+      const hasCachedProducts = loadLocalSnapshot('products', []).length > 0;
+      if (hasCachedProducts) {
+        setLoading(false);
+      }
       const timeoutId = setTimeout(() => {
         setLoading(false);
-        console.warn('Initial fetch timed out after 8s');
-      }, 8000);
+      }, 6000);
 
       try {
-        setLoading(true);
+        if (!hasCachedProducts) setLoading(true);
         const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes, rolesRes, notifRes, cutsRes] = await Promise.all([
-          apiFetch(`${API_BASE_URL}/api/products`).then(res => res.json()).catch(() => []),
-          apiFetch(`${API_BASE_URL}/api/movements`).then(res => res.json()).catch(() => []),
-          apiFetch(`${API_BASE_URL}/api/users`).then(res => res.json()).catch(() => []),
-          apiFetch(`${API_BASE_URL}/api/config`).then(res => res.json()).catch(() => ({})),
-          apiFetch(`${API_BASE_URL}/api/settings`).then(res => res.json()).catch(() => ({})),
-          apiFetch(`${API_BASE_URL}/api/versions`).then(res => res.json()).catch(() => []),
-          apiFetch(`${API_BASE_URL}/api/roles`).then(res => res.json()).catch(() => []),
-          apiFetch(`${API_BASE_URL}/api/notifications`).then(res => res.json()).catch(() => []),
-          apiFetch(`${API_BASE_URL}/api/daily-cuts`).then(res => res.json()).catch(() => [])
+          fetchJsonOrNull(`${API_BASE_URL}/api/products`),
+          fetchJsonOrNull(`${API_BASE_URL}/api/movements`),
+          fetchJsonOrNull(`${API_BASE_URL}/api/users`),
+          fetchJsonOrNull(`${API_BASE_URL}/api/config`),
+          fetchJsonOrNull(`${API_BASE_URL}/api/settings`),
+          fetchJsonOrNull(`${API_BASE_URL}/api/versions`),
+          fetchJsonOrNull(`${API_BASE_URL}/api/roles`),
+          fetchJsonOrNull(`${API_BASE_URL}/api/notifications`),
+          fetchJsonOrNull(`${API_BASE_URL}/api/daily-cuts`)
         ]);
         
         clearTimeout(timeoutId);
@@ -163,12 +283,14 @@ export const InventoryProvider = ({ children }) => {
         if (Array.isArray(prodRes)) setProducts(prodRes);
         if (Array.isArray(movRes)) setMovements(movRes);
         if (Array.isArray(userRes)) setUsers(userRes);
-        setVersions(mergeChangelog(versionsRes));
+        if (Array.isArray(versionsRes)) setVersions(mergeChangelog(versionsRes));
         if (Array.isArray(rolesRes)) setRoles(rolesRes);
-        if (Array.isArray(notifRes)) setNotifications(notifRes);
+        if (Array.isArray(notifRes)) {
+          setNotifications(notifRes);
+          saveLocalSnapshot('notifications', notifRes);
+        }
         if (Array.isArray(cutsRes)) setDailyCuts(cutsRes);
 
-        
         if (configRes && !configRes.error) {
           if (configRes.categories) setCategories(configRes.categories.map(c => c.name));
           if (configRes.docTypes) setDocumentTypes(configRes.docTypes.map(d => d.name));
@@ -182,7 +304,7 @@ export const InventoryProvider = ({ children }) => {
           }
         }
         
-        if (settingsRes && !settingsRes.error) {
+        if (settingsRes && !settingsRes.error && settingsRes.name) {
           setSettings(settingsRes);
         }
       } catch (error) {
@@ -201,6 +323,7 @@ export const InventoryProvider = ({ children }) => {
     if (!currentUser?.id) return;
 
     const sendHeartbeat = async () => {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
       try {
         const storedSessionId = sessionId || localStorage.getItem('inv_session_id');
         const res = await apiFetch(`${API_BASE_URL}/api/active-sessions/heartbeat`, {
@@ -237,7 +360,7 @@ export const InventoryProvider = ({ children }) => {
     } catch (e) {
       console.error('Error fetching products:', e);
     }
-    return [];
+    return products;
   };
 
   const fetchMovements = async () => {
@@ -251,11 +374,12 @@ export const InventoryProvider = ({ children }) => {
     } catch (e) {
       console.error('Error fetching movements:', e);
     }
-    return [];
+    return movements;
   };
 
   const refreshModule = async (moduleName) => {
     if (!currentUser?.id) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
     try {
       switch (moduleName) {
         case 'products':
@@ -294,18 +418,19 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
-  const refreshData = async () => {
+  const refreshData = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
     try {
       fetchContractRates();
       const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes, rolesRes, notifRes] = await Promise.all([
-        apiFetch(`${API_BASE_URL}/api/products`).then(res => res.json()).catch(() => []),
-        apiFetch(`${API_BASE_URL}/api/movements`).then(res => res.json()).catch(() => []),
-        apiFetch(`${API_BASE_URL}/api/users`).then(res => res.json()).catch(() => []),
-        apiFetch(`${API_BASE_URL}/api/config`).then(res => res.json()).catch(() => ({})),
-        apiFetch(`${API_BASE_URL}/api/settings`).then(res => res.json()).catch(() => ({})),
-        apiFetch(`${API_BASE_URL}/api/versions`).then(res => res.json()).catch(() => []),
-        apiFetch(`${API_BASE_URL}/api/roles`).then(res => res.json()).catch(() => []),
-        apiFetch(`${API_BASE_URL}/api/notifications`).then(res => res.json()).catch(() => [])
+        fetchJsonOrNull(`${API_BASE_URL}/api/products`),
+        fetchJsonOrNull(`${API_BASE_URL}/api/movements`),
+        fetchJsonOrNull(`${API_BASE_URL}/api/users`),
+        fetchJsonOrNull(`${API_BASE_URL}/api/config`),
+        fetchJsonOrNull(`${API_BASE_URL}/api/settings`),
+        fetchJsonOrNull(`${API_BASE_URL}/api/versions`),
+        fetchJsonOrNull(`${API_BASE_URL}/api/roles`),
+        fetchJsonOrNull(`${API_BASE_URL}/api/notifications`)
       ]);
 
       if (Array.isArray(prodRes)) setProducts(prodRes);
@@ -333,9 +458,12 @@ export const InventoryProvider = ({ children }) => {
           }
         }
       }
-      setVersions(mergeChangelog(versionsRes));
+      if (Array.isArray(versionsRes)) setVersions(mergeChangelog(versionsRes));
       if (Array.isArray(rolesRes)) setRoles(rolesRes);
-      if (Array.isArray(notifRes)) setNotifications(notifRes);
+      if (Array.isArray(notifRes)) {
+        setNotifications(notifRes);
+        saveLocalSnapshot('notifications', notifRes);
+      }
       if (configRes && !configRes.error) {
         if (configRes.categories) setCategories(configRes.categories.map(c => c.name));
         if (configRes.docTypes) setDocumentTypes(configRes.docTypes.map(d => d.name));
@@ -345,11 +473,76 @@ export const InventoryProvider = ({ children }) => {
           setCategoryUnits(units);
         }
       }
-      if (settingsRes && !settingsRes.error) setSettings(settingsRes);
+      if (settingsRes && !settingsRes.error && settingsRes.name) setSettings(settingsRes);
     } catch (error) {
       console.error('Error refreshing data:', error);
     }
-  };
+  }, [currentUser]);
+
+  // Funciones públicas de sincronización y gestión de cola OnDemand
+  const syncOnDemandNow = useCallback(async () => {
+    const result = await syncOfflineQueueWithServer({
+      apiFetch,
+      apiBaseUrl: API_BASE_URL
+    });
+    if (result.syncedCount > 0) {
+      await refreshData();
+    }
+    return result;
+  }, [refreshData]);
+
+  const checkOnDemandConnection = useCallback(async () => {
+    const status = await checkPageAccessibility(API_BASE_URL);
+    if (status.isOnline && status.isPageAccessible && getOfflineQueue().length > 0) {
+      await syncOnDemandNow();
+    }
+    return status;
+  }, [syncOnDemandNow]);
+
+  const removeOfflineQueueItem = useCallback((opId) => {
+    return removeOfflineOperation(opId);
+  }, []);
+
+  const clearAllOfflineQueue = useCallback(() => {
+    clearOfflineQueue();
+  }, []);
+
+  const importOfflineQueueItems = useCallback((items = []) => {
+    const existing = getOfflineQueue();
+    const existingIds = new Set(existing.map(i => i.id));
+    let importedCount = 0;
+    const merged = [...existing];
+    items.forEach(item => {
+      if (item && item.endpoint && item.method) {
+        const cleanItem = {
+          ...item,
+          id: item.id && !existingIds.has(item.id) ? item.id : crypto.randomUUID(),
+          status: 'pending',
+          error: null
+        };
+        merged.push(cleanItem);
+        importedCount++;
+      }
+    });
+    saveOfflineQueue(merged);
+    return importedCount;
+  }, []);
+
+  // Auto-sincronización al regresar el internet y estar accesible la página web
+  useEffect(() => {
+    const pendingItems = offlineQueue.filter(i => i.status !== 'conflict');
+    if (
+      onDemandStatus.isOnline &&
+      onDemandStatus.isPageAccessible &&
+      !onDemandStatus.isSyncing &&
+      pendingItems.length > 0
+    ) {
+      const timer = setTimeout(() => {
+        syncOnDemandNow();
+      }, 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [onDemandStatus.isOnline, onDemandStatus.isPageAccessible, onDemandStatus.isSyncing, offlineQueue, syncOnDemandNow]);
 
   // Sync current user and session ID to local storage
   useEffect(() => {
@@ -482,7 +675,30 @@ export const InventoryProvider = ({ children }) => {
   };
 
   const addProduct = async (product) => {
-    const newProduct = { ...product, id: crypto.randomUUID() };
+    const newProduct = { ...product, id: product.id || crypto.randomUUID() };
+    const queueOfflineProduct = () => {
+      setProducts(prev => [newProduct, ...prev]);
+      enqueueOfflineOperation({
+        type: 'CREATE_PRODUCT',
+        module: 'products',
+        label: `Nuevo producto: ${newProduct.sku || ''} - ${newProduct.description || ''}`,
+        method: 'POST',
+        endpoint: '/api/products',
+        body: newProduct,
+        entityId: newProduct.id
+      });
+      return {
+        success: true,
+        offlineQueued: true,
+        product: newProduct,
+        message: 'Guardado localmente (OnDemand). Se compartirá con la página al regresar el internet.'
+      };
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return queueOfflineProduct();
+    }
+
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/products`, {
         method: 'POST',
@@ -491,14 +707,45 @@ export const InventoryProvider = ({ children }) => {
       });
       if (res.ok) {
         setProducts(prev => [newProduct, ...prev]);
-        logAuditEvent('CREATE_PRODUCT', 'products', `Creación de producto '${newProduct.sku}' (${newProduct.description || ''})`);
+        return { success: true, product: newProduct };
       }
+      if (isNetworkOrOfflineError(null, res)) {
+        return queueOfflineProduct();
+      }
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, message: errData.error || 'Error al crear el producto.' };
     } catch (error) {
+      if (isNetworkOrOfflineError(error)) {
+        return queueOfflineProduct();
+      }
       console.error('Error adding product:', error);
+      return { success: false, message: 'Error de conexión con el servidor.' };
     }
   };
 
   const updateProduct = async (id, updatedProduct) => {
+    const queueOfflineUpdate = () => {
+      setProducts(prev => prev.map(p => p.id === id ? { ...p, ...updatedProduct } : p));
+      enqueueOfflineOperation({
+        type: 'UPDATE_PRODUCT',
+        module: 'products',
+        label: `Editar producto: ${updatedProduct.sku || id}`,
+        method: 'PUT',
+        endpoint: `/api/products/${id}`,
+        body: updatedProduct,
+        entityId: id
+      });
+      return {
+        success: true,
+        offlineQueued: true,
+        message: 'Cambio guardado localmente (OnDemand). Se sincronizará al regresar el internet.'
+      };
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return queueOfflineUpdate();
+    }
+
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/products/${id}`, {
         method: 'PUT',
@@ -507,23 +754,62 @@ export const InventoryProvider = ({ children }) => {
       });
       if (res.ok) {
         setProducts(prev => prev.map(p => p.id === id ? { ...p, ...updatedProduct } : p));
-        logAuditEvent('UPDATE_PRODUCT', 'products', `Edición de producto '${updatedProduct.sku || id}'`);
+        return { success: true };
       }
+      if (isNetworkOrOfflineError(null, res)) {
+        return queueOfflineUpdate();
+      }
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, message: errData.error || 'Error al actualizar el producto.' };
     } catch (error) {
+      if (isNetworkOrOfflineError(error)) {
+        return queueOfflineUpdate();
+      }
       console.error('Error updating product:', error);
+      return { success: false, message: 'Error de conexión con el servidor.' };
     }
   };
 
   const deleteProduct = async (id) => {
+    const targetProd = products.find(p => p.id === id);
+    const queueOfflineDelete = () => {
+      setProducts(prev => prev.filter(p => p.id !== id));
+      enqueueOfflineOperation({
+        type: 'DELETE_PRODUCT',
+        module: 'products',
+        label: `Eliminar producto: ${targetProd?.sku || id}`,
+        method: 'DELETE',
+        endpoint: `/api/products/${id}`,
+        entityId: id
+      });
+      return {
+        success: true,
+        offlineQueued: true,
+        message: 'Eliminación registrada localmente (OnDemand).'
+      };
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return queueOfflineDelete();
+    }
+
     try {
-      const prod = products.find(p => p.id === id);
       const res = await apiFetch(`${API_BASE_URL}/api/products/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setProducts(prev => prev.filter(p => p.id !== id));
-        logAuditEvent('DELETE_PRODUCT', 'products', `Eliminación de producto '${prod?.sku || id}'`);
+        return { success: true };
       }
+      if (isNetworkOrOfflineError(null, res)) {
+        return queueOfflineDelete();
+      }
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, message: errData.error || 'No se pudo eliminar el producto.' };
     } catch (error) {
+      if (isNetworkOrOfflineError(error)) {
+        return queueOfflineDelete();
+      }
       console.error('Error deleting product:', error);
+      return { success: false, message: 'Error de conexión con el servidor.' };
     }
   };
 
@@ -550,8 +836,59 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
+  const applyLocalMovementStockDelta = (items = [], factor = 1) => {
+    if (!Array.isArray(items) || items.length === 0) return;
+    setProducts(prev => prev.map(prod => {
+      const matchingItems = items.filter(it => String(it.productId) === String(prod.id));
+      if (matchingItems.length === 0) return prod;
+      let dU = 0, dP = 0, dB = 0;
+      matchingItems.forEach(it => {
+        dU += Number(it.qtyUnits || 0) * factor;
+        dP += Number(it.qtyPounds || 0) * factor;
+        dB += Number(it.qtyBaskets || 0) * factor;
+      });
+      return {
+        ...prod,
+        stockUnits: Number(prod.stockUnits || 0) + dU,
+        stockPounds: Number(prod.stockPounds || 0) + dP,
+        stockBaskets: Number(prod.stockBaskets || 0) + dB
+      };
+    }));
+  };
+
   const addMovement = async (movement) => {
-    const newMovement = { ...movement, id: crypto.randomUUID(), auditUser: currentUser?.username || 'Sistema' };
+    const newMovement = {
+      ...movement,
+      id: movement.id || crypto.randomUUID(),
+      auditUser: currentUser?.username || 'Sistema',
+      createdAt: new Date().toISOString()
+    };
+
+    const queueOfflineMovement = () => {
+      const factor = newMovement.type === 'entrada' ? 1 : -1;
+      applyLocalMovementStockDelta(newMovement.items, factor);
+      setMovements(prev => [{ ...newMovement, offlinePending: true }, ...prev]);
+      enqueueOfflineOperation({
+        type: 'CREATE_MOVEMENT',
+        module: 'movements',
+        label: `Movimiento (${newMovement.type || 'operación'}): ${newMovement.refType || 'Doc'} #${newMovement.refNumber || 'S/N'}`,
+        method: 'POST',
+        endpoint: '/api/movements',
+        body: newMovement,
+        entityId: newMovement.id
+      });
+      return {
+        success: true,
+        offlineQueued: true,
+        id: newMovement.id,
+        message: 'Movimiento guardado sin internet (OnDemand). Se compartirá automáticamente al reconectar.'
+      };
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return queueOfflineMovement();
+    }
+
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/movements`, {
         method: 'POST',
@@ -560,40 +897,108 @@ export const InventoryProvider = ({ children }) => {
       });
       if (res.ok) {
         const [prodRes, movRes] = await Promise.all([
-          apiFetch(`${API_BASE_URL}/api/products`).then(res => res.json()),
-          apiFetch(`${API_BASE_URL}/api/movements`).then(res => res.json())
+          apiFetch(`${API_BASE_URL}/api/products`).then(r => r.json()),
+          apiFetch(`${API_BASE_URL}/api/movements`).then(r => r.json())
         ]);
         setProducts(prodRes);
         setMovements(movRes);
+        return { success: true, id: newMovement.id };
       }
+      if (isNetworkOrOfflineError(null, res)) {
+        return queueOfflineMovement();
+      }
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, message: errData.error || 'No se pudo registrar el movimiento.' };
     } catch (error) {
+      if (isNetworkOrOfflineError(error)) {
+        return queueOfflineMovement();
+      }
       console.error('Error adding movement:', error);
+      return { success: false, message: 'Error de conexión con el servidor.' };
     }
   };
 
   const deleteMovement = async (id) => {
+    const existingMov = movements.find(m => m.id === id);
+    const queueOfflineDeleteMov = () => {
+      if (existingMov) {
+        const reverseFactor = existingMov.type === 'entrada' ? -1 : 1;
+        applyLocalMovementStockDelta(existingMov.items, reverseFactor);
+      }
+      setMovements(prev => prev.filter(m => m.id !== id));
+      enqueueOfflineOperation({
+        type: 'DELETE_MOVEMENT',
+        module: 'movements',
+        label: `Eliminar movimiento #${existingMov?.refNumber || id}`,
+        method: 'DELETE',
+        endpoint: `/api/movements/${id}`,
+        entityId: id
+      });
+      return {
+        success: true,
+        offlineQueued: true,
+        message: 'Eliminación de movimiento en cola OnDemand.'
+      };
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return queueOfflineDeleteMov();
+    }
+
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/movements/${id}`, { method: 'DELETE' });
       if (res.ok) {
         const [prodRes, movRes] = await Promise.all([
-          apiFetch(`${API_BASE_URL}/api/products`).then(res => res.json()),
-          apiFetch(`${API_BASE_URL}/api/movements`).then(res => res.json())
+          apiFetch(`${API_BASE_URL}/api/products`).then(r => r.json()),
+          apiFetch(`${API_BASE_URL}/api/movements`).then(r => r.json())
         ]);
         setProducts(prodRes);
         setMovements(movRes);
-        logAuditEvent('DELETE_MOVEMENT', 'movements', `Eliminación de movimiento ID ${id}`);
+        return { success: true };
       }
+      if (isNetworkOrOfflineError(null, res)) {
+        return queueOfflineDeleteMov();
+      }
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, message: errData.error || 'No se pudo eliminar el movimiento.' };
     } catch (error) {
+      if (isNetworkOrOfflineError(error)) {
+        return queueOfflineDeleteMov();
+      }
       console.error('Error deleting movement:', error);
+      return { success: false, message: 'Error de conexión con el servidor.' };
     }
   };
 
   const updateMovement = async (id, updatedMovement) => {
+    const payload = { ...updatedMovement, auditUser: currentUser?.username || 'Sistema' };
+    const queueOfflineUpdateMov = () => {
+      setMovements(prev => prev.map(m => m.id === id ? { ...m, ...payload, offlinePending: true } : m));
+      enqueueOfflineOperation({
+        type: 'UPDATE_MOVEMENT',
+        module: 'movements',
+        label: `Actualizar movimiento #${updatedMovement.refNumber || id}`,
+        method: 'PUT',
+        endpoint: `/api/movements/${id}`,
+        body: payload,
+        entityId: id
+      });
+      return {
+        success: true,
+        offlineQueued: true,
+        message: 'Actualización de movimiento guardada en OnDemand.'
+      };
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return queueOfflineUpdateMov();
+    }
+
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/movements/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...updatedMovement, auditUser: currentUser?.username || 'Sistema' })
+        body: JSON.stringify(payload)
       });
 
       if (res.ok) {
@@ -603,20 +1008,69 @@ export const InventoryProvider = ({ children }) => {
         ]);
         setProducts(prodRes);
         setMovements(movRes);
-        logAuditEvent('UPDATE_MOVEMENT', 'movements', `Modificación de movimiento ID ${id}`);
+        return { success: true };
       }
+      if (isNetworkOrOfflineError(null, res)) {
+        return queueOfflineUpdateMov();
+      }
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, message: errData.error || 'No se pudo actualizar el movimiento.' };
     } catch (error) {
+      if (isNetworkOrOfflineError(error)) {
+        return queueOfflineUpdateMov();
+      }
       console.error('Error updating movement:', error);
+      return { success: false, message: 'Error de conexión con el servidor.' };
     }
   };
 
   const adjustProductStock = async (productId, adjustment) => {
+    const payload = { productId, ...adjustment, auditUser: currentUser?.username || 'Sistema' };
+    const targetProduct = products.find(p => p.id === productId);
+
+    const queueOfflineAdjustment = () => {
+      const updatedProd = {
+        ...(targetProduct || { id: productId }),
+        stockUnits: Number(adjustment.countedUnits ?? targetProduct?.stockUnits ?? 0),
+        stockPounds: Number(adjustment.countedPounds ?? targetProduct?.stockPounds ?? 0),
+        stockBaskets: Number(adjustment.countedBaskets ?? targetProduct?.stockBaskets ?? 0)
+      };
+      setProducts(prev => prev.map(product =>
+        product.id === productId ? updatedProd : product
+      ));
+      enqueueOfflineOperation({
+        type: 'ADJUST_INVENTORY',
+        module: 'inventory-count',
+        label: `Ajuste físico de stock: ${targetProduct?.sku || productId}`,
+        method: 'POST',
+        endpoint: '/api/inventory-adjustments',
+        body: payload,
+        entityId: productId
+      });
+      return {
+        success: true,
+        offlineQueued: true,
+        product: updatedProd,
+        adjustment: payload,
+        message: 'Ajuste físico guardado en modo OnDemand (sin internet).'
+      };
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return queueOfflineAdjustment();
+    }
+
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/inventory-adjustments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId, ...adjustment, auditUser: currentUser?.username || 'Sistema' })
+        body: JSON.stringify(payload)
       });
+
+      if (isNetworkOrOfflineError(null, res)) {
+        return queueOfflineAdjustment();
+      }
+
       const data = await res.json();
 
       if (!res.ok) {
@@ -628,6 +1082,9 @@ export const InventoryProvider = ({ children }) => {
       ));
       return { success: true, product: data.product, adjustment: data.adjustment };
     } catch (error) {
+      if (isNetworkOrOfflineError(error)) {
+        return queueOfflineAdjustment();
+      }
       console.error('Error adjusting product stock:', error);
       return { success: false, message: 'No se pudo conectar con el servidor.' };
     }
@@ -763,7 +1220,6 @@ export const InventoryProvider = ({ children }) => {
       if (res.ok) {
         const versionsRes = await apiFetch(`${API_BASE_URL}/api/versions`).then(r => r.json());
         setVersions(mergeChangelog(versionsRes));
-        logAuditEvent('REGISTER_VERSION', 'security', `Registro de versión con descripción: ${description}`);
         return { success: true };
       }
       return { success: false };
@@ -825,10 +1281,11 @@ export const InventoryProvider = ({ children }) => {
         await fetchUsers();
         return { success: true };
       }
-      return { success: false };
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, message: errData.error || 'Error al actualizar usuario.' };
     } catch (error) {
       console.error('Error updating user:', error);
-      return { success: false };
+      return { success: false, message: 'Error de conexión con el servidor.' };
     }
   };
 
@@ -862,9 +1319,10 @@ export const InventoryProvider = ({ children }) => {
         setUsers(prev => prev.filter(u => u.id !== id));
         return { success: true };
       }
-      return { success: false };
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, message: errData.error || 'No se pudo eliminar el usuario.' };
     } catch {
-      return { success: false };
+      return { success: false, message: 'Error de conexión con el servidor.' };
     }
   };
 
@@ -975,18 +1433,53 @@ export const InventoryProvider = ({ children }) => {
 
   const updateSettings = async (newSettings) => {
     const updated = { ...settings, ...newSettings };
+    setSettings(updated);
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      enqueueOfflineOperation({
+        type: 'UPDATE_SETTINGS',
+        module: 'settings',
+        label: `Actualizar configuración del sistema (${updated.name || 'Inventario Pro'})`,
+        method: 'POST',
+        endpoint: '/api/settings',
+        body: updated,
+        entityId: 'settings'
+      });
+      return { success: true, offlineQueued: true };
+    }
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
       });
-      if (res.ok) {
-        setSettings(updated);
-        logAuditEvent('UPDATE_SETTINGS', 'settings', 'Actualización de configuración general del sistema');
+      if (!res.ok && isNetworkOrOfflineError(null, res)) {
+        enqueueOfflineOperation({
+          type: 'UPDATE_SETTINGS',
+          module: 'settings',
+          label: `Actualizar configuración del sistema (${updated.name || 'Inventario Pro'})`,
+          method: 'POST',
+          endpoint: '/api/settings',
+          body: updated,
+          entityId: 'settings'
+        });
+        return { success: true, offlineQueued: true };
       }
+      return { success: res.ok };
     } catch (error) {
+      if (isNetworkOrOfflineError(error)) {
+        enqueueOfflineOperation({
+          type: 'UPDATE_SETTINGS',
+          module: 'settings',
+          label: `Actualizar configuración del sistema (${updated.name || 'Inventario Pro'})`,
+          method: 'POST',
+          endpoint: '/api/settings',
+          body: updated,
+          entityId: 'settings'
+        });
+        return { success: true, offlineQueued: true };
+      }
       console.error('Error updating settings:', error);
+      return { success: false };
     }
   };
 
@@ -999,6 +1492,17 @@ export const InventoryProvider = ({ children }) => {
         body: JSON.stringify({ unit_type: unit })
       });
     } catch (error) {
+      if (isNetworkOrOfflineError(error)) {
+        enqueueOfflineOperation({
+          type: 'UPDATE_CATEGORY_UNIT',
+          module: 'settings',
+          label: `Cambiar unidad de categoría ${category} a ${unit}`,
+          method: 'PUT',
+          endpoint: `/api/config/categories/${encodeURIComponent(category)}`,
+          body: { unit_type: unit },
+          entityId: category
+        });
+      }
       console.error('Error updating category unit:', error);
     }
   };
@@ -1014,10 +1518,10 @@ export const InventoryProvider = ({ children }) => {
           return data;
         }
       }
-      return [];
+      return dailyCuts;
     } catch (e) {
       console.error('Error fetching daily cuts:', e);
-      return [];
+      return dailyCuts;
     }
   };
 
@@ -1025,45 +1529,110 @@ export const InventoryProvider = ({ children }) => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/daily-cuts/${id}`);
       if (res.ok) {
-        return await res.json();
+        const data = await res.json();
+        saveLocalSnapshot(`dailyCut_${id}`, data);
+        return data;
       }
-      return null;
+      return loadLocalSnapshot(`dailyCut_${id}`, null);
     } catch (e) {
       console.error('Error fetching daily cut by id:', e);
-      return null;
+      return loadLocalSnapshot(`dailyCut_${id}`, null);
     }
   };
 
   const createDailyCut = async (cutData) => {
+    const payload = {
+      ...cutData,
+      created_by: currentUser?.username || 'admin'
+    };
+
+    const queueOfflineDailyCut = () => {
+      const localId = `offline-cut-${Date.now()}`;
+      const localCut = {
+        ...payload,
+        id: localId,
+        offlinePending: true,
+        created_at: new Date().toISOString()
+      };
+      setDailyCuts(prev => [localCut, ...prev]);
+      saveLocalSnapshot(`dailyCut_${localId}`, localCut);
+      enqueueOfflineOperation({
+        type: 'CREATE_DAILY_CUT',
+        module: 'summary2',
+        label: `Congelar Corte Diario (${payload.startDate || ''} a ${payload.endDate || ''})`,
+        method: 'POST',
+        endpoint: '/api/daily-cuts',
+        body: payload,
+        entityId: localId
+      });
+      return {
+        success: true,
+        offlineQueued: true,
+        id: localId,
+        message: 'Corte diario congelado en modo OnDemand. Se compartirá al reconectar.'
+      };
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return queueOfflineDailyCut();
+    }
+
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/daily-cuts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...cutData,
-          created_by: currentUser?.username || 'admin'
-        })
+        body: JSON.stringify(payload)
       });
+      if (isNetworkOrOfflineError(null, res)) {
+        return queueOfflineDailyCut();
+      }
       const data = await res.json();
       if (res.ok && data.success) {
-        logAuditEvent('FREEZE_DAILY_CUT', 'summary2', `Congelamiento de corte '${data.title}' (${cutData.startDate} al ${cutData.endDate})`);
         await fetchDailyCuts();
         return { success: true, ...data };
       }
       return { success: false, message: data.error || 'Error al congelar corte' };
     } catch (e) {
+      if (isNetworkOrOfflineError(e)) {
+        return queueOfflineDailyCut();
+      }
       console.error('Error creating daily cut:', e);
       return { success: false, message: 'Error de conexión con el servidor' };
     }
   };
 
   const updateDailyCut = async (id, updateData) => {
+    const queueOfflineUpdateCut = () => {
+      setDailyCuts(prev => prev.map(c => c.id === id ? { ...c, ...updateData, offlinePending: true } : c));
+      enqueueOfflineOperation({
+        type: 'UPDATE_DAILY_CUT',
+        module: 'summary2',
+        label: `Actualizar Corte Diario #${id}`,
+        method: 'PUT',
+        endpoint: `/api/daily-cuts/${id}`,
+        body: updateData,
+        entityId: String(id)
+      });
+      return {
+        success: true,
+        offlineQueued: true,
+        message: 'Corte diario actualizado localmente (OnDemand).'
+      };
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return queueOfflineUpdateCut();
+    }
+
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/daily-cuts/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData)
       });
+      if (isNetworkOrOfflineError(null, res)) {
+        return queueOfflineUpdateCut();
+      }
       const data = await res.json();
       if (res.ok && data.success) {
         await fetchDailyCuts();
@@ -1071,6 +1640,9 @@ export const InventoryProvider = ({ children }) => {
       }
       return { success: false, message: data.error || 'Error al actualizar corte' };
     } catch (e) {
+      if (isNetworkOrOfflineError(e)) {
+        return queueOfflineUpdateCut();
+      }
       console.error('Error updating daily cut:', e);
       return { success: false, message: 'Error de conexión con el servidor' };
     }
@@ -1094,18 +1666,18 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
-  const deleteDailyCut = async (id, title = '') => {
+  const deleteDailyCut = async (id) => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/daily-cuts/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        logAuditEvent('DELETE_DAILY_CUT', 'summary2', `Eliminación de corte '${title || id}'`);
         await fetchDailyCuts();
         return { success: true };
       }
-      return { success: false };
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, message: errData.error || 'No se pudo eliminar el corte diario.' };
     } catch (e) {
       console.error('Error deleting daily cut:', e);
-      return { success: false };
+      return { success: false, message: 'Error de conexión con el servidor.' };
     }
   };
 
@@ -1116,13 +1688,14 @@ export const InventoryProvider = ({ children }) => {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
+          saveLocalSnapshot('insuranceCuts', data);
           return data;
         }
       }
-      return [];
+      return loadLocalSnapshot('insuranceCuts', []);
     } catch (e) {
       console.error('Error fetching insurance cuts:', e);
-      return [];
+      return loadLocalSnapshot('insuranceCuts', []);
     }
   };
 
@@ -1130,50 +1703,113 @@ export const InventoryProvider = ({ children }) => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/insurance-cuts/${id}`);
       if (res.ok) {
-        return await res.json();
+        const data = await res.json();
+        saveLocalSnapshot(`insuranceCut_${id}`, data);
+        return data;
       }
-      return null;
+      return loadLocalSnapshot(`insuranceCut_${id}`, null);
     } catch (e) {
       console.error('Error fetching insurance cut by id:', e);
-      return null;
+      return loadLocalSnapshot(`insuranceCut_${id}`, null);
     }
   };
 
   const createInsuranceCut = async (cutData) => {
+    const payload = {
+      ...cutData,
+      created_by: currentUser?.username || 'admin'
+    };
+
+    const queueOfflineInsuranceCut = () => {
+      const localId = `offline-ins-${Date.now()}`;
+      const localCut = { ...payload, id: localId, offlinePending: true, created_at: new Date().toISOString() };
+      const existing = loadLocalSnapshot('insuranceCuts', []);
+      saveLocalSnapshot('insuranceCuts', [localCut, ...existing]);
+      saveLocalSnapshot(`insuranceCut_${localId}`, localCut);
+      enqueueOfflineOperation({
+        type: 'CREATE_INSURANCE_CUT',
+        module: 'insurance',
+        label: `Congelar Corte de Seguro (${payload.cutoffDate || payload.endDate || ''})`,
+        method: 'POST',
+        endpoint: '/api/insurance-cuts',
+        body: payload,
+        entityId: localId
+      });
+      return {
+        success: true,
+        offlineQueued: true,
+        id: localId,
+        message: 'Corte de seguro guardado en OnDemand (sin internet).'
+      };
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return queueOfflineInsuranceCut();
+    }
+
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/insurance-cuts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...cutData,
-          created_by: currentUser?.username || 'admin'
-        })
+        body: JSON.stringify(payload)
       });
+      if (isNetworkOrOfflineError(null, res)) {
+        return queueOfflineInsuranceCut();
+      }
       const data = await res.json();
       if (res.ok && data.success) {
-        logAuditEvent('FREEZE_INSURANCE_CUT', 'insurance', `Congelamiento de corte de seguro '${data.title}' (al ${cutData.cutoffDate})`);
         return { success: true, ...data };
       }
       return { success: false, message: data.error || 'Error al congelar corte de seguro' };
     } catch (e) {
+      if (isNetworkOrOfflineError(e)) {
+        return queueOfflineInsuranceCut();
+      }
       console.error('Error creating insurance cut:', e);
       return { success: false, message: 'Error de conexión con el servidor' };
     }
   };
 
   const updateInsuranceCut = async (id, updateData) => {
+    const queueOfflineUpdateInsCut = () => {
+      enqueueOfflineOperation({
+        type: 'UPDATE_INSURANCE_CUT',
+        module: 'insurance',
+        label: `Actualizar Corte de Seguro #${id}`,
+        method: 'PUT',
+        endpoint: `/api/insurance-cuts/${id}`,
+        body: updateData,
+        entityId: String(id)
+      });
+      return {
+        success: true,
+        offlineQueued: true,
+        message: 'Corte de seguro actualizado localmente (OnDemand).'
+      };
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return queueOfflineUpdateInsCut();
+    }
+
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/insurance-cuts/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData)
       });
+      if (isNetworkOrOfflineError(null, res)) {
+        return queueOfflineUpdateInsCut();
+      }
       const data = await res.json();
       if (res.ok && data.success) {
         return { success: true, ...data };
       }
       return { success: false, message: data.error || 'Error al actualizar corte de seguro' };
     } catch (e) {
+      if (isNetworkOrOfflineError(e)) {
+        return queueOfflineUpdateInsCut();
+      }
       console.error('Error updating insurance cut:', e);
       return { success: false, message: 'Error de conexión con el servidor' };
     }
@@ -1196,17 +1832,17 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
-  const deleteInsuranceCut = async (id, title = '') => {
+  const deleteInsuranceCut = async (id) => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/insurance-cuts/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        logAuditEvent('DELETE_INSURANCE_CUT', 'insurance', `Eliminación de corte de seguro '${title || id}'`);
         return { success: true };
       }
-      return { success: false };
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, message: errData.error || 'No se pudo eliminar el corte de seguro.' };
     } catch (e) {
       console.error('Error deleting insurance cut:', e);
-      return { success: false };
+      return { success: false, message: 'Error de conexión con el servidor.' };
     }
   };
 
@@ -1232,6 +1868,7 @@ export const InventoryProvider = ({ children }) => {
         localStorage.setItem('inv_token', data.token);
         localStorage.setItem('inv_current_user', JSON.stringify(data.user));
         localStorage.setItem('inv_session_id', data.sessionId);
+        saveLocalSnapshot('lastAuthUser', data.user);
         setCurrentUser(data.user);
         setSessionId(data.sessionId);
         await refreshData();
@@ -1421,7 +2058,15 @@ export const InventoryProvider = ({ children }) => {
       logout,
       totalStock,
       theme,
-      setTheme
+      setTheme,
+      // OnDemand Offline-First & Sync API
+      onDemandStatus,
+      offlineQueue,
+      syncOnDemandNow,
+      checkOnDemandConnection,
+      removeOfflineQueueItem,
+      clearAllOfflineQueue,
+      importOfflineQueueItems
     }}>
 
       {children}

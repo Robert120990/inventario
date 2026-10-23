@@ -25,14 +25,14 @@ const toStock = (product) => ({
 });
 
 const InventoryCount = () => {
-  const { products, currentUser, adjustProductStock, canEdit } = useInventory();
+  const { products, currentUser, adjustProductStock, canCreate, canEdit } = useInventory();
   const [query, setQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [counted, setCounted] = useState(toStock());
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [lastAdjustment, setLastAdjustment] = useState(null);
-  const allowEdit = canEdit('inventory-count');
+  const allowEdit = canCreate('inventory-count') || canEdit('inventory-count');
 
   const results = useMemo(() => {
     if (!query.trim()) return [];

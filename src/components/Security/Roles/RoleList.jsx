@@ -5,7 +5,7 @@ import { toast } from 'react-hot-toast';
 import RoleForm from './RoleForm';
 
 const RoleList = () => {
-  const { roles, users, fetchRoles, deleteRole, currentUser } = useInventory();
+  const { roles, users, fetchRoles, deleteRole } = useInventory();
   const [isAdding, setIsAdding] = useState(false);
   const [editingRole, setEditingRole] = useState(null);
 

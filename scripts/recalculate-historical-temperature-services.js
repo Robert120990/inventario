@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import mysql from 'mysql2/promise';
-import { getTemperatureRate, calculateTemperatureService } from '../src/utils/contractRates.js';
+import { calculateTemperatureService } from '../src/utils/contractRates.js';
 
 async function run() {
   const pool = mysql.createPool({

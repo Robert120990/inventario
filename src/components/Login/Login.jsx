@@ -11,7 +11,7 @@ const Login = () => {
   const [submitting, setSubmitting] = useState(false);
 
   const appCommitVersion = import.meta.env.VITE_APP_VERSION;
-  const versionDisplay = currentVersion?.version 
+  const _versionDisplay = currentVersion?.version 
     ? (appCommitVersion ? `${currentVersion.version} (v${appCommitVersion})` : currentVersion.version)
     : (appCommitVersion ? `v${appCommitVersion}` : '');
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inventario-shell-v2';
+const CACHE_NAME = 'inventario-shell-v3-ondemand';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/favicon.svg', '/pwa-icon.svg'];
 
 self.addEventListener('install', event => {
@@ -10,7 +10,7 @@ self.addEventListener('install', event => {
 
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys => 
+    caches.keys().then(keys =>
       Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))
     )
   );
@@ -29,8 +29,8 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
 
-  // Network-first for navigation and dynamic assets to avoid stale UI caching
-  if (request.mode === 'navigate' || url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
+  // Navegación HTML: Network-first con fallback a caché de index.html para soporte offline OnDemand
+  if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
         .then(response => {
@@ -45,7 +45,23 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Cache-first for images, fonts, icons
+  // Chunks JS y hojas CSS: Network-first con fallback exacto al asset cacheado
+  if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Imágenes, fuentes e iconos: Cache-first con actualización en caché
   event.respondWith(
     caches.match(request).then(cached => cached || fetch(request).then(response => {
       if (response.ok) {

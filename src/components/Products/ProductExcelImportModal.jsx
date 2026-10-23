@@ -13,13 +13,14 @@ const ProductExcelImportModal = ({ onClose }) => {
   const [parsedItems, setParsedItems] = useState([]);
   const [createIfNotExists, setCreateIfNotExists] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [_loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const xlsxRef = useRef(null);
 
   const getXlsx = async () => {
     if (!xlsxRef.current) {
-      xlsxRef.current = await import('xlsx');
+      const mod = await import('xlsx-js-style');
+      xlsxRef.current = mod.default || mod;
     }
     return xlsxRef.current;
   };
@@ -68,7 +69,7 @@ const ProductExcelImportModal = ({ onClose }) => {
       if (!rawJson || rawJson.length === 0) return;
 
       // Find header row or parse rows directly
-      rawJson.forEach((row, rowIdx) => {
+      rawJson.forEach((row, _rowIdx) => {
         if (!Array.isArray(row) || row.length < 2) return;
 
         const c1 = String(row[0] || '').trim();
@@ -86,7 +87,7 @@ const ProductExcelImportModal = ({ onClose }) => {
             // Check if column 6 (Col 7 in 1-based) is "Valor por Cestas $"
             const valCol7 = cleanNumeric(row[6]);
             const valCol6 = cleanNumeric(row[5]);
-            const valCol3 = cleanNumeric(row[2]);
+            const _valCol3 = cleanNumeric(row[2]);
 
             if (valCol7 > 0 && valCol7 < 5000) {
               price = valCol7;
