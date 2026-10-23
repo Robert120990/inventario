@@ -1,6 +1,24 @@
 // Registro cronológico maestro y automático de versiones del sistema generado desde Git
 export const SYSTEM_CHANGELOG = [
   {
+    "id": "318efb7",
+    "version": "v2.7.164",
+    "commit": "318efb7",
+    "fullCommit": "318efb7ca405e31ac3ddae4018057848321558e2",
+    "description": "Add /api/bootstrap, auth session cache, lazy changelog, DB indexes and zero lint warnings",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-10-23",
+    "time": "19:37",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "security",
+        "text": "Add /api/bootstrap, auth session cache, lazy changelog, DB indexes and zero lint warnings"
+      }
+    ]
+  },
+  {
     "id": "2112ad0",
     "version": "v2.7.163",
     "commit": "2112ad0",
@@ -171,7 +189,7 @@ export const SYSTEM_CHANGELOG = [
     "author": "Ing. Raúl Sosa",
     "date": "2026-10-08",
     "time": "17:39",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
@@ -2683,24 +2701,6 @@ export const SYSTEM_CHANGELOG = [
       {
         "type": "improvement",
         "text": "Mejora en gestion de usuario"
-      }
-    ]
-  },
-  {
-    "id": "3994cb9",
-    "version": "v2.7.14",
-    "commit": "3994cb9",
-    "fullCommit": "3994cb93075e2c84027cc82ddcfa8d9effee092a",
-    "description": "Mejora en el dhasboard",
-    "author": "Roberto",
-    "date": "2026-03-19",
-    "time": "12:07",
-    "isOfficial": false,
-    "isGitCommit": true,
-    "changes": [
-      {
-        "type": "improvement",
-        "text": "Mejora en el dhasboard"
       }
     ]
   }
