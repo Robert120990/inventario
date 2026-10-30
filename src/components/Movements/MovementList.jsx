@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import {
   Plus, Download, Search, FileSpreadsheet,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
-  ArrowDownCircle, ArrowUpCircle, Eye, Printer, FileOutput, FileText
+  ArrowDownCircle, ArrowUpCircle, Eye, Printer, FileOutput, FileText,
+  Edit3, Trash2, ChevronDown, Package, User
 } from 'lucide-react';
 import { exportMovimientos } from '../../utils/exportManager';
 import MovementForm from './MovementForm';
@@ -36,6 +37,8 @@ const MovementList = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingMovement, setEditingMovement] = useState(null);
   const [viewingMovement, setViewingMovement] = useState(null);
+  const [noteMenu, setNoteMenu] = useState(null); // { mov, top, left }
+  const menuRef = useRef(null);
 
   const allowCreate = canCreate('movements');
   const allowEdit = canEdit('movements');
@@ -48,6 +51,33 @@ const MovementList = () => {
   const [typeFilter, setTypeFilter] = useState('all'); // 'all', 'in', 'out'
   const [pageSize, setPageSize] = useState(10); // Default to 10 items
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Cerrar menú flotante de comprobante al hacer clic fuera, presionar Escape, hacer scroll o redimensionar
+  useEffect(() => {
+    if (!noteMenu) return undefined;
+
+    const handlePointerDown = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setNoteMenu(null);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setNoteMenu(null);
+    };
+    const handleViewportChange = () => setNoteMenu(null);
+
+    document.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('scroll', handleViewportChange, true);
+    window.addEventListener('resize', handleViewportChange);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('scroll', handleViewportChange, true);
+      window.removeEventListener('resize', handleViewportChange);
+    };
+  }, [noteMenu]);
 
   // Filter movements
   const filteredMovements = movements.filter(mov => {
@@ -121,15 +151,51 @@ const MovementList = () => {
     maximumFractionDigits: 2
   });
 
-  const getProductName = (item) => {
-    const product = findProductForMovementItem(item, products);
-    return product ? `${product.sku} - ${product.description}` : 'Desconocido';
-  };
-
   const renderProductPreview = (mov) => {
-    if (!mov.items || mov.items.length === 0) return 'Sin productos';
-    if (mov.items.length === 1) return getProductName(mov.items[0]);
-    return `Varios Productos (${mov.items.length})`;
+    const items = mov.items || [];
+    if (items.length === 0) {
+      return <span style={{ color: 'var(--color-text-muted)', fontSize: '0.78rem' }}>Sin productos</span>;
+    }
+
+    if (items.length === 1) {
+      const product = findProductForMovementItem(items[0], products);
+      const sku = product?.sku || items[0].sku || items[0].productId || 'SKU';
+      const desc = product?.description || 'Desconocido';
+      return (
+        <div
+          className="mov-single-product"
+          onClick={() => setViewingMovement(mov)}
+          title={`${sku} - ${desc} (Clic para ver detalle)`}
+        >
+          <div className="mov-prod-sku" style={{ fontSize: '0.76rem', fontWeight: 700, fontFamily: 'monospace', color: 'var(--color-primary)' }}>
+            {sku}
+          </div>
+          <div style={{ fontSize: '0.78rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {desc}
+          </div>
+        </div>
+      );
+    }
+
+    const previewTooltip = items
+      .slice(0, 5)
+      .map((it) => {
+        const p = findProductForMovementItem(it, products);
+        return p ? `${p.sku} - ${p.description}` : String(it.productId || 'Ítem');
+      })
+      .join('\n') + (items.length > 5 ? `\n...y ${items.length - 5} más` : '');
+
+    return (
+      <button
+        type="button"
+        className="mov-products-chip"
+        onClick={() => setViewingMovement(mov)}
+        title={`Clic para ver los ${items.length} productos:\n${previewTooltip}`}
+      >
+        <Package size={13} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
+        <span>{items.length} productos</span>
+      </button>
+    );
   };
 
   const renderQuantities = (mov) => {
@@ -139,18 +205,45 @@ const MovementList = () => {
     const totalBaskets = mov.items.reduce((acc, curr) => acc + Number(curr.qtyBaskets || 0), 0);
 
     return (
-      <>
-        <div style={{ fontWeight: '600' }}>{totalUnits.toLocaleString()} Unid.</div>
+      <div style={{ fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ fontWeight: 700, fontSize: '0.84rem', whiteSpace: 'nowrap', color: 'var(--color-text)' }}>
+          {totalUnits.toLocaleString('en-US')} Unid.
+        </div>
         {(totalMovPounds > 0 || totalBaskets > 0) && (
-          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>
-            {totalMovPounds.toLocaleString()} lbs • {totalBaskets} cestas
+          <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
+            {totalMovPounds.toLocaleString('en-US', { maximumFractionDigits: 2 })} lbs
+            {totalBaskets > 0 ? ` • ${totalBaskets.toLocaleString('en-US')} cst.` : ''}
           </div>
         )}
-      </>
+      </div>
     );
   };
 
+  const handleToggleNoteMenu = (e, mov) => {
+    e.stopPropagation();
+    if (noteMenu && noteMenu.mov.id === mov.id) {
+      setNoteMenu(null);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const menuWidth = 235;
+    const menuHeight = 175;
+    const viewportW = window.innerWidth;
+    const viewportH = window.innerHeight;
+
+    let left = rect.right - menuWidth;
+    if (left < 10) left = 10;
+    if (left + menuWidth > viewportW - 10) left = viewportW - menuWidth - 10;
+
+    const spaceBelow = viewportH - rect.bottom;
+    const top = spaceBelow < menuHeight + 12 ? Math.max(10, rect.top - menuHeight - 6) : rect.bottom + 6;
+
+    setNoteMenu({ mov, top, left });
+  };
+
   const handleQuickPrintNote = (mov) => {
+    setNoteMenu(null);
     try {
       const res = printMovementNote({
         movement: mov,
@@ -170,6 +263,7 @@ const MovementList = () => {
   };
 
   const handleQuickDownloadPdf = async (mov) => {
+    setNoteMenu(null);
     try {
       const res = await downloadMovementNotePdf({
         movement: mov,
@@ -185,6 +279,7 @@ const MovementList = () => {
   };
 
   const handleQuickDownloadWord = (mov) => {
+    setNoteMenu(null);
     try {
       const res = downloadMovementNoteWord({
         movement: mov,
@@ -299,65 +394,95 @@ const MovementList = () => {
 
   return (
     <div>
-      <div className="topbar">
+      <div className="movements-topbar">
         <div>
           <h1 className="page-title">Movimientos</h1>
-          <p style={{ color: 'var(--color-text-light)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-            Registro transaccional de entradas y salidas con carga optimizada.
+          <p style={{ color: 'var(--color-text-light)', fontSize: '0.84rem', marginTop: '0.15rem' }}>
+            Registro transaccional de entradas y salidas de almacén.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+
+        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {allowExport && (
-            <>
-              <button className="btn btn-primary" onClick={handleExportXlsx} disabled={sortedMovements.length === 0} title="Descargar todos los movimientos filtrados en Excel (.xlsx)">
-                <FileSpreadsheet size={17} /> Excel (.xlsx)
+            <div className="mov-export-group" role="group" aria-label="Exportar listado de movimientos">
+              <button
+                type="button"
+                className="mov-export-btn"
+                onClick={handleExportXlsx}
+                disabled={sortedMovements.length === 0}
+                title="Descargar movimientos filtrados en Excel (.xlsx)"
+              >
+                <FileSpreadsheet size={15} style={{ color: '#10b981' }} /> Excel
               </button>
-              <button className="btn btn-outline" onClick={handleExportCsv} disabled={sortedMovements.length === 0} title="Descargar todos los movimientos filtrados en CSV estructurado">
-                <Download size={17} /> CSV
+              <button
+                type="button"
+                className="mov-export-btn"
+                onClick={handleExportCsv}
+                disabled={sortedMovements.length === 0}
+                title="Descargar movimientos filtrados en CSV"
+              >
+                <Download size={15} /> CSV
               </button>
-              <button className="btn btn-outline" onClick={handleExportListPdf} disabled={sortedMovements.length === 0} title="Descargar todos los movimientos filtrados en PDF">
-                <FileOutput size={17} /> PDF
+              <button
+                type="button"
+                className="mov-export-btn"
+                onClick={handleExportListPdf}
+                disabled={sortedMovements.length === 0}
+                title="Descargar movimientos filtrados en PDF"
+              >
+                <FileOutput size={15} style={{ color: '#ef4444' }} /> PDF
               </button>
-              <button className="btn btn-outline" onClick={handleExportListWord} disabled={sortedMovements.length === 0} title="Descargar todos los movimientos filtrados en Word (.doc)">
-                <FileText size={17} /> Word
+              <button
+                type="button"
+                className="mov-export-btn"
+                onClick={handleExportListWord}
+                disabled={sortedMovements.length === 0}
+                title="Descargar movimientos filtrados en Word (.doc)"
+              >
+                <FileText size={15} style={{ color: '#3b82f6' }} /> Word
               </button>
-            </>
+            </div>
           )}
+
           {allowCreate && (
-            <button className="btn btn-primary" onClick={() => { setEditingMovement(null); setIsAdding(true); }}>
-              <Plus size={18} /> Registrar Movimiento
+            <button
+              className="btn btn-primary"
+              style={{ padding: '0.5rem 0.95rem', fontSize: '0.84rem', whiteSpace: 'nowrap' }}
+              onClick={() => { setEditingMovement(null); setIsAdding(true); }}
+            >
+              <Plus size={17} /> Registrar Movimiento
             </button>
           )}
         </div>
       </div>
 
       {/* Control Card: Search, Type Filter & Page Size */}
-      <div className="card" style={{ marginBottom: '1.5rem', padding: '1rem 1.25rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+      <div className="card" style={{ marginBottom: '1.15rem', padding: '0.85rem 1.1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
           {/* Search Input */}
-          <div style={{ position: 'relative', flex: '1 1 200px', minWidth: '180px', maxWidth: '450px' }}>
-            <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-light)' }} />
+          <div style={{ position: 'relative', flex: '1 1 220px', minWidth: '180px', maxWidth: '420px' }}>
+            <Search size={16} style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-light)' }} />
             <input
               type="text"
               className="form-input"
-              placeholder="Buscar por documento, transporte, auditor o producto..."
+              placeholder="Buscar documento, transporte, auditor o producto..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              style={{ paddingLeft: '2.5rem', marginBottom: 0 }}
+              style={{ paddingLeft: '2.25rem', paddingTop: '0.48rem', paddingBottom: '0.48rem', fontSize: '0.83rem', marginBottom: 0 }}
             />
           </div>
 
           {/* Quick Filter Buttons & Page Size Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
             {/* Type Selector */}
             <div style={{ display: 'flex', backgroundColor: 'var(--color-bg)', padding: '3px', borderRadius: 'var(--radius)', border: '1px solid var(--color-border)' }}>
               <button
                 type="button"
                 onClick={() => setTypeFilter('all')}
                 style={{
-                  padding: '0.35rem 0.75rem',
-                  fontSize: '0.8rem',
-                  borderRadius: '4px',
+                  padding: '0.3rem 0.68rem',
+                  fontSize: '0.78rem',
+                  borderRadius: '5px',
                   border: 'none',
                   background: typeFilter === 'all' ? 'var(--color-primary)' : 'transparent',
                   color: typeFilter === 'all' ? 'white' : 'var(--color-text-light)',
@@ -373,18 +498,18 @@ const MovementList = () => {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '0.35rem 0.75rem',
-                  fontSize: '0.8rem',
-                  borderRadius: '4px',
+                  gap: '0.3rem',
+                  padding: '0.3rem 0.68rem',
+                  fontSize: '0.78rem',
+                  borderRadius: '5px',
                   border: 'none',
-                  background: typeFilter === 'in' ? 'var(--color-success)' : 'transparent',
+                  background: typeFilter === 'in' ? '#059669' : 'transparent',
                   color: typeFilter === 'in' ? 'white' : 'var(--color-text-light)',
                   cursor: 'pointer',
                   fontWeight: typeFilter === 'in' ? '600' : 'normal'
                 }}
               >
-                <ArrowDownCircle size={14} /> Entradas
+                <ArrowDownCircle size={13} /> Entradas
               </button>
               <button
                 type="button"
@@ -392,29 +517,29 @@ const MovementList = () => {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '0.35rem 0.75rem',
-                  fontSize: '0.8rem',
-                  borderRadius: '4px',
+                  gap: '0.3rem',
+                  padding: '0.3rem 0.68rem',
+                  fontSize: '0.78rem',
+                  borderRadius: '5px',
                   border: 'none',
-                  background: typeFilter === 'out' ? 'var(--color-danger)' : 'transparent',
+                  background: typeFilter === 'out' ? '#dc2626' : 'transparent',
                   color: typeFilter === 'out' ? 'white' : 'var(--color-text-light)',
                   cursor: 'pointer',
                   fontWeight: typeFilter === 'out' ? '600' : 'normal'
                 }}
               >
-                <ArrowUpCircle size={14} /> Salidas
+                <ArrowUpCircle size={13} /> Salidas
               </button>
             </div>
 
             {/* Page Size Selector */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', whiteSpace: 'nowrap' }}>Mostrar:</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--color-text-light)', whiteSpace: 'nowrap' }}>Mostrar:</span>
               <select
                 value={pageSize}
                 onChange={(e) => setPageSize(e.target.value === 'all' ? 'all' : Number(e.target.value))}
                 className="form-select"
-                style={{ width: 'auto', padding: '0.35rem 0.75rem', fontSize: '0.8rem', marginBottom: 0 }}
+                style={{ width: 'auto', padding: '0.32rem 0.65rem', fontSize: '0.78rem', marginBottom: 0 }}
               >
                 <option value={10}>Últimos 10</option>
                 <option value={25}>25</option>
@@ -431,10 +556,10 @@ const MovementList = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginTop: '0.85rem',
-          paddingTop: '0.85rem',
+          marginTop: '0.68rem',
+          paddingTop: '0.68rem',
           borderTop: '1px solid var(--color-border)',
-          fontSize: '0.85rem',
+          fontSize: '0.8rem',
           color: 'var(--color-text-light)',
           flexWrap: 'wrap',
           gap: '0.5rem'
@@ -454,26 +579,24 @@ const MovementList = () => {
         </div>
       </div>
 
-      {/* Grid / Table Container */}
+      {/* Grid / Table Container Compacta y Sin Desbordamiento en Monitores Cuadrados */}
       <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
         <div className="table-container" style={{ border: 'none', boxShadow: 'none', marginBottom: 0 }}>
-          <table>
+          <table className="movements-table">
             <thead>
               <tr>
-                <th>Fecha y Hora</th>
-                <th>Tipo</th>
-                <th>Documento</th>
+                <th style={{ width: '98px' }}>Fecha</th>
+                <th style={{ width: '148px' }}>Documento</th>
                 <th>Producto(s)</th>
-                <th>Cantidades</th>
-                <th>Transporte</th>
-                <th>Auditor</th>
-                {showActions && <th style={{ textAlign: 'center' }}>Acciones</th>}
+                <th style={{ width: '142px' }}>Cantidades</th>
+                <th>Transporte / Auditor</th>
+                {showActions && <th style={{ width: '154px', textAlign: 'right' }}>Acciones</th>}
               </tr>
             </thead>
             <tbody>
               {paginatedMovements.length === 0 ? (
                 <tr>
-                  <td colSpan={showActions ? 8 : 7} style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+                  <td colSpan={showActions ? 6 : 5} style={{ textAlign: 'center', padding: '2.75rem 1rem' }}>
                     <div style={{ color: 'var(--color-text-light)' }}>
                       <p style={{ fontWeight: '500', marginBottom: '0.25rem' }}>
                         {searchTerm ? 'No se encontraron movimientos con ese criterio.' : 'No hay movimientos registrados.'}
@@ -502,198 +625,210 @@ const MovementList = () => {
                         ? 'pending'
                         : 'synced';
                   const isExit = mov.type === 'out';
-                  const noteActionTitle = isExit ? 'Imprimir Nota de Envío' : 'Imprimir Nota de Recibido';
+                  const isMenuOpen = Boolean(noteMenu && noteMenu.mov.id === mov.id);
+                  const noteLabel = isExit ? 'Nota de Envío' : 'Nota de Recibido';
+
+                  const transportMeta = [
+                    mov.equipment ? `Eq: ${mov.equipment}` : '',
+                    mov.seal ? `Sello: ${mov.seal}` : ''
+                  ].filter(Boolean).join(' • ');
 
                   return (
-                  <tr key={mov.id}>
-                    <td>
-                      <div style={{ fontWeight: '600', color: 'var(--color-text)' }}>{formatDate(mov.date)}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>
-                        {formatTimeShort(mov.timeStart)} {mov.timeEnd ? `- ${formatTimeShort(mov.timeEnd)}` : ''}
-                      </div>
-                    </td>
-                    <td>
-                      <span className={`badge ${mov.type === 'in' ? 'badge-success' : 'badge-danger'}`}>
-                        {mov.type === 'in' ? 'Entrada' : 'Salida'}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: '600', color: 'var(--color-text)' }}>{mov.refType}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
-                        <span>#{mov.refNumber}</span>
-                        {effectiveSyncState === 'conflict' ? (
-                          <span
-                            title={syncInfo.operation?.error || 'Conflicto al sincronizar con el servidor'}
-                            style={{
-                              fontSize: '0.65rem',
-                              padding: '0.08rem 0.4rem',
-                              borderRadius: '999px',
-                              backgroundColor: 'rgba(239, 68, 68, 0.14)',
-                              color: '#dc2626',
-                              fontWeight: 700
-                            }}
-                          >
-                            Requiere revisión
-                          </span>
-                        ) : effectiveSyncState === 'pending' ? (
-                          <span
-                            title="Cambio local pendiente de sincronizar con el servidor"
-                            style={{
-                              fontSize: '0.65rem',
-                              padding: '0.08rem 0.4rem',
-                              borderRadius: '999px',
-                              backgroundColor: 'rgba(245, 158, 11, 0.16)',
-                              color: '#b45309',
-                              fontWeight: 700
-                            }}
-                          >
-                            Pendiente
-                          </span>
-                        ) : (
-                          <span
-                            title="Sincronizado con el servidor central"
-                            style={{
-                              fontSize: '0.63rem',
-                              padding: '0.06rem 0.38rem',
-                              borderRadius: '999px',
-                              backgroundColor: 'rgba(16, 185, 129, 0.12)',
-                              color: '#059669',
-                              fontWeight: 600
-                            }}
-                          >
-                            Sincronizado
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td style={{ fontWeight: '500' }}>{renderProductPreview(mov)}</td>
-                    <td>
-                      {renderQuantities(mov)}
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: '500' }}>{mov.carrier || 'N/A'}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>
-                        {mov.equipment ? `Eq: ${mov.equipment}` : ''} {mov.seal ? `• Sello: ${mov.seal}` : ''}
-                      </div>
-                    </td>
-                    <td>
-                      <span style={{ fontSize: '0.85rem' }}>{mov.auditUser || 'Sistema'}</span>
-                    </td>
-                    {showActions && (
-                      <td style={{ textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center', alignItems: 'center' }}>
-                          <button
-                            type="button"
-                            onClick={() => setViewingMovement(mov)}
-                            className="btn btn-outline"
-                            style={{
-                              padding: '0.28rem 0.5rem',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              color: 'var(--color-primary)',
-                              borderColor: 'var(--color-primary)'
-                            }}
-                            title="Ver detalle completo del movimiento"
-                            aria-label="Ver detalle completo del movimiento"
-                          >
-                            <Eye size={16} />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleQuickPrintNote(mov)}
-                            className="btn btn-outline"
-                            style={{
-                              padding: '0.25rem 0.55rem',
-                              fontSize: '0.78rem',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.3rem',
-                              whiteSpace: 'nowrap',
-                              color: isExit ? 'var(--color-primary)' : 'var(--color-success)',
-                              borderColor: isExit ? 'var(--color-border)' : 'var(--color-success)'
-                            }}
-                            title={noteActionTitle}
-                            aria-label={noteActionTitle}
-                          >
-                            <Printer size={15} />
-                            <span>{isExit ? 'Nota Envío' : 'Nota Recibido'}</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleQuickDownloadPdf(mov)}
-                            className="btn btn-outline"
-                            style={{
-                              padding: '0.25rem 0.45rem',
-                              fontSize: '0.75rem',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.22rem',
-                              whiteSpace: 'nowrap'
-                            }}
-                            title={isExit ? 'Descargar Nota de Envío en PDF' : 'Descargar Nota de Recibido en PDF'}
-                            aria-label={isExit ? 'Descargar Nota de Envío en PDF' : 'Descargar Nota de Recibido en PDF'}
-                          >
-                            <FileOutput size={14} />
-                            <span>PDF</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleQuickDownloadWord(mov)}
-                            className="btn btn-outline"
-                            style={{
-                              padding: '0.25rem 0.45rem',
-                              fontSize: '0.75rem',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.22rem',
-                              whiteSpace: 'nowrap'
-                            }}
-                            title={isExit ? 'Descargar Nota de Envío en Word (.doc)' : 'Descargar Nota de Recibido en Word (.doc)'}
-                            aria-label={isExit ? 'Descargar Nota de Envío en Word (.doc)' : 'Descargar Nota de Recibido en Word (.doc)'}
-                          >
-                            <FileText size={14} />
-                            <span>Word</span>
-                          </button>
-
-                          {allowEdit && (
-                            <button
-                              type="button"
-                              onClick={() => { setEditingMovement(mov); setIsAdding(true); }}
-                              className="btn btn-outline"
-                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                              title="Editar este movimiento"
-                            >
-                              Editar
-                            </button>
-                          )}
-                          {allowDelete && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                if (window.confirm('¿Seguro que deseas eliminar este movimiento? Afectará el stock disponible.')) {
-                                  const res = await deleteMovement(mov.id);
-                                  if (res?.success) {
-                                    toast.success('Movimiento eliminado correctamente');
-                                  } else {
-                                    toast.error(res?.message || 'No fue posible eliminar el movimiento');
-                                  }
-                                }
-                              }}
-                              className="btn btn-danger"
-                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                              title="Eliminar este movimiento"
-                            >
-                              Eliminar
-                            </button>
-                          )}
+                    <tr key={mov.id}>
+                      {/* 1. Fecha y Horario */}
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.82rem', color: 'var(--color-text)' }}>
+                          {formatDate(mov.date)}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                          {formatTimeShort(mov.timeStart)}{mov.timeEnd ? ` - ${formatTimeShort(mov.timeEnd)}` : ''}
                         </div>
                       </td>
-                    )}
-                  </tr>
+
+                      {/* 2. Tipo + Documento + Indicador Limpio de Sincronización */}
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
+                          <span
+                            className={`badge ${isExit ? 'badge-danger' : 'badge-success'}`}
+                            style={{ padding: '0.12rem 0.48rem', fontSize: '0.68rem', gap: '0.22rem', whiteSpace: 'nowrap' }}
+                          >
+                            {isExit ? <ArrowUpCircle size={11} /> : <ArrowDownCircle size={11} />}
+                            {isExit ? 'Salida' : 'Entrada'}
+                          </span>
+
+                          {effectiveSyncState === 'conflict' ? (
+                            <span
+                              title={syncInfo.operation?.error || 'Conflicto al sincronizar con el servidor'}
+                              style={{
+                                fontSize: '0.63rem',
+                                padding: '0.06rem 0.36rem',
+                                borderRadius: '999px',
+                                backgroundColor: 'rgba(239, 68, 68, 0.16)',
+                                color: '#ef4444',
+                                fontWeight: 700,
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              Revisión
+                            </span>
+                          ) : effectiveSyncState === 'pending' ? (
+                            <span
+                              title="Cambio local pendiente de sincronizar con el servidor"
+                              style={{
+                                fontSize: '0.63rem',
+                                padding: '0.06rem 0.36rem',
+                                borderRadius: '999px',
+                                backgroundColor: 'rgba(245, 158, 11, 0.18)',
+                                color: '#f59e0b',
+                                fontWeight: 700,
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              Pendiente
+                            </span>
+                          ) : (
+                            <span
+                              title="Sincronizado con el servidor central"
+                              style={{
+                                width: '7px',
+                                height: '7px',
+                                borderRadius: '50%',
+                                backgroundColor: '#10b981',
+                                display: 'inline-block',
+                                flexShrink: 0
+                              }}
+                            />
+                          )}
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: '0.79rem',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            maxWidth: '155px'
+                          }}
+                          title={`${mov.refType || 'Doc'} #${mov.refNumber || 'S/N'}`}
+                        >
+                          <span style={{ color: 'var(--color-text-muted)' }}>{mov.refType}: </span>
+                          <strong style={{ color: 'var(--color-text)' }}>#{mov.refNumber}</strong>
+                        </div>
+                      </td>
+
+                      {/* 3. Producto(s) */}
+                      <td>{renderProductPreview(mov)}</td>
+
+                      {/* 4. Cantidades */}
+                      <td>{renderQuantities(mov)}</td>
+
+                      {/* 5. Transporte y Auditor Consolidados */}
+                      <td>
+                        <div
+                          style={{
+                            fontWeight: 600,
+                            fontSize: '0.81rem',
+                            color: 'var(--color-text)',
+                            maxWidth: '185px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                          title={mov.carrier || 'N/A'}
+                        >
+                          {mov.carrier || 'N/A'}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '0.72rem',
+                            color: 'var(--color-text-muted)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            flexWrap: 'wrap'
+                          }}
+                          title={`${transportMeta}${transportMeta ? ' • ' : ''}Auditor: ${mov.auditUser || 'Sistema'}`}
+                        >
+                          {transportMeta && <span style={{ whiteSpace: 'nowrap' }}>{transportMeta}</span>}
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.18rem',
+                              color: 'var(--color-text-light)',
+                              fontWeight: 500,
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {transportMeta ? '• ' : ''}
+                            <User size={11} style={{ opacity: 0.75 }} />
+                            {mov.auditUser || 'Sistema'}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* 6. Barra de Acciones Compacta y Uniforme */}
+                      {showActions && (
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <div className="mov-action-bar">
+                            <button
+                              type="button"
+                              onClick={() => setViewingMovement(mov)}
+                              className="mov-icon-btn view-btn"
+                              title="Ver detalle completo del movimiento"
+                              aria-label="Ver detalle completo del movimiento"
+                            >
+                              <Eye size={15} />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => handleToggleNoteMenu(e, mov)}
+                              className={`mov-icon-btn ${isExit ? 'note-out-btn' : 'note-in-btn'} ${isMenuOpen ? 'active' : ''}`}
+                              title={`${noteLabel}: Imprimir / PDF / Word`}
+                              aria-label={`${noteLabel}: Imprimir / PDF / Word`}
+                              aria-expanded={isMenuOpen}
+                            >
+                              <Printer size={14} />
+                              <ChevronDown size={11} />
+                            </button>
+
+                            {allowEdit && (
+                              <button
+                                type="button"
+                                onClick={() => { setEditingMovement(mov); setIsAdding(true); }}
+                                className="mov-icon-btn edit-btn"
+                                title="Editar este movimiento"
+                                aria-label="Editar este movimiento"
+                              >
+                                <Edit3 size={14} />
+                              </button>
+                            )}
+
+                            {allowDelete && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (window.confirm('¿Seguro que deseas eliminar este movimiento? Afectará el stock disponible.')) {
+                                    const res = await deleteMovement(mov.id);
+                                    if (res?.success) {
+                                      toast.success('Movimiento eliminado correctamente');
+                                    } else {
+                                      toast.error(res?.message || 'No fue posible eliminar el movimiento');
+                                    }
+                                  }
+                                }}
+                                className="mov-icon-btn delete-btn"
+                                title="Eliminar este movimiento"
+                                aria-label="Eliminar este movimiento"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
                   );
                 })
               )}
@@ -707,36 +842,36 @@ const MovementList = () => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '0.85rem 1.25rem',
+            padding: '0.75rem 1.1rem',
             backgroundColor: 'var(--color-card)',
             borderTop: '1px solid var(--color-border)',
             flexWrap: 'wrap',
             gap: '0.75rem'
           }}>
-            <div style={{ fontSize: '0.85rem', color: 'var(--color-text-light)' }}>
+            <div style={{ fontSize: '0.82rem', color: 'var(--color-text-light)' }}>
               Página <strong>{validCurrentPage}</strong> de <strong>{totalPages}</strong> ({totalItems} movimientos)
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
               <button
                 type="button"
                 className="btn btn-outline"
                 onClick={() => setCurrentPage(1)}
                 disabled={validCurrentPage === 1}
-                style={{ padding: '0.35rem 0.55rem', fontSize: '0.8rem' }}
+                style={{ padding: '0.3rem 0.5rem', fontSize: '0.78rem' }}
                 title="Primera página"
               >
-                <ChevronsLeft size={16} />
+                <ChevronsLeft size={15} />
               </button>
               <button
                 type="button"
                 className="btn btn-outline"
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={validCurrentPage === 1}
-                style={{ padding: '0.35rem 0.55rem', fontSize: '0.8rem' }}
+                style={{ padding: '0.3rem 0.5rem', fontSize: '0.78rem' }}
                 title="Página anterior"
               >
-                <ChevronLeft size={16} />
+                <ChevronLeft size={15} />
               </button>
 
               {getPageNumbers().map(pageNum => (
@@ -745,15 +880,15 @@ const MovementList = () => {
                   type="button"
                   onClick={() => setCurrentPage(pageNum)}
                   style={{
-                    padding: '0.35rem 0.75rem',
-                    fontSize: '0.8rem',
+                    padding: '0.3rem 0.65rem',
+                    fontSize: '0.78rem',
                     borderRadius: 'var(--radius)',
                     border: pageNum === validCurrentPage ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
                     background: pageNum === validCurrentPage ? 'var(--color-primary)' : 'transparent',
                     color: pageNum === validCurrentPage ? 'white' : 'var(--color-text)',
                     cursor: 'pointer',
                     fontWeight: pageNum === validCurrentPage ? '700' : '500',
-                    minWidth: '32px'
+                    minWidth: '30px'
                   }}
                 >
                   {pageNum}
@@ -765,25 +900,82 @@ const MovementList = () => {
                 className="btn btn-outline"
                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                 disabled={validCurrentPage === totalPages}
-                style={{ padding: '0.35rem 0.55rem', fontSize: '0.8rem' }}
+                style={{ padding: '0.3rem 0.5rem', fontSize: '0.78rem' }}
                 title="Página siguiente"
               >
-                <ChevronRight size={16} />
+                <ChevronRight size={15} />
               </button>
               <button
                 type="button"
                 className="btn btn-outline"
                 onClick={() => setCurrentPage(totalPages)}
                 disabled={validCurrentPage === totalPages}
-                style={{ padding: '0.35rem 0.55rem', fontSize: '0.8rem' }}
+                style={{ padding: '0.3rem 0.5rem', fontSize: '0.78rem' }}
                 title="Última página"
               >
-                <ChevronsRight size={16} />
+                <ChevronsRight size={15} />
               </button>
             </div>
           </div>
         )}
       </div>
+
+      {/* Menú Flotante de Comprobante (Imprimir / PDF / Word) libre de recortes de tabla */}
+      {noteMenu && (
+        <div
+          ref={menuRef}
+          className="mov-popover-menu"
+          style={{ top: `${noteMenu.top}px`, left: `${noteMenu.left}px` }}
+          role="menu"
+        >
+          <div className="mov-popover-header">
+            <div
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
+                color: noteMenu.mov.type === 'out' ? 'var(--color-primary)' : 'var(--color-success)'
+              }}
+            >
+              {noteMenu.mov.type === 'out' ? 'NOTA DE ENVÍO' : 'NOTA DE RECIBIDO'}
+            </div>
+            <div style={{ fontSize: '0.74rem', color: 'var(--color-text-muted)', marginTop: '1px' }}>
+              {noteMenu.mov.refType} #{noteMenu.mov.refNumber}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="mov-popover-item"
+            onClick={() => handleQuickPrintNote(noteMenu.mov)}
+            role="menuitem"
+          >
+            <Printer size={15} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
+            <span>Imprimir {noteMenu.mov.type === 'out' ? 'Nota de Envío' : 'Nota de Recibido'}</span>
+          </button>
+
+          <button
+            type="button"
+            className="mov-popover-item"
+            onClick={() => handleQuickDownloadPdf(noteMenu.mov)}
+            role="menuitem"
+          >
+            <FileOutput size={15} style={{ color: '#ef4444', flexShrink: 0 }} />
+            <span>Descargar en PDF (.pdf)</span>
+          </button>
+
+          <button
+            type="button"
+            className="mov-popover-item"
+            onClick={() => handleQuickDownloadWord(noteMenu.mov)}
+            role="menuitem"
+          >
+            <FileText size={15} style={{ color: '#3b82f6', flexShrink: 0 }} />
+            <span>Descargar en Word (.doc)</span>
+          </button>
+        </div>
+      )}
 
       {/* Modal de Detalle Completo del Movimiento e Impresión de Nota de Envío / Nota de Recibido */}
       {activeViewingMovement && (

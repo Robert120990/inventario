@@ -126,13 +126,13 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
     : '0 6px 16px rgba(5, 150, 105, 0.28)';
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1200, padding: '1.25rem' }}>
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1200, padding: '0.85rem' }}>
       <div
         className="modal-content large"
         style={{
-          maxWidth: '1040px',
+          maxWidth: '980px',
           width: '100%',
-          maxHeight: '92vh',
+          maxHeight: '94vh',
           display: 'flex',
           flexDirection: 'column',
           padding: 0,
@@ -146,7 +146,7 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
         {/* 1. HEADER CON ISOTIPO EN GRADIENTE Y METADATOS */}
         <div
           style={{
-            padding: '1.2rem 1.75rem',
+            padding: '0.95rem 1.35rem',
             borderBottom: '1px solid var(--color-border)',
             display: 'flex',
             justifyContent: 'space-between',
@@ -276,10 +276,10 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
         {/* 2. MICRO-TARJETAS KPI DE TRIPLE UNIDAD Y CADENA DE FRÍO */}
         <div
           style={{
-            padding: '0.95rem 1.75rem',
+            padding: '0.7rem 1.35rem',
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '0.85rem',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+            gap: '0.65rem',
             backgroundColor: 'var(--color-surface)',
             borderBottom: '1px solid var(--color-border)',
             flexShrink: 0
@@ -442,14 +442,14 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
         </div>
 
         {/* 3. CUERPO DESPLAZABLE */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.75rem' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.35rem' }}>
           {/* Paneles de Documento y Logística */}
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))',
-              gap: '1rem',
-              marginBottom: '1.4rem'
+              gridTemplateColumns: 'repeat(auto-fit, minmax(265px, 1fr))',
+              gap: '0.85rem',
+              marginBottom: '1.15rem'
             }}
           >
             {/* Tarjeta Documento */}
@@ -574,17 +574,17 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
             </div>
 
             <div className="table-container" style={{ boxShadow: 'none' }}>
-              <table style={{ minWidth: '620px' }}>
+              <table className="movements-table" style={{ minWidth: '540px' }}>
                 <thead>
                   <tr>
-                    <th style={{ width: '48px', textAlign: 'center' }}>#</th>
-                    <th style={{ width: '125px' }}>Código (SKU)</th>
+                    <th style={{ width: '40px', textAlign: 'center' }}>#</th>
+                    <th style={{ width: '105px' }}>Código (SKU)</th>
                     <th>Descripción del Producto</th>
-                    <th style={{ width: '130px' }}>Categoría</th>
-                    <th style={{ width: '105px', textAlign: 'center' }}>Temp. (°C)</th>
-                    <th style={{ width: '100px', textAlign: 'right' }}>Unidades</th>
-                    <th style={{ width: '125px', textAlign: 'right' }}>Peso Neto (Lbs)</th>
-                    <th style={{ width: '95px', textAlign: 'right' }}>Cestas</th>
+                    <th style={{ width: '110px' }}>Categoría</th>
+                    <th style={{ width: '90px', textAlign: 'center' }}>Temp. (°C)</th>
+                    <th style={{ width: '85px', textAlign: 'right' }}>Unidades</th>
+                    <th style={{ width: '105px', textAlign: 'right' }}>Peso Neto (Lbs)</th>
+                    <th style={{ width: '80px', textAlign: 'right' }}>Cestas</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -780,7 +780,7 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
         {/* 4. FOOTER FIJO CON ACCIONES DE IMPRESIÓN, PDF Y WORD */}
         <div
           style={{
-            padding: '1rem 1.75rem',
+            padding: '0.85rem 1.35rem',
             borderTop: '1px solid var(--color-border)',
             backgroundColor: 'var(--color-surface)',
             display: 'flex',
