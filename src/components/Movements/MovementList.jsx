@@ -3,23 +3,41 @@ import { useInventory } from '../../context/InventoryContext';
 import {
   Plus, Download, Search, FileSpreadsheet,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
-  ArrowDownCircle, ArrowUpCircle
+  ArrowDownCircle, ArrowUpCircle, Eye, Printer
 } from 'lucide-react';
 import { exportMovimientos } from '../../utils/exportManager';
 import MovementForm from './MovementForm';
+import MovementDetailModal from './MovementDetailModal';
 import { formatDate } from '../../utils/formatUtils';
+import {
+  printMovementNote,
+  formatTimeShort,
+  findProductForMovementItem
+} from '../../utils/movementNotePrinter';
 import { toast } from 'react-hot-toast';
 
 const MovementList = () => {
-  const { movements, products, deleteMovement, getEntitySyncState, canCreate, canEdit, canDelete, canExport } = useInventory();
+  const {
+    movements,
+    products,
+    settings,
+    contractRates,
+    deleteMovement,
+    getEntitySyncState,
+    canCreate,
+    canEdit,
+    canDelete,
+    canExport
+  } = useInventory();
   const [isAdding, setIsAdding] = useState(false);
   const [editingMovement, setEditingMovement] = useState(null);
+  const [viewingMovement, setViewingMovement] = useState(null);
 
   const allowCreate = canCreate('movements');
   const allowEdit = canEdit('movements');
   const allowDelete = canDelete('movements');
   const allowExport = canExport('movements');
-  const showActions = allowEdit || allowDelete;
+  const showActions = true;
 
   // Filters & Pagination State (Default: 10 most recent movements)
   const [searchTerm, setSearchTerm] = useState('');
@@ -50,7 +68,7 @@ const MovementList = () => {
 
     // Buscar en los productos dentro del movimiento
     const inProducts = mov.items?.some(it => {
-      const p = products.find(prod => prod.id === it.productId);
+      const p = findProductForMovementItem(it, products);
       if (!p) return false;
       return p.sku.toLowerCase().includes(searchLow) || p.description.toLowerCase().includes(searchLow);
     });
@@ -99,14 +117,14 @@ const MovementList = () => {
     maximumFractionDigits: 2
   });
 
-  const getProductName = (id) => {
-    const product = products.find(p => p.id === id);
+  const getProductName = (item) => {
+    const product = findProductForMovementItem(item, products);
     return product ? `${product.sku} - ${product.description}` : 'Desconocido';
   };
 
   const renderProductPreview = (mov) => {
     if (!mov.items || mov.items.length === 0) return 'Sin productos';
-    if (mov.items.length === 1) return getProductName(mov.items[0].productId);
+    if (mov.items.length === 1) return getProductName(mov.items[0]);
     return `Varios Productos (${mov.items.length})`;
   };
 
@@ -126,6 +144,25 @@ const MovementList = () => {
         )}
       </>
     );
+  };
+
+  const handleQuickPrintNote = (mov) => {
+    try {
+      const res = printMovementNote({
+        movement: mov,
+        products,
+        settings,
+        contractRates
+      });
+      if (res?.success) {
+        toast.success(`Preparando impresión de ${res.noteTitle}`);
+      } else {
+        toast.error(res?.message || 'No se pudo inicializar la impresión');
+      }
+    } catch (err) {
+      console.error('Error al imprimir nota:', err);
+      toast.error('Error al imprimir nota: ' + err.message);
+    }
   };
 
   const handleExportXlsx = async () => {
@@ -172,6 +209,23 @@ const MovementList = () => {
     }
     return pages;
   };
+
+  // Mantener referencia reactiva si el movimiento visualizado cambia de estado de sincronización
+  const activeViewingMovement = viewingMovement
+    ? movements.find((m) => m.id === viewingMovement.id) || viewingMovement
+    : null;
+
+  const viewingSyncInfo =
+    activeViewingMovement && typeof getEntitySyncState === 'function'
+      ? getEntitySyncState('movements', activeViewingMovement.id)
+      : { state: activeViewingMovement?.offlinePending ? 'pending' : 'synced' };
+
+  const effectiveViewingSyncState =
+    viewingSyncInfo?.state === 'conflict'
+      ? 'conflict'
+      : viewingSyncInfo?.state === 'pending' || activeViewingMovement?.offlinePending
+        ? 'pending'
+        : 'synced';
 
   if (isAdding) {
     return <MovementForm onCancel={() => { setIsAdding(false); setEditingMovement(null); }} initialData={editingMovement} />;
@@ -375,12 +429,15 @@ const MovementList = () => {
                       : syncInfo.state === 'pending' || mov.offlinePending
                         ? 'pending'
                         : 'synced';
+                  const isExit = mov.type === 'out';
+                  const noteActionTitle = isExit ? 'Imprimir Nota de Envío' : 'Imprimir Nota de Recibido';
+
                   return (
                   <tr key={mov.id}>
                     <td>
                       <div style={{ fontWeight: '600', color: 'var(--color-text)' }}>{formatDate(mov.date)}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>
-                        {mov.timeStart || '--:--'} {mov.timeEnd ? `- ${mov.timeEnd}` : ''}
+                        {formatTimeShort(mov.timeStart)} {mov.timeEnd ? `- ${formatTimeShort(mov.timeEnd)}` : ''}
                       </div>
                     </td>
                     <td>
@@ -452,9 +509,49 @@ const MovementList = () => {
                     </td>
                     {showActions && (
                       <td style={{ textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center' }}>
+                        <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => setViewingMovement(mov)}
+                            className="btn btn-outline"
+                            style={{
+                              padding: '0.28rem 0.5rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'var(--color-primary)',
+                              borderColor: 'var(--color-primary)'
+                            }}
+                            title="Ver detalle completo del movimiento"
+                            aria-label="Ver detalle completo del movimiento"
+                          >
+                            <Eye size={16} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleQuickPrintNote(mov)}
+                            className="btn btn-outline"
+                            style={{
+                              padding: '0.25rem 0.55rem',
+                              fontSize: '0.78rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.3rem',
+                              whiteSpace: 'nowrap',
+                              color: isExit ? 'var(--color-primary)' : 'var(--color-success)',
+                              borderColor: isExit ? 'var(--color-border)' : 'var(--color-success)'
+                            }}
+                            title={noteActionTitle}
+                            aria-label={noteActionTitle}
+                          >
+                            <Printer size={15} />
+                            <span>{isExit ? 'Nota Envío' : 'Nota Recibido'}</span>
+                          </button>
+
                           {allowEdit && (
                             <button
+                              type="button"
                               onClick={() => { setEditingMovement(mov); setIsAdding(true); }}
                               className="btn btn-outline"
                               style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
@@ -465,6 +562,7 @@ const MovementList = () => {
                           )}
                           {allowDelete && (
                             <button
+                              type="button"
                               onClick={async () => {
                                 if (window.confirm('¿Seguro que deseas eliminar este movimiento? Afectará el stock disponible.')) {
                                   const res = await deleteMovement(mov.id);
@@ -576,6 +674,22 @@ const MovementList = () => {
           </div>
         )}
       </div>
+
+      {/* Modal de Detalle Completo del Movimiento e Impresión de Nota de Envío / Nota de Recibido */}
+      {activeViewingMovement && (
+        <MovementDetailModal
+          movement={activeViewingMovement}
+          onClose={() => setViewingMovement(null)}
+          allowEdit={allowEdit}
+          onEdit={(mov) => {
+            setViewingMovement(null);
+            setEditingMovement(mov);
+            setIsAdding(true);
+          }}
+          syncState={effectiveViewingSyncState}
+          syncError={viewingSyncInfo?.operation?.error || ''}
+        />
+      )}
     </div>
   );
 };
