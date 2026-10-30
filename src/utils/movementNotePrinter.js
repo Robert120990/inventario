@@ -1201,3 +1201,578 @@ export const downloadMovementNotePdf = async (options) => {
 
   return { success: true, noteTitle: data.noteShortLabel };
 };
+
+
+/**
+ * Descarga segura de un documento HTML enriquecido con esquema Microsoft Word (.doc)
+ */
+const triggerWordDownload = (html, filename) => {
+  const safeName = filename.endsWith('.doc') ? filename : `${filename}.doc`;
+  const blob = new Blob(['\ufeff', html], { type: 'application/msword;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = safeName;
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => {
+    if (document.body.contains(link)) {
+      document.body.removeChild(link);
+    }
+    URL.revokeObjectURL(url);
+  }, 500);
+};
+
+/**
+ * Construye el HTML con esquema nativo de Microsoft Word (MSO) usando maquetación por tablas
+ * para fidelidad idéntica al PDF de Nota de Envío / Nota de Recibido.
+ */
+export const buildMovementNoteWordHtml = (data) => {
+  const accentPrimary = data.isExit ? '#1e3a8a' : '#065f46';
+  const accentBadgeBg = data.isExit ? '#eff6ff' : '#ecfdf5';
+
+  const itemsRowsHtml =
+    data.items.length === 0
+      ? `<tr><td colspan="7" style="text-align:center; padding:10px; color:#64748b;">No hay productos registrados en este movimiento.</td></tr>`
+      : data.items
+          .map(
+            (it, idx) => `
+          <tr style="background-color:${idx % 2 === 1 ? '#f8fafc' : '#ffffff'};">
+            <td style="text-align:center;">${it.index}</td>
+            <td style="font-weight:bold; font-family:Consolas, monospace;">${escapeHtml(it.sku)}</td>
+            <td>
+              <div style="font-weight:bold; color:#0f172a;">${escapeHtml(it.description)}</div>
+              ${it.category ? `<div style="font-size:8pt; color:#64748b;">${escapeHtml(it.category)}</div>` : ''}
+            </td>
+            <td style="text-align:center; ${it.isTempOutOfRange ? 'color:#b45309; font-weight:bold;' : ''}">${escapeHtml(it.tempFormatted)}</td>
+            <td style="text-align:right;">${it.qtyUnits.toLocaleString('en-US')}</td>
+            <td style="text-align:right;">${formatMovementPounds(it.qtyPounds)}</td>
+            <td style="text-align:right;">${it.qtyBaskets.toLocaleString('en-US')}</td>
+          </tr>
+        `
+          )
+          .join('');
+
+  const servicesHtml = data.includeServices
+    ? `
+      <div style="margin-top:12pt; margin-bottom:10pt;">
+        <div style="font-size:9.5pt; font-weight:bold; text-transform:uppercase; color:#0f172a; margin-bottom:4pt;">
+          Servicios Extraordinarios / Maniobras Asociadas
+        </div>
+        <table class="grid-table" width="100%" cellspacing="0" cellpadding="5">
+          <thead>
+            <tr>
+              <th width="6%" style="background-color:#334155; color:#ffffff; text-align:center;">#</th>
+              <th width="49%" style="background-color:#334155; color:#ffffff; text-align:left;">Descripción del Servicio</th>
+              <th width="15%" style="background-color:#334155; color:#ffffff; text-align:right;">Cant. / Lbs</th>
+              <th width="15%" style="background-color:#334155; color:#ffffff; text-align:right;">Tarifa Unit.</th>
+              <th width="15%" style="background-color:#334155; color:#ffffff; text-align:right;">Subtotal ($)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data.services
+              .map(
+                (s) => `
+              <tr>
+                <td style="text-align:center;">${s.index}</td>
+                <td>${escapeHtml(s.description)}</td>
+                <td style="text-align:right;">${s.quantity.toLocaleString('en-US', { maximumFractionDigits: 3 })}</td>
+                <td style="text-align:right;">$${formatPrice(s.unitPrice)}</td>
+                <td style="text-align:right; font-weight:bold;">$${formatCurrency(s.value)}</td>
+              </tr>
+            `
+              )
+              .join('')}
+            <tr style="background-color:#e2e8f0; font-weight:bold;">
+              <td colspan="4" style="text-align:right;">TOTAL SERVICIOS EXTRAORDINARIOS:</td>
+              <td style="text-align:right;">$${formatCurrency(data.totalServicesValue)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    `
+    : '';
+
+  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(data.noteTitle)} - ${escapeHtml(data.docType)} ${escapeHtml(data.refNumber)}</title>
+    <!--[if gte mso 9]>
+    <xml>
+      <w:WordDocument>
+        <w:View>Print</w:View>
+        <w:Zoom>100</w:Zoom>
+        <w:DoNotOptimizeForBrowser/>
+      </w:WordDocument>
+    </xml>
+    <![endif]-->
+    <style>
+      @page WordSection1 {
+        size: 8.5in 11.0in;
+        margin: 0.45in 0.5in 0.45in 0.5in;
+      }
+      div.WordSection1 {
+        page: WordSection1;
+      }
+      body {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 9.5pt;
+        color: #0f172a;
+      }
+      table {
+        border-collapse: collapse;
+      }
+      .grid-table th, .grid-table td {
+        border: 1px solid #cbd5e1;
+        padding: 4.5pt 6pt;
+        font-size: 9pt;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="WordSection1">
+      <!-- Encabezado Corporativo en Tabla de 2 Columnas -->
+      <table width="100%" cellspacing="0" cellpadding="0" style="border-bottom: 2.5pt solid ${accentPrimary}; padding-bottom: 8pt; margin-bottom: 10pt;">
+        <tr>
+          <td width="64%" valign="middle" style="padding-bottom: 6pt;">
+            <table cellspacing="0" cellpadding="0">
+              <tr>
+                ${
+                  data.logoSrc
+                    ? `<td valign="middle" style="padding-right: 10pt;"><img src="${escapeHtml(data.logoSrc)}" width="56" height="56" alt="Logo" /></td>`
+                    : ''
+                }
+                <td valign="middle">
+                  <div style="font-size: 13pt; font-weight: bold; text-transform: uppercase; color: #0f172a;">${escapeHtml(data.companyName)}</div>
+                  ${data.facilityName ? `<div style="font-size: 8.5pt; color: #334155; margin-top: 2pt;">${escapeHtml(data.facilityName)}</div>` : ''}
+                  ${data.clientName ? `<div style="font-size: 8.5pt; color: #475569; font-weight: bold; margin-top: 2pt;">Cuenta / Cliente: ${escapeHtml(data.clientName)}</div>` : ''}
+                </td>
+              </tr>
+            </table>
+          </td>
+          <td width="36%" valign="middle" align="right" style="padding-bottom: 6pt;">
+            <table width="100%" cellspacing="0" cellpadding="5" style="border: 1.5pt solid ${accentPrimary};">
+              <tr>
+                <td align="center" style="background-color: ${accentPrimary}; color: #ffffff; font-size: 11pt; font-weight: bold; letter-spacing: 0.5pt;">
+                  ${escapeHtml(data.noteTitle)}
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="background-color: ${accentBadgeBg};">
+                  <div style="font-size: 10pt; font-weight: bold; color: #0f172a;">${escapeHtml(data.docType)}: #${escapeHtml(data.refNumber)}</div>
+                  <div style="font-size: 8pt; color: #334155; margin-top: 2pt;">Fecha: <b>${escapeHtml(data.formattedDate)}</b> • ID: <b>${escapeHtml(data.internalId)}</b></div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Cinta de Subtítulo -->
+      <table width="100%" cellspacing="0" cellpadding="6" style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-left: 4pt solid ${accentPrimary}; margin-bottom: 10pt;">
+        <tr>
+          <td width="65%" style="font-size: 8.8pt; color: #334155;">${escapeHtml(data.noteSubtitle)}</td>
+          <td width="35%" align="right" style="font-size: 8.5pt; font-weight: bold; color: ${accentPrimary};">${escapeHtml(data.operationTypeLabel)}</td>
+        </tr>
+      </table>
+
+      <!-- Paneles de Documento y Logística (2 Columnas) -->
+      <table width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 10pt;">
+        <tr>
+          <td width="49%" valign="top" style="border: 1px solid #cbd5e1; padding: 7pt;">
+            <div style="font-size: 8.5pt; font-weight: bold; text-transform: uppercase; color: ${accentPrimary}; border-bottom: 1px solid #e2e8f0; padding-bottom: 3pt; margin-bottom: 5pt;">
+              Datos del Documento y Operación
+            </div>
+            <table width="100%" cellspacing="0" cellpadding="2" style="font-size: 8.8pt;">
+              <tr><td style="color:#475569;">Fecha de Movimiento:</td><td align="right"><b>${escapeHtml(data.formattedDate)}</b></td></tr>
+              <tr><td style="color:#475569;">Documento Referencia:</td><td align="right"><b>${escapeHtml(data.docType)} #${escapeHtml(data.refNumber)}</b></td></tr>
+              <tr><td style="color:#475569;">${escapeHtml(data.scheduleLabel)}:</td><td align="right"><b>${escapeHtml(data.timeStart)} - ${escapeHtml(data.timeEnd)}${data.durationLabel ? ` (${escapeHtml(data.durationLabel)})` : ''}</b></td></tr>
+              <tr><td style="color:#475569;">Auditor Responsable:</td><td align="right"><b>${escapeHtml(data.auditUser)}</b></td></tr>
+            </table>
+          </td>
+          <td width="2%"></td>
+          <td width="49%" valign="top" style="border: 1px solid #cbd5e1; padding: 7pt;">
+            <div style="font-size: 8.5pt; font-weight: bold; text-transform: uppercase; color: ${accentPrimary}; border-bottom: 1px solid #e2e8f0; padding-bottom: 3pt; margin-bottom: 5pt;">
+              Logística, Transporte y Custodia
+            </div>
+            <table width="100%" cellspacing="0" cellpadding="2" style="font-size: 8.8pt;">
+              <tr><td style="color:#475569;">Transportista / Motorista:</td><td align="right"><b>${escapeHtml(data.carrier)}</b></td></tr>
+              <tr><td style="color:#475569;">Equipo / Placa:</td><td align="right"><b>${escapeHtml(data.equipment)}</b></td></tr>
+              <tr><td style="color:#475569;">N° de Marchamo / Sello:</td><td align="right"><b>${escapeHtml(data.seal)}</b></td></tr>
+              <tr><td style="color:#475569;">Temp. Promedio Cadena Frío:</td><td align="right"><b>${escapeHtml(data.totals.avgTempFormatted)}</b></td></tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Párrafo de Constancia -->
+      <p style="font-size: 8.5pt; color: #334155; text-align: justify; margin: 0 0 9pt 0;">
+        ${escapeHtml(data.declarationText)}
+      </p>
+
+      <!-- Cinta Resumen de Totales (4 KPIs) -->
+      <table width="100%" cellspacing="0" cellpadding="5" style="margin-bottom: 10pt;">
+        <tr>
+          <td width="25%" align="center" style="border: 1px solid #cbd5e1; background-color: #f8fafc;">
+            <div style="font-size: 7.5pt; color: #475569; font-weight: bold; text-transform: uppercase;">Líneas de Producto</div>
+            <div style="font-size: 11pt; font-weight: bold; color: #0f172a;">${data.totals.totalItems}</div>
+          </td>
+          <td width="25%" align="center" style="border: 1px solid #cbd5e1; background-color: #f8fafc;">
+            <div style="font-size: 7.5pt; color: #475569; font-weight: bold; text-transform: uppercase;">Total Unidades</div>
+            <div style="font-size: 11pt; font-weight: bold; color: #0f172a;">${data.totals.totalUnits.toLocaleString('en-US')}</div>
+          </td>
+          <td width="25%" align="center" style="border: 1px solid #cbd5e1; background-color: #f8fafc;">
+            <div style="font-size: 7.5pt; color: #475569; font-weight: bold; text-transform: uppercase;">Peso Neto Total (Lbs)</div>
+            <div style="font-size: 11pt; font-weight: bold; color: #0f172a;">${formatMovementPounds(data.totals.totalPounds)}</div>
+          </td>
+          <td width="25%" align="center" style="border: 1px solid #cbd5e1; background-color: #f8fafc;">
+            <div style="font-size: 7.5pt; color: #475569; font-weight: bold; text-transform: uppercase;">Total Cestas</div>
+            <div style="font-size: 11pt; font-weight: bold; color: #0f172a;">${data.totals.totalBaskets.toLocaleString('en-US')}</div>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Tabla de Productos -->
+      <div style="font-size: 9.5pt; font-weight: bold; text-transform: uppercase; color: #0f172a; margin-bottom: 4pt;">
+        Detalle Físico de Productos
+      </div>
+      <table class="grid-table" width="100%" cellspacing="0" cellpadding="5" style="margin-bottom: 10pt;">
+        <thead>
+          <tr>
+            <th width="5%" style="background-color: ${accentPrimary}; color: #ffffff; text-align: center;">#</th>
+            <th width="15%" style="background-color: ${accentPrimary}; color: #ffffff; text-align: left;">Código (SKU)</th>
+            <th width="36%" style="background-color: ${accentPrimary}; color: #ffffff; text-align: left;">Descripción del Producto</th>
+            <th width="11%" style="background-color: ${accentPrimary}; color: #ffffff; text-align: center;">Temp. (°C)</th>
+            <th width="11%" style="background-color: ${accentPrimary}; color: #ffffff; text-align: right;">Unidades</th>
+            <th width="13%" style="background-color: ${accentPrimary}; color: #ffffff; text-align: right;">Peso Neto (Lbs)</th>
+            <th width="9%" style="background-color: ${accentPrimary}; color: #ffffff; text-align: right;">Cestas</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemsRowsHtml}
+          <tr style="background-color: #e2e8f0; font-weight: bold;">
+            <td colspan="3" style="text-align: right;">TOTALES DEL MOVIMIENTO:</td>
+            <td style="text-align: center;">${data.totals.hasAnyTemp ? `Prom: ${escapeHtml(data.totals.avgTempFormatted)}` : '—'}</td>
+            <td style="text-align: right;">${data.totals.totalUnits.toLocaleString('en-US')}</td>
+            <td style="text-align: right;">${formatMovementPounds(data.totals.totalPounds)}</td>
+            <td style="text-align: right;">${data.totals.totalBaskets.toLocaleString('en-US')}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      ${servicesHtml}
+
+      <!-- Observaciones -->
+      <table width="100%" cellspacing="0" cellpadding="7" style="border: 1px solid #cbd5e1; margin-bottom: 16pt;">
+        <tr>
+          <td>
+            <div style="font-size: 8pt; font-weight: bold; text-transform: uppercase; color: #334155; margin-bottom: 4pt;">
+              Observaciones / Control de Andén:
+            </div>
+            ${
+              data.observations
+                ? `<div style="font-size: 9pt; color: #0f172a;">${escapeHtml(data.observations)}</div>`
+                : `<div style="border-bottom: 1px dashed #94a3b8; height: 14pt;">&nbsp;</div>
+                   <div style="border-bottom: 1px dashed #94a3b8; height: 14pt;">&nbsp;</div>`
+            }
+          </td>
+        </tr>
+      </table>
+
+      <!-- Firmas en Tabla de 3 Columnas -->
+      <table width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 10pt;">
+        <tr>
+          ${data.signatures
+            .map(
+              (sig, idx) => `
+            <td width="32%" valign="bottom" align="center" style="border: 1px solid #cbd5e1; padding: 8pt 6pt;">
+              <div style="height: 36pt;">&nbsp;</div>
+              <div style="border-top: 1.2pt solid #0f172a; padding-top: 4pt; font-size: 8pt; font-weight: bold; color: ${accentPrimary};">
+                ${escapeHtml(sig.role)}
+              </div>
+              <div style="font-size: 8.2pt; font-weight: bold; color: #0f172a; margin-top: 2pt;">
+                ${escapeHtml(sig.primaryLine)}
+              </div>
+              <div style="font-size: 7.5pt; color: #475569; margin-top: 1pt;">
+                ${escapeHtml(sig.secondaryLine)}
+              </div>
+            </td>
+            ${idx < 2 ? '<td width="2%"></td>' : ''}
+          `
+            )
+            .join('')}
+        </tr>
+      </table>
+
+      <!-- Pie de Página -->
+      <table width="100%" cellspacing="0" cellpadding="3" style="border-top: 1px solid #e2e8f0; font-size: 7.5pt; color: #64748b;">
+        <tr>
+          <td>Sistema: ${escapeHtml(data.systemName)} • ${escapeHtml(data.noteTitle)} (${escapeHtml(data.docType)} #${escapeHtml(data.refNumber)})</td>
+          <td align="right">Generado: ${escapeHtml(data.printedAt)}</td>
+        </tr>
+      </table>
+    </div>
+  </body>
+</html>`;
+};
+
+/**
+ * Descarga un archivo Microsoft Word (.doc) de la Nota de Envío o Nota de Recibido
+ */
+export const downloadMovementNoteWord = (options) => {
+  const data = buildMovementNoteData(options);
+  const html = buildMovementNoteWordHtml(data);
+  const safeRef = String(data.refNumber || 'SN').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const safeDate = String(data.rawDate || 'fecha').replace(/[^0-9-]/g, '');
+  const prefix = data.isExit ? 'Nota_de_Envio' : 'Nota_de_Recibido';
+  triggerWordDownload(html, `${prefix}_${safeRef}_${safeDate}.doc`);
+  return { success: true, noteTitle: data.noteShortLabel };
+};
+
+/**
+ * Normaliza filas consolidadas del listado de movimientos filtrados para exportación masiva PDF / Word
+ */
+const summarizeMovementsList = ({ movements = [], products = [], settings = {}, contractRates = {}, typeFilter = 'all' }) => {
+  const companyName = contractRates?.contractorName || settings?.name || 'Inventario Pro';
+  const facilityName = contractRates?.facility || '';
+  const clientName = contractRates?.clientName || '';
+  const filterLabel =
+    typeFilter === 'in'
+      ? 'Solo Entradas (Notas de Recibido)'
+      : typeFilter === 'out'
+        ? 'Solo Salidas (Notas de Envío)'
+        : 'Todos los Movimientos (Entradas y Salidas)';
+
+  let grandUnits = 0;
+  let grandPounds = 0;
+  let grandBaskets = 0;
+
+  const rows = movements.map((mov, idx) => {
+    const items = Array.isArray(mov.items) ? mov.items : [];
+    const units = items.reduce((s, it) => s + Number(it.qtyUnits || 0), 0);
+    const pounds = items.reduce((s, it) => s + Number(it.qtyPounds || 0), 0);
+    const baskets = items.reduce((s, it) => s + Number(it.qtyBaskets || 0), 0);
+    grandUnits += units;
+    grandPounds += pounds;
+    grandBaskets += baskets;
+
+    const productSummary =
+      items.length === 0
+        ? 'Sin productos'
+        : items
+            .map((it) => {
+              const p = findProductForMovementItem(it, products);
+              return p ? `${p.sku} - ${p.description}` : String(it.sku || it.productId || 'Desconocido');
+            })
+            .join('; ');
+
+    const timeRange = `${formatTimeShort(mov.timeStart)}${mov.timeEnd ? ` - ${formatTimeShort(mov.timeEnd)}` : ''}`;
+    const transportInfo = [
+      mov.carrier || 'N/A',
+      mov.equipment ? `Eq: ${mov.equipment}` : '',
+      mov.seal ? `Sello: ${mov.seal}` : ''
+    ]
+      .filter(Boolean)
+      .join(' • ');
+
+    return {
+      index: idx + 1,
+      date: formatDate(mov.date) || 'N/A',
+      timeRange,
+      typeLabel: mov.type === 'in' ? 'Entrada' : 'Salida',
+      isExit: mov.type === 'out',
+      docRef: `${mov.refType || 'Doc'} #${mov.refNumber || 'S/N'}`,
+      productSummary,
+      units,
+      pounds,
+      baskets,
+      transportInfo,
+      auditUser: mov.auditUser || 'Sistema'
+    };
+  });
+
+  const now = new Date();
+  const dateStamp = now.toISOString().slice(0, 10);
+  const generatedAt = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+  return {
+    companyName,
+    facilityName,
+    clientName,
+    filterLabel,
+    rows,
+    totals: {
+      count: rows.length,
+      units: grandUnits,
+      pounds: grandPounds,
+      baskets: grandBaskets
+    },
+    dateStamp,
+    generatedAt
+  };
+};
+
+/**
+ * Descarga en PDF (Carta Horizontal) el listado de movimientos filtrados
+ */
+export const downloadMovementsListPdf = async (options) => {
+  const report = summarizeMovementsList(options);
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable')
+  ]);
+
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'letter' });
+
+  doc.setFontSize(12);
+  doc.setFont(undefined, 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(`${report.companyName} — REPORTE DE MOVIMIENTOS DE ALMACÉN`, 14, 14);
+
+  doc.setFontSize(8.5);
+  doc.setFont(undefined, 'normal');
+  doc.setTextColor(71, 85, 105);
+  const metaParts = [report.facilityName, report.clientName ? `Cliente: ${report.clientName}` : ''].filter(Boolean).join('  •  ');
+  if (metaParts) {
+    doc.text(metaParts, 14, 19);
+  }
+  doc.text(`Filtro: ${report.filterLabel}  •  Registros: ${report.totals.count}  •  Generado: ${report.generatedAt}`, 14, 24);
+
+  doc.setDrawColor(30, 58, 138);
+  doc.setLineWidth(0.5);
+  doc.line(14, 27, 265, 27);
+
+  autoTable(doc, {
+    startY: 30,
+    head: [['#', 'FECHA / HORA', 'TIPO', 'DOCUMENTO', 'PRODUCTO(S)', 'UNIDADES', 'PESO NETO (LBS)', 'CESTAS', 'TRANSPORTE / SELLO', 'AUDITOR']],
+    body: report.rows.map((r) => [
+      String(r.index),
+      `${r.date}\n${r.timeRange}`,
+      r.typeLabel,
+      r.docRef,
+      r.productSummary,
+      r.units.toLocaleString('en-US'),
+      formatMovementPounds(r.pounds),
+      r.baskets.toLocaleString('en-US'),
+      r.transportInfo,
+      r.auditUser
+    ]),
+    foot: [[
+      '',
+      '',
+      '',
+      '',
+      `TOTAL CONSOLIDADO (${report.totals.count} mov.)`,
+      report.totals.units.toLocaleString('en-US'),
+      formatMovementPounds(report.totals.pounds),
+      report.totals.baskets.toLocaleString('en-US'),
+      '',
+      ''
+    ]],
+    theme: 'grid',
+    styles: { fontSize: 7.2, cellPadding: 1.8, valign: 'middle', textColor: [15, 23, 42] },
+    headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: 'bold' },
+    footStyles: { fillColor: [226, 232, 240], textColor: [15, 23, 42], fontStyle: 'bold' },
+    columnStyles: {
+      0: { cellWidth: 8, halign: 'center' },
+      1: { cellWidth: 23 },
+      2: { cellWidth: 16, halign: 'center' },
+      3: { cellWidth: 28, fontStyle: 'bold' },
+      4: { cellWidth: 66 },
+      5: { cellWidth: 19, halign: 'right' },
+      6: { cellWidth: 25, halign: 'right' },
+      7: { cellWidth: 16, halign: 'right' },
+      8: { cellWidth: 34 },
+      9: { cellWidth: 17 }
+    },
+    margin: { left: 14, right: 14 }
+  });
+
+  doc.save(`Movimientos_${report.dateStamp}.pdf`);
+  return { success: true };
+};
+
+/**
+ * Descarga en Word (.doc Horizontal) el listado de movimientos filtrados
+ */
+export const downloadMovementsListWord = (options) => {
+  const report = summarizeMovementsList(options);
+
+  const rowsHtml = report.rows
+    .map(
+      (r, idx) => `
+      <tr style="background-color:${idx % 2 === 1 ? '#f8fafc' : '#ffffff'};">
+        <td style="text-align:center;">${r.index}</td>
+        <td><b>${escapeHtml(r.date)}</b><br/><span style="font-size:7.5pt; color:#475569;">${escapeHtml(r.timeRange)}</span></td>
+        <td style="text-align:center; font-weight:bold; color:${r.isExit ? '#991b1b' : '#065f46'};">${escapeHtml(r.typeLabel)}</td>
+        <td style="font-weight:bold;">${escapeHtml(r.docRef)}</td>
+        <td>${escapeHtml(r.productSummary)}</td>
+        <td style="text-align:right;">${r.units.toLocaleString('en-US')}</td>
+        <td style="text-align:right;">${formatMovementPounds(r.pounds)}</td>
+        <td style="text-align:right;">${r.baskets.toLocaleString('en-US')}</td>
+        <td>${escapeHtml(r.transportInfo)}</td>
+        <td>${escapeHtml(r.auditUser)}</td>
+      </tr>
+    `
+    )
+    .join('');
+
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+  <head>
+    <meta charset="utf-8" />
+    <title>Reporte de Movimientos - ${escapeHtml(report.dateStamp)}</title>
+    <style>
+      @page WordSection1 {
+        size: 11.0in 8.5in;
+        mso-page-orientation: landscape;
+        margin: 0.45in 0.45in 0.45in 0.45in;
+      }
+      div.WordSection1 { page: WordSection1; }
+      body { font-family: Arial, Helvetica, sans-serif; font-size: 8.5pt; color: #0f172a; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #cbd5e1; padding: 4pt 5pt; font-size: 8pt; }
+      th { background-color: #1e3a8a; color: #ffffff; font-weight: bold; text-transform: uppercase; }
+    </style>
+  </head>
+  <body>
+    <div class="WordSection1">
+      <div style="border-bottom: 2pt solid #1e3a8a; padding-bottom: 6pt; margin-bottom: 10pt;">
+        <div style="font-size: 12pt; font-weight: bold; color: #0f172a;">${escapeHtml(report.companyName)} — REPORTE DE MOVIMIENTOS DE ALMACÉN</div>
+        ${report.facilityName || report.clientName ? `<div style="font-size: 8.5pt; color: #334155; margin-top: 2pt;">${escapeHtml([report.facilityName, report.clientName ? `Cliente: ${report.clientName}` : ''].filter(Boolean).join(' • '))}</div>` : ''}
+        <div style="font-size: 8pt; color: #475569; margin-top: 2pt;">Filtro: <b>${escapeHtml(report.filterLabel)}</b> • Registros: <b>${report.totals.count}</b> • Generado: ${escapeHtml(report.generatedAt)}</div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th width="4%">#</th>
+            <th width="10%">Fecha / Hora</th>
+            <th width="7%">Tipo</th>
+            <th width="12%">Documento</th>
+            <th width="25%">Producto(s)</th>
+            <th width="8%">Unidades</th>
+            <th width="10%">Peso Neto (Lbs)</th>
+            <th width="6%">Cestas</th>
+            <th width="11%">Transporte</th>
+            <th width="7%">Auditor</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+          <tr style="background-color:#e2e8f0; font-weight:bold;">
+            <td colspan="5" style="text-align:right;">TOTAL CONSOLIDADO (${report.totals.count} movimientos):</td>
+            <td style="text-align:right;">${report.totals.units.toLocaleString('en-US')}</td>
+            <td style="text-align:right;">${formatMovementPounds(report.totals.pounds)}</td>
+            <td style="text-align:right;">${report.totals.baskets.toLocaleString('en-US')}</td>
+            <td colspan="2"></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </body>
+</html>`;
+
+  triggerWordDownload(html, `Movimientos_${report.dateStamp}.doc`);
+  return { success: true };
+};

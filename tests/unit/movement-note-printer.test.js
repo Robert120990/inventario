@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildMovementNoteData,
+  buildMovementNoteWordHtml,
   formatMovementPounds,
   formatTimeShort,
   computeDurationLabel,
@@ -128,5 +129,36 @@ describe('Movement Detail & Note Printer (Nota de Envío / Nota de Recibido)', (
     assert.equal(formatTimeShort('23:45:00'), '23:45');
     assert.equal(computeDurationLabel('23:30:00', '01:15:00'), '1h 45m');
     assert.equal(findProductForMovementItem({ productId: 'PAT-010' }, sampleProducts)?.id, 'prod-2');
+  });
+
+  it('builds Microsoft Word (.doc) HTML with MSO namespaces, table layout and XSS escaping', () => {
+    const data = buildMovementNoteData({
+      movement: {
+        id: 'mov-word-99',
+        type: 'out',
+        refType: 'Remisión',
+        refNumber: 'R-100<script>alert(1)</script>',
+        date: '2026-10-30',
+        timeStart: '07:00',
+        timeEnd: '07:45',
+        carrier: 'Transporte & Logística',
+        equipment: 'C-500',
+        seal: 'S-777',
+        auditUser: 'admin',
+        items: [{ productId: 'prod-1', temperature: -18.0, qtyUnits: 12, qtyPounds: 360.125, qtyBaskets: 4 }],
+        services: []
+      },
+      products: sampleProducts,
+      settings: sampleSettings,
+      contractRates: sampleContract,
+      observations: 'Verificado <OK>'
+    });
+
+    const wordHtml = buildMovementNoteWordHtml(data);
+    assert.match(wordHtml, /xmlns:w="urn:schemas-microsoft-com:office:word"/);
+    assert.match(wordHtml, /NOTA DE ENVÍO/);
+    assert.match(wordHtml, /360\.125/);
+    assert.match(wordHtml, /Verificado &lt;OK&gt;/);
+    assert.doesNotMatch(wordHtml, /<script>alert\(1\)<\/script>/);
   });
 });

@@ -3,7 +3,7 @@ import { useInventory } from '../../context/InventoryContext';
 import {
   Plus, Download, Search, FileSpreadsheet,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
-  ArrowDownCircle, ArrowUpCircle, Eye, Printer
+  ArrowDownCircle, ArrowUpCircle, Eye, Printer, FileOutput, FileText
 } from 'lucide-react';
 import { exportMovimientos } from '../../utils/exportManager';
 import MovementForm from './MovementForm';
@@ -11,6 +11,10 @@ import MovementDetailModal from './MovementDetailModal';
 import { formatDate } from '../../utils/formatUtils';
 import {
   printMovementNote,
+  downloadMovementNotePdf,
+  downloadMovementNoteWord,
+  downloadMovementsListPdf,
+  downloadMovementsListWord,
   formatTimeShort,
   findProductForMovementItem
 } from '../../utils/movementNotePrinter';
@@ -165,6 +169,36 @@ const MovementList = () => {
     }
   };
 
+  const handleQuickDownloadPdf = async (mov) => {
+    try {
+      const res = await downloadMovementNotePdf({
+        movement: mov,
+        products,
+        settings,
+        contractRates
+      });
+      toast.success(`${res?.noteTitle || 'Comprobante'} descargado en PDF`);
+    } catch (err) {
+      console.error('Error al descargar PDF:', err);
+      toast.error('Error al descargar PDF: ' + err.message);
+    }
+  };
+
+  const handleQuickDownloadWord = (mov) => {
+    try {
+      const res = downloadMovementNoteWord({
+        movement: mov,
+        products,
+        settings,
+        contractRates
+      });
+      toast.success(`${res?.noteTitle || 'Comprobante'} descargado en Word (.doc)`);
+    } catch (err) {
+      console.error('Error al descargar Word:', err);
+      toast.error('Error al descargar Word: ' + err.message);
+    }
+  };
+
   const handleExportXlsx = async () => {
     try {
       await exportMovimientos({
@@ -190,6 +224,38 @@ const MovementList = () => {
     } catch (err) {
       console.error(err);
       toast.error('Error al exportar a CSV: ' + err.message);
+    }
+  };
+
+  const handleExportListPdf = async () => {
+    try {
+      await downloadMovementsListPdf({
+        movements: sortedMovements,
+        products,
+        settings,
+        contractRates,
+        typeFilter
+      });
+      toast.success('Reporte de movimientos descargado en PDF');
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al exportar a PDF: ' + err.message);
+    }
+  };
+
+  const handleExportListWord = () => {
+    try {
+      downloadMovementsListWord({
+        movements: sortedMovements,
+        products,
+        settings,
+        contractRates,
+        typeFilter
+      });
+      toast.success('Reporte de movimientos descargado en Word (.doc)');
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al exportar a Word: ' + err.message);
     }
   };
 
@@ -240,14 +306,20 @@ const MovementList = () => {
             Registro transaccional de entradas y salidas con carga optimizada.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {allowExport && (
             <>
               <button className="btn btn-primary" onClick={handleExportXlsx} disabled={sortedMovements.length === 0} title="Descargar todos los movimientos filtrados en Excel (.xlsx)">
-                <FileSpreadsheet size={18} /> Exportar Excel (.xlsx)
+                <FileSpreadsheet size={17} /> Excel (.xlsx)
               </button>
               <button className="btn btn-outline" onClick={handleExportCsv} disabled={sortedMovements.length === 0} title="Descargar todos los movimientos filtrados en CSV estructurado">
-                <Download size={18} /> Exportar CSV
+                <Download size={17} /> CSV
+              </button>
+              <button className="btn btn-outline" onClick={handleExportListPdf} disabled={sortedMovements.length === 0} title="Descargar todos los movimientos filtrados en PDF">
+                <FileOutput size={17} /> PDF
+              </button>
+              <button className="btn btn-outline" onClick={handleExportListWord} disabled={sortedMovements.length === 0} title="Descargar todos los movimientos filtrados en Word (.doc)">
+                <FileText size={17} /> Word
               </button>
             </>
           )}
@@ -547,6 +619,44 @@ const MovementList = () => {
                           >
                             <Printer size={15} />
                             <span>{isExit ? 'Nota Envío' : 'Nota Recibido'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleQuickDownloadPdf(mov)}
+                            className="btn btn-outline"
+                            style={{
+                              padding: '0.25rem 0.45rem',
+                              fontSize: '0.75rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.22rem',
+                              whiteSpace: 'nowrap'
+                            }}
+                            title={isExit ? 'Descargar Nota de Envío en PDF' : 'Descargar Nota de Recibido en PDF'}
+                            aria-label={isExit ? 'Descargar Nota de Envío en PDF' : 'Descargar Nota de Recibido en PDF'}
+                          >
+                            <FileOutput size={14} />
+                            <span>PDF</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleQuickDownloadWord(mov)}
+                            className="btn btn-outline"
+                            style={{
+                              padding: '0.25rem 0.45rem',
+                              fontSize: '0.75rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.22rem',
+                              whiteSpace: 'nowrap'
+                            }}
+                            title={isExit ? 'Descargar Nota de Envío en Word (.doc)' : 'Descargar Nota de Recibido en Word (.doc)'}
+                            aria-label={isExit ? 'Descargar Nota de Envío en Word (.doc)' : 'Descargar Nota de Recibido en Word (.doc)'}
+                          >
+                            <FileText size={14} />
+                            <span>Word</span>
                           </button>
 
                           {allowEdit && (

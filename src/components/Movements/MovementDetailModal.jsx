@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
   Printer,
-  Download,
+  FileOutput,
   Edit3,
   ArrowDownCircle,
   ArrowUpCircle,
@@ -22,7 +22,8 @@ import {
   buildMovementNoteData,
   formatMovementPounds,
   printMovementNote,
-  downloadMovementNotePdf
+  downloadMovementNotePdf,
+  downloadMovementNoteWord
 } from '../../utils/movementNotePrinter';
 
 const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syncState = 'synced', syncError = '' }) => {
@@ -96,6 +97,23 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
       toast.error('Error al generar PDF: ' + err.message);
     } finally {
       setIsGeneratingPdf(false);
+    }
+  };
+
+  const handleDownloadWord = () => {
+    try {
+      downloadMovementNoteWord({
+        movement,
+        products,
+        settings,
+        contractRates,
+        observations,
+        includeServices
+      });
+      toast.success(`${noteData.noteShortLabel} descargada en Word (.doc)`);
+    } catch (err) {
+      console.error('Error al generar Word:', err);
+      toast.error('Error al generar Word: ' + err.message);
     }
   };
 
@@ -745,7 +763,7 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
                 marginBottom: '0.4rem'
               }}
             >
-              Observaciones para la {noteData.noteShortLabel} (opcional para impresión / PDF)
+              Observaciones para la {noteData.noteShortLabel} (opcional para impresión / PDF / Word)
             </label>
             <input
               id="movement-note-observations"
@@ -759,7 +777,7 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
           </div>
         </div>
 
-        {/* 4. FOOTER FIJO CON ACCIONES DE IMPRESIÓN Y PDF */}
+        {/* 4. FOOTER FIJO CON ACCIONES DE IMPRESIÓN, PDF Y WORD */}
         <div
           style={{
             padding: '1rem 1.75rem',
@@ -786,9 +804,18 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
             )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-outline" onClick={onClose}>
               Cerrar
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={handleDownloadWord}
+              title={`Descargar ${noteData.noteShortLabel} en formato Microsoft Word (.doc)`}
+            >
+              <FileText size={16} /> Descargar Word
             </button>
 
             <button
@@ -798,7 +825,7 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
               disabled={isGeneratingPdf}
               title={`Descargar ${noteData.noteShortLabel} en formato PDF`}
             >
-              <Download size={16} /> {isGeneratingPdf ? 'Generando PDF...' : `PDF ${noteData.noteShortLabel}`}
+              <FileOutput size={16} /> {isGeneratingPdf ? 'Generando PDF...' : 'Descargar PDF'}
             </button>
 
             <button
