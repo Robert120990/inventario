@@ -1,5 +1,23 @@
 [
   {
+    "id": "80935be",
+    "version": "v2.7.169",
+    "commit": "80935be",
+    "fullCommit": "80935be2719c2a2c9fa6e0d153a43c6a746f68e0",
+    "description": "Bump version to v2.7.168",
+    "author": "Ing. Raúl Sosa",
+    "date": "2026-10-30",
+    "time": "12:31",
+    "isOfficial": true,
+    "isGitCommit": true,
+    "changes": [
+      {
+        "type": "improvement",
+        "text": "Bump version to v2.7.168"
+      }
+    ]
+  },
+  {
     "id": "9c33aa4",
     "version": "v2.7.168",
     "commit": "9c33aa4",
@@ -170,7 +188,7 @@
     "author": "Ing. Raúl Sosa",
     "date": "2026-10-20",
     "time": "16:59",
-    "isOfficial": true,
+    "isOfficial": false,
     "isGitCommit": true,
     "changes": [
       {
@@ -2682,24 +2700,6 @@
       {
         "type": "improvement",
         "text": "Mejora de proteccion segun perfil de usuario"
-      }
-    ]
-  },
-  {
-    "id": "9a6ef57",
-    "version": "v2.7.19",
-    "commit": "9a6ef57",
-    "fullCommit": "9a6ef57bed15f920290af9a69457351d2ba51ea0",
-    "description": "Sidebar menu, mejora en usuario conectado",
-    "author": "Roberto",
-    "date": "2026-03-19",
-    "time": "15:00",
-    "isOfficial": false,
-    "isGitCommit": true,
-    "changes": [
-      {
-        "type": "improvement",
-        "text": "Sidebar menu, mejora en usuario conectado"
       }
     ]
   }

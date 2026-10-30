@@ -8,6 +8,7 @@ import { exportCorteSeguro } from '../../utils/exportManager';
 import { formatCurrency, formatDate, formatPrice } from '../../utils/formatUtils';
 import { toast } from 'react-hot-toast';
 import { DatePicker, getLocalDateStr } from '../Common/DatePicker';
+import { normalizeDateOnly, addDaysToDateStr } from '../../utils/dailyCutDateUtils';
 import SipeBillingModal from '../Billing/SipeBillingModal';
 
 const InsuranceReport = () => {
@@ -54,38 +55,43 @@ const InsuranceReport = () => {
   const [saveStatus, setSaveStatus] = useState(null); // 'saving' | 'saved' | null
 
   const autoSaveTimerRef = useRef(null);
+  const activeCutRef = useRef(null);
+
+  useEffect(() => {
+    activeCutRef.current = activeCut;
+  }, [activeCut]);
+
+  const applyNextInsurancePeriod = (cuts) => {
+    const todayStr = getLocalDateStr(new Date());
+    if (!Array.isArray(cuts) || cuts.length === 0) {
+      const d = new Date();
+      d.setDate(1);
+      setStartDate(getLocalDateStr(d));
+      setCutoffDate(todayStr);
+      return;
+    }
+    const sortedEndDates = cuts
+      .map(c => normalizeDateOnly(c.cutoffDate))
+      .filter(Boolean)
+      .sort((a, b) => b.localeCompare(a));
+    if (sortedEndDates.length > 0) {
+      const nextDayStr = addDaysToDateStr(sortedEndDates[0], 1);
+      setStartDate(nextDayStr);
+      setCutoffDate(nextDayStr > todayStr ? nextDayStr : todayStr);
+    }
+  };
 
   // Al cargar la página, leer el corte de seguro más reciente y fijar fecha de inicio al día siguiente
   useEffect(() => {
+    let cancelled = false;
     fetchInsuranceCuts().then(cuts => {
-      if (Array.isArray(cuts) && cuts.length > 0) {
-        setCutsList(cuts);
-        // Ordenar cortes por cutoffDate descendente
-        const sortedCuts = [...cuts].sort((a, b) => {
-          const dateA = String(a.cutoffDate || '').split('T')[0];
-          const dateB = String(b.cutoffDate || '').split('T')[0];
-          return dateB.localeCompare(dateA);
-        });
-
-        const latestCut = sortedCuts[0];
-        if (latestCut && latestCut.cutoffDate) {
-          const lastCutStr = String(latestCut.cutoffDate).split('T')[0];
-          const nextDay = new Date(lastCutStr + 'T12:00:00');
-          nextDay.setDate(nextDay.getDate() + 1);
-          const nextDayStr = getLocalDateStr(nextDay);
-
-          setStartDate(nextDayStr);
-          const todayStr = getLocalDateStr(new Date());
-          if (nextDayStr > todayStr) {
-            setCutoffDate(nextDayStr);
-          } else {
-            setCutoffDate(todayStr);
-          }
-        }
-      } else if (Array.isArray(cuts)) {
-        setCutsList(cuts);
+      if (cancelled || !Array.isArray(cuts)) return;
+      setCutsList(cuts);
+      if (!activeCutRef.current) {
+        applyNextInsurancePeriod(cuts);
       }
     });
+    return () => { cancelled = true; };
   }, []);
 
   // Cálculo en vivo de existencias y valoración a la fecha de corte
@@ -418,10 +424,16 @@ const InsuranceReport = () => {
 
   // Volver a Modo en Vivo (Cálculo dinámico en tiempo real)
   const handleBackToLive = () => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    activeCutRef.current = null;
     setActiveCut(null);
     setCustomRows(null);
     setIsLocked(false);
     setSaveStatus(null);
+    applyNextInsurancePeriod(cutsList);
     toast.success('Has regresado al Modo en Vivo (Tiempo Real).');
   };
 
@@ -448,8 +460,9 @@ const InsuranceReport = () => {
     try {
       const fullCut = await fetchInsuranceCutById(cutSummary.id);
       if (fullCut) {
-        if (fullCut.startDate) setStartDate(fullCut.startDate.split('T')[0]);
-        setCutoffDate(fullCut.cutoffDate.split('T')[0]);
+        activeCutRef.current = fullCut;
+        if (fullCut.startDate) setStartDate(normalizeDateOnly(fullCut.startDate));
+        setCutoffDate(normalizeDateOnly(fullCut.cutoffDate));
         setCustomerName(fullCut.customerName || 'AVICOLA SALVADOREÑA S.A. DE C.V.');
         setWarehouseName(fullCut.warehouseName || 'ALMACENADORA LIL');
         setPremiumRate(Number(fullCut.premiumRate || 0.10));

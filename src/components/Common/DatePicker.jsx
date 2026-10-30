@@ -93,8 +93,9 @@ export const DatePicker = ({
 
   // Fecha de vista para el calendario desplegable
   const initialDate = value ? new Date(value + 'T12:00:00') : new Date();
-  const [viewYear, setViewYear] = useState(initialDate.getFullYear() || new Date().getFullYear());
-  const [viewMonth, setViewMonth] = useState(initialDate.getMonth() || new Date().getMonth());
+  const validInitial = !Number.isNaN(initialDate.getTime());
+  const [viewYear, setViewYear] = useState(validInitial ? initialDate.getFullYear() : new Date().getFullYear());
+  const [viewMonth, setViewMonth] = useState(validInitial ? initialDate.getMonth() : new Date().getMonth());
 
   useEffect(() => {
     if (value) {
@@ -260,7 +261,7 @@ export const DatePicker = ({
             paddingRight: '2.5rem',
             cursor: 'pointer'
           }}
-          onClick={() => setIsOpen(true)}
+          onClick={() => { if (!disabled) setIsOpen(true); }}
         />
         <button
           type="button"
@@ -510,12 +511,12 @@ export const DatePicker = ({
 /**
  * Barra de atajos rápidos de rango de fechas ("Mes Actual", "Mes Anterior", "Últimos 7 Días", etc.)
  */
-export const DateQuickPresets = ({ startDate, endDate, onSelectRange, activePresets = ['this-month', 'prev-month', 'last-7', 'last-30', 'today'] }) => {
+export const DateQuickPresets = ({ startDate, endDate, onSelectRange, activePresets = ['this-month', 'prev-month', 'last-7', 'last-30', 'today'], disabled = false }) => {
   const allPresets = getPresetRanges();
   const presets = allPresets.filter(p => activePresets.includes(p.id));
 
   return (
-    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center', opacity: disabled ? 0.55 : 1 }}>
       <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-light)', marginRight: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
         <Calendar size={13} style={{ color: 'var(--color-primary)' }} /> Atajos:
       </span>
@@ -525,8 +526,9 @@ export const DateQuickPresets = ({ startDate, endDate, onSelectRange, activePres
           <button
             key={p.id}
             type="button"
+            disabled={disabled}
             className={`date-preset-pill ${isActive ? 'active' : ''}`}
-            onClick={() => onSelectRange(p.start, p.end)}
+            onClick={() => { if (!disabled) onSelectRange(p.start, p.end); }}
             style={{
               padding: '0.2rem 0.6rem',
               borderRadius: '9999px',

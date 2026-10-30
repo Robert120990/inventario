@@ -9,6 +9,12 @@ import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils
 import { CONTRACT_INFO, EXTRA_SERVICE_PRESETS, resolveServiceDetails } from '../../utils/contractRates';
 import { toast } from 'react-hot-toast';
 import { DatePicker, DateQuickPresets, getLocalDateStr } from '../Common/DatePicker';
+import {
+  normalizeDateOnly,
+  buildInclusiveDateRange,
+  resolveCutPeriod,
+  computeNextLiveCutRange
+} from '../../utils/dailyCutDateUtils';
 import MovementForm from '../Movements/MovementForm';
 import SipeBillingModal from '../Billing/SipeBillingModal';
 
@@ -26,19 +32,28 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     updateDailyCut, 
     openCutHistoryModal,
     selectedCutForSummary,
-    setSelectedCutForSummary 
+    setSelectedCutForSummary,
+    setActiveDailyCutId
   } = useInventory();
   
   const allowExport = canExport('summary2');
   const allowEditMovement = canEdit ? canEdit('movements') : true;
   
-  // Rango de fechas por defecto: Mes actual (1 al día actual)
+  // Rango de fechas inicial inteligente:
+  // - Si viene cargando un corte desde el historial, adopta de inmediato su período congelado real.
+  // - En Modo en Vivo, inicia automáticamente en (último corte + 1 día) hasta hoy.
   const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    d.setDate(1);
-    return getLocalDateStr(d);
+    if (selectedCutForSummary) {
+      return resolveCutPeriod(selectedCutForSummary).startDate;
+    }
+    return computeNextLiveCutRange(dailyCuts).startDate;
   });
-  const [endDate, setEndDate] = useState(() => getLocalDateStr(new Date()));
+  const [endDate, setEndDate] = useState(() => {
+    if (selectedCutForSummary) {
+      return resolveCutPeriod(selectedCutForSummary).endDate;
+    }
+    return computeNextLiveCutRange(dailyCuts).endDate;
+  });
   const [clientName, setClientName] = useState(CONTRACT_INFO.clientName);
   const [selectedCategory, setSelectedCategory] = useState('all'); // 'all' | 'Preparados' | 'Congelados'
 
@@ -50,7 +65,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
   const [customServices, setCustomServices] = useState(null);
 
   // Estados de interfaz y modales
-  const [cutsList, setCutsList] = useState([]);
+  const [cutsList, setCutsList] = useState(() => (Array.isArray(dailyCuts) ? dailyCuts : []));
   const [freezeModalOpen, setFreezeModalOpen] = useState(false);
   const [billingModalOpen, setBillingModalOpen] = useState(false);
   const [freezeTitle, setFreezeTitle] = useState('');
@@ -64,43 +79,80 @@ const Summary2 = ({ openHistoryOnLoad }) => {
   
   const autoSaveTimerRef = useRef(null);
   const pendingDateSyncRef = useRef(false);
+  const activeCutRef = useRef(selectedCutForSummary || null);
+  const userModifiedLiveDatesRef = useRef(false);
+  const isFreezingCutRef = useRef(false);
 
-  // Cargar cortes registrados al iniciar para sincronización de balances, baseline y fecha inicial automática
+  // Sincronizar referencia inmediata del corte activo e identificador global para el modal de historial
   useEffect(() => {
-    fetchDailyCuts().then(cuts => {
-      if (Array.isArray(cuts) && cuts.length > 0) {
-        setCutsList(cuts);
-        // Obtener el corte más reciente por endDate
-        const sortedCuts = [...cuts].sort((a, b) => {
-          const dateA = String(a.endDate || '').split('T')[0];
-          const dateB = String(b.endDate || '').split('T')[0];
-          return dateB.localeCompare(dateA);
-        });
+    activeCutRef.current = activeCut;
+    if (setActiveDailyCutId) {
+      setActiveDailyCutId(activeCut?.id || null);
+    }
+  }, [activeCut, setActiveDailyCutId]);
 
-        const latestCut = sortedCuts[0];
-        if (latestCut && latestCut.endDate) {
-          const lastEndStr = String(latestCut.endDate).split('T')[0];
-          const nextDay = new Date(lastEndStr + 'T12:00:00');
-          nextDay.setDate(nextDay.getDate() + 1);
-          const nextDayStr = getLocalDateStr(nextDay);
-          
-          setStartDate(nextDayStr);
-          const todayStr = getLocalDateStr(new Date());
-          if (nextDayStr > todayStr) {
-            setEndDate(nextDayStr);
-          } else {
-            setEndDate(todayStr);
-          }
-        }
-      } else if (Array.isArray(cuts)) {
-        setCutsList(cuts);
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      if (setActiveDailyCutId) setActiveDailyCutId(null);
+    };
+  }, [setActiveDailyCutId]);
+
+  // Cargar cortes registrados al iniciar (sin sobrescribir las fechas si hay un corte histórico cargado)
+  useEffect(() => {
+    let cancelled = false;
+    fetchDailyCuts().then(cuts => {
+      if (cancelled || !Array.isArray(cuts)) return;
+      setCutsList(cuts);
+      if (!activeCutRef.current && !isFreezingCutRef.current && !userModifiedLiveDatesRef.current) {
+        const nextRange = computeNextLiveCutRange(cuts);
+        setStartDate(nextRange.startDate);
+        setEndDate(nextRange.endDate);
       }
     });
+    return () => { cancelled = true; };
   }, []);
+
+  // Sincronización reactiva cuando cambia dailyCuts en el contexto (ej. al eliminar un corte o hidratar bootstrap)
+  useEffect(() => {
+    if (!Array.isArray(dailyCuts)) return;
+    setCutsList(dailyCuts);
+
+    // Si el corte que se estaba viendo fue eliminado desde el historial, volver a Modo en Vivo
+    if (activeCutRef.current && !isFreezingCutRef.current && !activeCutRef.current.offlinePending) {
+      const stillExists = dailyCuts.some(c => String(c.id) === String(activeCutRef.current.id));
+      if (!stillExists && dailyCuts.length >= 0) {
+        if (autoSaveTimerRef.current) {
+          clearTimeout(autoSaveTimerRef.current);
+          autoSaveTimerRef.current = null;
+        }
+        pendingDateSyncRef.current = false;
+        activeCutRef.current = null;
+        userModifiedLiveDatesRef.current = false;
+        setActiveCut(null);
+        setCustomCongelados(null);
+        setCustomPreparados(null);
+        setCustomServices(null);
+        setIsLocked(false);
+        setSaveStatus(null);
+        const nextRange = computeNextLiveCutRange(dailyCuts);
+        setStartDate(nextRange.startDate);
+        setEndDate(nextRange.endDate);
+        return;
+      }
+    }
+
+    if (!activeCutRef.current && !selectedCutForSummary && !isFreezingCutRef.current && !userModifiedLiveDatesRef.current) {
+      const nextRange = computeNextLiveCutRange(dailyCuts);
+      setStartDate(nextRange.startDate);
+      setEndDate(nextRange.endDate);
+    }
+  }, [dailyCuts, selectedCutForSummary]);
 
   // Controladores de fecha sincronizados
   const handleStartDateChange = (newStart) => {
     if (activeCut && isLocked) return;
+    if (!activeCut) userModifiedLiveDatesRef.current = true;
     setStartDate(newStart);
     let effectiveEnd = endDate;
     if (endDate && newStart > endDate) {
@@ -114,6 +166,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
 
   const handleEndDateChange = (newEnd) => {
     if (activeCut && isLocked) return;
+    if (!activeCut) userModifiedLiveDatesRef.current = true;
     setEndDate(newEnd);
     let effectiveStart = startDate;
     if (startDate && newEnd < startDate) {
@@ -127,6 +180,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
 
   const handlePresetSelect = (start, end) => {
     if (activeCut && isLocked) return;
+    if (!activeCut) userModifiedLiveDatesRef.current = true;
     setStartDate(start);
     setEndDate(end);
     if (activeCut && !isLocked) {
@@ -134,27 +188,19 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     }
   };
 
-  // Cantidad de días en el rango
+  // Cantidad de días en el rango (usando mediodía local para inmunidad ante DST y UTC)
   const daysCount = useMemo(() => {
     if (!startDate || !endDate) return 0;
-    const start = new Date(startDate + 'T00:00:00');
-    const end = new Date(endDate + 'T00:00:00');
+    const start = new Date(startDate + 'T12:00:00');
+    const end = new Date(endDate + 'T12:00:00');
     const diffTime = end.getTime() - start.getTime();
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
     return diffDays > 0 ? diffDays : 0;
   }, [startDate, endDate]);
 
-  // Lista de fechas ordenadas en el período
+  // Lista de fechas ordenadas en el período sin desfases por toISOString() UTC
   const dateList = useMemo(() => {
-    if (!startDate || !endDate) return [];
-    const dates = [];
-    const curr = new Date(startDate + 'T00:00:00');
-    const end = new Date(endDate + 'T00:00:00');
-    while (curr <= end) {
-      dates.push(curr.toISOString().split('T')[0]);
-      curr.setDate(curr.getDate() + 1);
-    }
-    return dates;
+    return buildInclusiveDateRange(startDate, endDate);
   }, [startDate, endDate]);
 
   // Helper para calcular inventario diario para un grupo de productos y tipo de unidad con cuadre continuo
@@ -164,19 +210,20 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     const d0 = dateList[0];
     const unitTypeKey = unitField === 'qtyPounds' ? 'congeladosData' : 'preparadosData';
 
-    // Buscar cortes congelados previos para usar como línea base y asegurar cuadre perfecto
+    // Buscar cortes congelados estrictamente anteriores (cutEnd < d0) para usar su stockFinal como saldo inicial
     const allCuts = (dailyCuts && dailyCuts.length > 0) ? dailyCuts : cutsList;
     const priorCuts = allCuts
-      .filter(c => {
-        const cutEnd = String(c.endDate || '').split('T')[0];
-        const rows = c[unitTypeKey];
-        return cutEnd && cutEnd <= d0 && Array.isArray(rows) && rows.length > 0;
+      .map(c => {
+        const resolved = resolveCutPeriod(c);
+        return { ...c, _resolvedEnd: resolved.endDate };
       })
-      .sort((a, b) => {
-        const endA = String(a.endDate || '').split('T')[0];
-        const endB = String(b.endDate || '').split('T')[0];
-        return endB.localeCompare(endA);
-      });
+      .filter(c => {
+        if (activeCut && String(c.id) === String(activeCut.id)) return false;
+        const cutEnd = c._resolvedEnd;
+        const rows = c[unitTypeKey];
+        return cutEnd && cutEnd < d0 && Array.isArray(rows) && rows.length > 0;
+      })
+      .sort((a, b) => b._resolvedEnd.localeCompare(a._resolvedEnd));
 
     let baselineDate = null;
     let baselineFinalStock = null;
@@ -184,9 +231,9 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     if (priorCuts.length > 0) {
       const lastCut = priorCuts[0];
       const cutRows = lastCut[unitTypeKey] || [];
-      const cutEnd = String(lastCut.endDate || '').split('T')[0];
+      const cutEnd = lastCut._resolvedEnd;
       
-      const rowOnEnd = cutRows.find(r => String(r.fecha || '').split('T')[0] === cutEnd) || cutRows[cutRows.length - 1];
+      const rowOnEnd = cutRows.find(r => normalizeDateOnly(r.fecha) === cutEnd) || cutRows[cutRows.length - 1];
       if (rowOnEnd && rowOnEnd.stockFinal !== undefined && rowOnEnd.stockFinal !== null) {
         baselineDate = cutEnd;
         baselineFinalStock = Number(rowOnEnd.stockFinal || 0);
@@ -284,7 +331,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     });
 
     return resultRows;
-  }, [dateList, dailyCuts, cutsList, movements]);
+  }, [dateList, dailyCuts, cutsList, movements, activeCut]);
 
   // Cálculo en vivo: 1. PRODUCTOS CONGELADOS
   const liveCongeladosRows = useMemo(() => {
@@ -423,8 +470,15 @@ const Summary2 = ({ openHistoryOnLoad }) => {
           value: Number(resolved.value) || 0
         };
       });
-      const effectiveStart = customStart || startDate;
-      const effectiveEnd = customEnd || endDate;
+      const periodInfo = resolveCutPeriod({
+        startDate: customStart || activeCut.startDate || startDate,
+        endDate: customEnd || activeCut.endDate || endDate,
+        title: activeCut.title,
+        congeladosData: cong,
+        preparadosData: prep
+      });
+      const effectiveStart = customStart || periodInfo.startDate || normalizeDateOnly(activeCut.startDate) || startDate;
+      const effectiveEnd = customEnd || periodInfo.endDate || normalizeDateOnly(activeCut.endDate) || endDate;
 
       const calcCongTotal = cong.reduce((acc, r) => acc + (Number(r.totalMonto) || 0), 0);
       const calcPrepTotal = prep.reduce((acc, r) => acc + (Number(r.totalMonto) || 0), 0);
@@ -758,6 +812,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     }
 
     setIsSavingCut(true);
+    isFreezingCutRef.current = true;
     try {
       const totalsPayload = {
         totalAlmacenaje: reportTotalAlmacenaje,
@@ -790,13 +845,23 @@ const Summary2 = ({ openHistoryOnLoad }) => {
         const cuts = await fetchDailyCuts();
         if (Array.isArray(cuts)) setCutsList(cuts);
 
-        // Cargar el corte recién creado como corte activo
+        // Cargar el corte recién creado como corte activo conservando sus fechas exactas
         const fullCut = await fetchDailyCutById(res.id);
         if (fullCut) {
-          setActiveCut(fullCut);
-          setCustomCongelados(ensureCascadingIntegrity(fullCut.congeladosData, 0.001));
-          setCustomPreparados(ensureCascadingIntegrity(fullCut.preparadosData, 0.038));
-          setCustomServices(fullCut.servicesData);
+          const resolved = resolveCutPeriod(fullCut);
+          const normalizedCut = {
+            ...fullCut,
+            title: resolved.title || fullCut.title,
+            startDate: resolved.startDate || normalizeDateOnly(fullCut.startDate),
+            endDate: resolved.endDate || normalizeDateOnly(fullCut.endDate)
+          };
+          activeCutRef.current = normalizedCut;
+          setStartDate(normalizedCut.startDate);
+          setEndDate(normalizedCut.endDate);
+          setActiveCut(normalizedCut);
+          setCustomCongelados(ensureCascadingIntegrity(normalizedCut.congeladosData, 0.001));
+          setCustomPreparados(ensureCascadingIntegrity(normalizedCut.preparadosData, 0.038));
+          setCustomServices(normalizedCut.servicesData);
           setIsLocked(true);
         }
       } else {
@@ -806,6 +871,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
       console.error(err);
       toast.error('Error al congelar el período: ' + err.message);
     } finally {
+      isFreezingCutRef.current = false;
       setIsSavingCut(false);
     }
   };
@@ -838,16 +904,26 @@ const Summary2 = ({ openHistoryOnLoad }) => {
       serviciosMonto: calcServTotal
     };
 
+    const periodInfo = resolveCutPeriod({
+      startDate: activeCut.startDate || startDate,
+      endDate: activeCut.endDate || endDate,
+      title: activeCut.title,
+      congeladosData: cong,
+      preparadosData: prep
+    });
+    const effectiveStart = periodInfo.startDate || normalizeDateOnly(activeCut.startDate) || startDate;
+    const effectiveEnd = periodInfo.endDate || normalizeDateOnly(activeCut.endDate) || endDate;
+
     const newTitle = activeCut.title?.startsWith('Corte ') 
-      ? `Corte ${formatDate(startDate)} al ${formatDate(endDate)}`
-      : (activeCut.title || `Corte ${formatDate(startDate)} al ${formatDate(endDate)}`);
+      ? `Corte ${formatDate(effectiveStart)} al ${formatDate(effectiveEnd)}`
+      : (activeCut.title || `Corte ${formatDate(effectiveStart)} al ${formatDate(effectiveEnd)}`);
 
     try {
       const res = await updateDailyCut(activeCut.id, {
         isLocked: newLockState ? 1 : 0,
         title: newTitle,
-        startDate,
-        endDate,
+        startDate: effectiveStart,
+        endDate: effectiveEnd,
         clientName,
         congeladosData: cong,
         preparadosData: prep,
@@ -856,12 +932,14 @@ const Summary2 = ({ openHistoryOnLoad }) => {
       });
 
       if (res.success) {
+        setStartDate(effectiveStart);
+        setEndDate(effectiveEnd);
         setActiveCut(prev => ({
           ...prev,
           isLocked: newLockState,
           title: newTitle,
-          startDate,
-          endDate,
+          startDate: effectiveStart,
+          endDate: effectiveEnd,
           congeladosData: cong,
           preparadosData: prep,
           servicesData: serv,
@@ -884,16 +962,42 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     }
   };
 
-  // Volver al Modo en Vivo (tiempo real)
-  const handleBackToLive = () => {
+  // Volver al Modo en Vivo (tiempo real), restaurando como Fecha Inicio el día siguiente al último corte
+  const handleBackToLive = useCallback((silent = false) => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    pendingDateSyncRef.current = false;
+    activeCutRef.current = null;
+    userModifiedLiveDatesRef.current = false;
     setActiveCut(null);
     setCustomCongelados(null);
     setCustomPreparados(null);
     setCustomServices(null);
     setIsLocked(false);
     setSaveStatus(null);
-    toast.success('Has regresado al Modo en Tiempo Real.');
-  };
+
+    const availableCuts = (Array.isArray(dailyCuts) && dailyCuts.length > 0) ? dailyCuts : cutsList;
+    const nextRange = computeNextLiveCutRange(availableCuts);
+    setStartDate(nextRange.startDate);
+    setEndDate(nextRange.endDate);
+
+    if (!silent) {
+      toast.success('Has regresado al Modo en Tiempo Real.');
+    }
+  }, [dailyCuts, cutsList]);
+
+  // Permitir regresar a Modo en Vivo al hacer clic en "Resumen Diario" desde la barra lateral
+  useEffect(() => {
+    const onReturnToLive = () => {
+      if (activeCutRef.current) {
+        handleBackToLive(false);
+      }
+    };
+    window.addEventListener('summary2:return-to-live', onReturnToLive);
+    return () => window.removeEventListener('summary2:return-to-live', onReturnToLive);
+  }, [handleBackToLive]);
 
   // Sincronizar Servicios Extraordinarios del corte con los movimientos reales del período
   const handleSyncServicesFromLive = () => {
@@ -934,16 +1038,29 @@ const Summary2 = ({ openHistoryOnLoad }) => {
 
   useEffect(() => {
     if (selectedCutForSummary) {
-      setStartDate(selectedCutForSummary.startDate.split('T')[0]);
-      setEndDate(selectedCutForSummary.endDate.split('T')[0]);
-      setClientName(selectedCutForSummary.clientName || CONTRACT_INFO.clientName);
-      setActiveCut(selectedCutForSummary);
-      setCustomCongelados(ensureCascadingIntegrity(selectedCutForSummary.congeladosData, 0.001));
-      setCustomPreparados(ensureCascadingIntegrity(selectedCutForSummary.preparadosData, 0.038));
-      setCustomServices(selectedCutForSummary.servicesData);
-      setIsLocked(Boolean(selectedCutForSummary.isLocked));
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+      pendingDateSyncRef.current = false;
+      const resolved = resolveCutPeriod(selectedCutForSummary);
+      const normalizedCut = {
+        ...selectedCutForSummary,
+        title: resolved.title || selectedCutForSummary.title,
+        startDate: resolved.startDate || normalizeDateOnly(selectedCutForSummary.startDate),
+        endDate: resolved.endDate || normalizeDateOnly(selectedCutForSummary.endDate)
+      };
+      activeCutRef.current = normalizedCut;
+      setStartDate(normalizedCut.startDate);
+      setEndDate(normalizedCut.endDate);
+      setClientName(normalizedCut.clientName || CONTRACT_INFO.clientName);
+      setActiveCut(normalizedCut);
+      setCustomCongelados(ensureCascadingIntegrity(normalizedCut.congeladosData, 0.001));
+      setCustomPreparados(ensureCascadingIntegrity(normalizedCut.preparadosData, 0.038));
+      setCustomServices(normalizedCut.servicesData);
+      setIsLocked(Boolean(normalizedCut.isLocked));
       setSaveStatus(null);
-      toast.success(`Corte '${selectedCutForSummary.title}' cargado.`);
+      toast.success(`Corte '${normalizedCut.title}' cargado.`);
       setSelectedCutForSummary(null);
     }
   }, [selectedCutForSummary, setSelectedCutForSummary]);
@@ -1514,7 +1631,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
             <button 
               className="btn btn-outline" 
               style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }} 
-              onClick={handleBackToLive}
+              onClick={() => handleBackToLive(false)}
               title="Salir de la vista del corte guardado y volver al cálculo dinámico en tiempo real"
             >
               <RotateCcw size={14} /> Volver a Tiempo Real
@@ -1530,6 +1647,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
             startDate={startDate}
             endDate={endDate}
             onSelectRange={handlePresetSelect}
+            disabled={Boolean(activeCut && isLocked)}
           />
           {daysCount > 0 && (
             <span className="badge badge-primary" style={{ fontSize: '0.75rem', fontWeight: 600 }}>
@@ -1545,6 +1663,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
               value={startDate}
               onChange={handleStartDateChange}
               max={endDate}
+              disabled={Boolean(activeCut && isLocked)}
             />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
@@ -1553,6 +1672,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
               value={endDate}
               onChange={handleEndDateChange}
               min={startDate}
+              disabled={Boolean(activeCut && isLocked)}
             />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>

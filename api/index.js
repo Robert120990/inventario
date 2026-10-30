@@ -469,6 +469,55 @@ router.get('/version', (req, res) => {
     res.json({ version: '1.3.98', displayVersion: 'v1.3.98', build: 98, commit: 'local' });
 });
 
+// Helper seguro para extraer YYYY-MM-DD de columnas DATE de MySQL sin desfases por zona horaria UTC
+const formatSqlDateOnly = (val) => {
+    if (!val) return null;
+    if (val instanceof Date) {
+        if (Number.isNaN(val.getTime())) return null;
+        const y = val.getFullYear();
+        const m = String(val.getMonth() + 1).padStart(2, '0');
+        const d = String(val.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+    const str = String(val).trim();
+    const match = str.match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : str.split('T')[0].split(' ')[0];
+};
+
+// Garantiza que startDate, endDate y título automático coincidan con la serie diaria congelada del corte
+const resolveBackendDailyCutDates = (rawStart, rawEnd, rawTitle, congelados = [], preparados = []) => {
+    const rowDates = [];
+    if (Array.isArray(congelados)) {
+        for (const row of congelados) {
+            const d = formatSqlDateOnly(row?.fecha);
+            if (d) rowDates.push(d);
+        }
+    }
+    if (Array.isArray(preparados)) {
+        for (const row of preparados) {
+            const d = formatSqlDateOnly(row?.fecha);
+            if (d) rowDates.push(d);
+        }
+    }
+    rowDates.sort();
+
+    const cleanStart = rowDates.length > 0 ? rowDates[0] : (formatSqlDateOnly(rawStart) || '');
+    const cleanEnd = rowDates.length > 0 ? rowDates[rowDates.length - 1] : (formatSqlDateOnly(rawEnd) || '');
+
+    const titleStr = String(rawTitle || '').trim();
+    const isAutoTitle = /^Corte\s+\d{2}\/\d{2}\/\d{4}\s+al\s+\d{2}\/\d{2}\/\d{4}$/i.test(titleStr)
+        || /^Corte\s+\d{4}-\d{2}-\d{2}\s+al\s+\d{4}-\d{2}-\d{2}$/i.test(titleStr);
+    const toDmy = (ymd) => {
+        const parts = String(ymd || '').split('-');
+        return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : ymd;
+    };
+    const cleanTitle = (!titleStr || isAutoTitle) && cleanStart && cleanEnd
+        ? `Corte ${toDmy(cleanStart)} al ${toDmy(cleanEnd)}`
+        : titleStr;
+
+    return { cleanStart, cleanEnd, cleanTitle };
+};
+
 // Helper para mapear filas de daily_cuts (con soporte opcional de modo resumen ?summary=1)
 const formatDailyCutRow = (r, index = 0, summaryOnly = false) => {
     let totals = {};
@@ -476,16 +525,27 @@ const formatDailyCutRow = (r, index = 0, summaryOnly = false) => {
         totals = typeof r.totalsData === 'string' ? JSON.parse(r.totalsData) : (r.totalsData || {});
     } catch { totals = {}; }
 
-    const cleanStart = r.startDate instanceof Date
-        ? r.startDate.toISOString().split('T')[0]
-        : String(r.startDate || '').split('T')[0];
-    const cleanEnd = r.endDate instanceof Date
-        ? r.endDate.toISOString().split('T')[0]
-        : String(r.endDate || '').split('T')[0];
+    let congelados = [];
+    let preparados = [];
+    try {
+        congelados = typeof r.congeladosData === 'string' ? JSON.parse(r.congeladosData) : (r.congeladosData || []);
+    } catch { congelados = []; }
+    try {
+        preparados = typeof r.preparadosData === 'string' ? JSON.parse(r.preparadosData) : (r.preparadosData || []);
+    } catch { preparados = []; }
+
+    const { cleanStart, cleanEnd, cleanTitle } = resolveBackendDailyCutDates(
+        r.startDate,
+        r.endDate,
+        r.title,
+        congelados,
+        preparados
+    );
 
     if (summaryOnly && index > 0) {
         return {
             ...r,
+            title: cleanTitle,
             startDate: cleanStart,
             endDate: cleanEnd,
             isLocked: Boolean(r.isLocked),
@@ -504,21 +564,14 @@ const formatDailyCutRow = (r, index = 0, summaryOnly = false) => {
         };
     }
 
-    let congelados = [];
-    let preparados = [];
     let services = [];
-    try {
-        congelados = typeof r.congeladosData === 'string' ? JSON.parse(r.congeladosData) : (r.congeladosData || []);
-    } catch { congelados = []; }
-    try {
-        preparados = typeof r.preparadosData === 'string' ? JSON.parse(r.preparadosData) : (r.preparadosData || []);
-    } catch { preparados = []; }
     try {
         services = typeof r.servicesData === 'string' ? JSON.parse(r.servicesData) : (r.servicesData || []);
     } catch { services = []; }
 
     return {
         ...r,
+        title: cleanTitle,
         startDate: cleanStart,
         endDate: cleanEnd,
         isLocked: Boolean(r.isLocked),
@@ -635,7 +688,7 @@ router.get('/bootstrap', async (req, res) => {
                 date: n.date || (n.created_at instanceof Date ? n.created_at.toISOString().slice(0, 16).replace('T', ' ') : (n.created_at ? String(n.created_at).slice(0, 16) : null))
             }))),
             canView('summary2')
-                ? pool.query('SELECT * FROM daily_cuts ORDER BY startDate DESC, created_at DESC').then(([rows]) => {
+                ? pool.query('SELECT * FROM daily_cuts ORDER BY endDate DESC, startDate DESC, created_at DESC').then(([rows]) => {
                     const isSummaryMode = req.query?.summary === '1' || req.query?.summary === 'true';
                     return rows.map((r, idx) => formatDailyCutRow(r, idx, isSummaryMode));
                 })
@@ -761,7 +814,7 @@ router.get('/sync/changes', async (req, res) => {
                 : Promise.resolve([]),
             canView('summary2')
                 ? pool.query(
-                    'SELECT * FROM daily_cuts WHERE updated_at >= ? OR created_at >= ? ORDER BY startDate DESC, created_at DESC',
+                    'SELECT * FROM daily_cuts WHERE updated_at >= ? OR created_at >= ? ORDER BY endDate DESC, startDate DESC, created_at DESC',
                     [safeSinceIso, safeSinceIso]
                 ).then(([rows]) => rows.map((r, idx) => formatDailyCutRow(r, idx, false)))
                 : Promise.resolve([]),
@@ -1336,8 +1389,8 @@ const checkLockedCuts = async (connection, date) => {
     );
     if (dailyRows.length > 0) {
         const cut = dailyRows[0];
-        const cleanStart = cut.startDate instanceof Date ? cut.startDate.toISOString().split('T')[0] : cut.startDate;
-        const cleanEnd = cut.endDate instanceof Date ? cut.endDate.toISOString().split('T')[0] : cut.endDate;
+        const cleanStart = formatSqlDateOnly(cut.startDate) || cut.startDate;
+        const cleanEnd = formatSqlDateOnly(cut.endDate) || cut.endDate;
         return `La fecha ${date} pertenece al corte diario cerrado y bloqueado '${cut.title}' (${cleanStart} al ${cleanEnd}). Debe desbloquearse antes de operar en este período.`;
     }
 
@@ -1348,7 +1401,7 @@ const checkLockedCuts = async (connection, date) => {
     );
     if (insRows.length > 0) {
         const cut = insRows[0];
-        const cleanCutoff = cut.cutoffDate instanceof Date ? cut.cutoffDate.toISOString().split('T')[0] : cut.cutoffDate;
+        const cleanCutoff = formatSqlDateOnly(cut.cutoffDate) || cut.cutoffDate;
         return `La fecha ${date} se encuentra cerrada dentro del corte de póliza de seguro bloqueado '${cut.title}' al ${cleanCutoff}. Debe desbloquearse antes de alterar movimientos.`;
     }
 
@@ -2660,7 +2713,7 @@ router.get('/daily-cuts', requirePermission('summary2', 'view'), async (req, res
         const [rows] = await pool.query(`
             SELECT *
             FROM daily_cuts
-            ORDER BY startDate DESC, created_at DESC
+            ORDER BY endDate DESC, startDate DESC, created_at DESC
         `);
 
         const isSummaryMode = req.query?.summary === '1' || req.query?.summary === 'true';
@@ -2680,12 +2733,18 @@ router.get('/daily-cuts/:id', requirePermission('summary2', 'view'), async (req,
             return res.status(404).json({ error: 'Corte no encontrado' });
         }
         const cut = rows[0];
-        const cleanStart = cut.startDate instanceof Date 
-            ? cut.startDate.toISOString().split('T')[0] 
-            : String(cut.startDate || '').split('T')[0];
-        const cleanEnd = cut.endDate instanceof Date 
-            ? cut.endDate.toISOString().split('T')[0] 
-            : String(cut.endDate || '').split('T')[0];
+        const congeladosParsed = typeof cut.congeladosData === 'string' ? JSON.parse(cut.congeladosData || '[]') : (cut.congeladosData || []);
+        const preparadosParsed = typeof cut.preparadosData === 'string' ? JSON.parse(cut.preparadosData || '[]') : (cut.preparadosData || []);
+        const servicesParsed = typeof cut.servicesData === 'string' ? JSON.parse(cut.servicesData || '[]') : (cut.servicesData || []);
+        const totalsParsed = typeof cut.totalsData === 'string' ? JSON.parse(cut.totalsData || '{}') : (cut.totalsData || {});
+
+        const { cleanStart, cleanEnd, cleanTitle } = resolveBackendDailyCutDates(
+            cut.startDate,
+            cut.endDate,
+            cut.title,
+            congeladosParsed,
+            preparadosParsed
+        );
 
         let dtePayload = null;
         if (cut.dte_payload) {
@@ -2696,13 +2755,14 @@ router.get('/daily-cuts/:id', requirePermission('summary2', 'view'), async (req,
 
         res.json({
             ...cut,
+            title: cleanTitle,
             startDate: cleanStart,
             endDate: cleanEnd,
             isLocked: Boolean(cut.isLocked),
-            congeladosData: typeof cut.congeladosData === 'string' ? JSON.parse(cut.congeladosData || '[]') : cut.congeladosData,
-            preparadosData: typeof cut.preparadosData === 'string' ? JSON.parse(cut.preparadosData || '[]') : cut.preparadosData,
-            servicesData: typeof cut.servicesData === 'string' ? JSON.parse(cut.servicesData || '[]') : cut.servicesData,
-            totalsData: typeof cut.totalsData === 'string' ? JSON.parse(cut.totalsData || '{}') : cut.totalsData,
+            congeladosData: congeladosParsed,
+            preparadosData: preparadosParsed,
+            servicesData: servicesParsed,
+            totalsData: totalsParsed,
             sipeSaleId: cut.sipe_sale_id ?? null,
             dteCodigoGeneracion: cut.dte_codigo_generacion ?? null,
             dteNumeroControl: cut.dte_numero_control ?? null,

@@ -149,7 +149,12 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
         {canView('summary2') && (
           <button
             className={`nav-link ${currentView === 'summary2' ? 'active' : ''}`}
-            onClick={() => setCurrentView('summary2')}
+            onClick={() => {
+              if (currentView === 'summary2' && typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('summary2:return-to-live'));
+              }
+              setCurrentView('summary2');
+            }}
             title={isCollapsed ? "Resumen Diario" : ""}
           >
             <FileText size={18} style={{ opacity: 0.75 }} />

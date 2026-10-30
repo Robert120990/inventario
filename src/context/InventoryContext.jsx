@@ -151,6 +151,7 @@ export const InventoryProvider = ({ children }) => {
   const [dailyCuts, setDailyCuts] = useState(() => loadLocalSnapshot('dailyCuts', []));
   const [cutHistoryModalOpen, setCutHistoryModalOpen] = useState(false);
   const [selectedCutForSummary, setSelectedCutForSummary] = useState(null);
+  const [activeDailyCutId, setActiveDailyCutId] = useState(null);
   const [contractRates, setContractRates] = useState(() => loadLocalSnapshot('contractRates', CONTRACT_INFO));
   const [sipeContractStatus, setSipeContractStatus] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1847,6 +1848,7 @@ export const InventoryProvider = ({ children }) => {
         const data = await res.json();
         if (Array.isArray(data)) {
           setDailyCuts(data);
+          saveLocalSnapshot('dailyCuts', data);
           return data;
         }
       }
@@ -2406,6 +2408,8 @@ export const InventoryProvider = ({ children }) => {
       closeCutHistoryModal: () => setCutHistoryModalOpen(false),
       selectedCutForSummary,
       setSelectedCutForSummary,
+      activeDailyCutId,
+      setActiveDailyCutId,
       fetchInsuranceCuts,
       fetchInsuranceCutById,
       createInsuranceCut,

@@ -4,7 +4,8 @@ import {
   History, X, Search, RefreshCw, Snowflake, Eye, Trash2, 
   Calendar, Lock, Unlock, DollarSign, ShieldCheck, CheckCircle2
 } from 'lucide-react';
-import { formatDate, formatCurrency } from '../../utils/formatUtils';
+import { formatDate, formatTimestampLocal, formatCurrency } from '../../utils/formatUtils';
+import { resolveCutPeriod } from '../../utils/dailyCutDateUtils';
 import { toast } from 'react-hot-toast';
 
 export default function DailyCutsHistoryModal({ isOpen, onClose, onSelectCut, activeCutId }) {
@@ -18,7 +19,22 @@ export default function DailyCutsHistoryModal({ isOpen, onClose, onSelectCut, ac
     setLoadingHistory(true);
     try {
       const cuts = await fetchDailyCuts();
-      setCutsList(Array.isArray(cuts) ? cuts : []);
+      const normalized = (Array.isArray(cuts) ? cuts : [])
+        .map((c) => {
+          const resolved = resolveCutPeriod(c);
+          return {
+            ...c,
+            title: resolved.title || c.title,
+            startDate: resolved.startDate || c.startDate,
+            endDate: resolved.endDate || c.endDate
+          };
+        })
+        .sort((a, b) => {
+          const endCmp = String(b.endDate || '').localeCompare(String(a.endDate || ''));
+          if (endCmp !== 0) return endCmp;
+          return String(b.startDate || '').localeCompare(String(a.startDate || ''));
+        });
+      setCutsList(normalized);
     } catch {
       toast.error('Error al cargar historial de cortes');
     } finally {
@@ -70,14 +86,16 @@ export default function DailyCutsHistoryModal({ isOpen, onClose, onSelectCut, ac
       if (filterStatus === 'locked' && !c.isLocked) return false;
       if (filterStatus === 'unlocked' && c.isLocked) return false;
 
-      // Filtro de búsqueda
+      // Filtro de búsqueda (admite YYYY-MM-DD y DD/MM/YYYY)
       if (!historySearch.trim()) return true;
       const q = historySearch.toLowerCase();
       return (
         (c.title || '').toLowerCase().includes(q) ||
         (c.clientName || '').toLowerCase().includes(q) ||
         (c.startDate || '').includes(q) ||
-        (c.endDate || '').includes(q)
+        (c.endDate || '').includes(q) ||
+        formatDate(c.startDate).toLowerCase().includes(q) ||
+        formatDate(c.endDate).toLowerCase().includes(q)
       );
     });
   }, [cutsList, historySearch, filterStatus]);
@@ -92,7 +110,7 @@ export default function DailyCutsHistoryModal({ isOpen, onClose, onSelectCut, ac
       toast.success('Corte eliminado con éxito.');
       loadHistory();
     } else {
-      toast.error('Error al eliminar el corte.');
+      toast.error(res?.message || 'Error al eliminar el corte.');
     }
   };
 
@@ -643,7 +661,7 @@ export default function DailyCutsHistoryModal({ isOpen, onClose, onSelectCut, ac
 
                         {/* 6. Fecha de Creado */}
                         <td style={{ padding: '0.85rem 1rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
-                          {cut.created_at ? formatDate(cut.created_at) : 'Reciente'}
+                          {cut.created_at ? formatTimestampLocal(cut.created_at) : 'Reciente'}
                         </td>
 
                         {/* 7. Acciones */}
