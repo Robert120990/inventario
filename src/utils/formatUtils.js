@@ -26,6 +26,68 @@ export const formatDate = (dateString) => {
 };
 
 /**
+ * Returns 'YYYY-MM-DD' in the user's local calendar timezone
+ * @param {Date|string|number} [d=new Date()]
+ * @returns {string}
+ */
+export const toLocalDateISO = (d = new Date()) => {
+  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.trim())) {
+    return d.trim();
+  }
+  const dateObj = d instanceof Date ? d : new Date(d);
+  const valid = Number.isNaN(dateObj.getTime()) ? new Date() : dateObj;
+  const year = valid.getFullYear();
+  const month = String(valid.getMonth() + 1).padStart(2, '0');
+  const day = String(valid.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Formats a time string HH:MM:SS or HH:MM to HH:MM
+ * @param {string} timeStr
+ * @returns {string}
+ */
+export const formatTimeShort = (timeStr) => {
+  if (!timeStr) return '--:--';
+  const clean = String(timeStr).trim();
+  if (clean.length >= 5 && clean.includes(':')) {
+    return clean.slice(0, 5);
+  }
+  return clean;
+};
+
+/**
+ * Looks up the catalog product associated with a movement item in O(1) when productsMap is provided,
+ * falling back to linear array search when needed.
+ * @param {object} item
+ * @param {Array} [products=[]]
+ * @param {Map|null} [productsMap=null]
+ * @returns {object|null}
+ */
+export const findProductForMovementItem = (item, products = [], productsMap = null) => {
+  if (!item) return null;
+
+  if (productsMap instanceof Map) {
+    const fromMap =
+      (item.productId !== undefined && item.productId !== null
+        ? productsMap.get(String(item.productId)) || productsMap.get(item.productId)
+        : null) ||
+      (item.sku ? productsMap.get(String(item.sku)) || productsMap.get(item.sku) : null);
+    if (fromMap) return fromMap;
+  }
+
+  return Array.isArray(products)
+    ? products.find(
+        (prod) =>
+          prod.id === item.productId ||
+          String(prod.id) === String(item.productId) ||
+          prod.sku === item.productId ||
+          (item.sku && prod.sku === item.sku)
+      ) || null
+    : null;
+};
+
+/**
  * Formats a point-in-time timestamp (such as MySQL created_at / updated_at)
  * in the user's local timezone as DD/MM/YYYY so evening timestamps in UTC
  * do not roll over to the next calendar day.

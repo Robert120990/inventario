@@ -14,6 +14,15 @@ const KNOWN_USERS_KEY = 'inv_ondemand_known_users_v1';
 const META_STORAGE_KEY = 'inv_ondemand_meta_v1';
 const ALIVE_SENTINEL_KEY = '__ondemand_alive__';
 const MAX_SYNCED_HISTORY = 30;
+const MAX_LOCALSTORAGE_SNAPSHOT_CHARS = 450_000;
+const MAX_BOUNDED_MOVEMENTS = 150;
+const FULL_LOCALSTORAGE_MIRROR_KEYS = new Set([
+  'products',
+  'categories',
+  'settings',
+  'dailyCuts',
+  'insuranceCuts'
+]);
 
 const isBrowserOnline = () =>
   typeof navigator === 'undefined' || navigator.onLine !== false;
@@ -25,6 +34,7 @@ const _memorySyncedByUser = new Map();
 let _memoryMeta = {};
 let _hasWrittenToLocalStorage = false;
 let _idbPromise = null;
+let _idbHydrated = false;
 
 const loadInitialActiveUser = () => {
   if (typeof localStorage === 'undefined') return { id: null, username: null };
@@ -82,6 +92,7 @@ const ensureStorageCoherence = () => {
     _loggedOut = false;
     _status.waitingAuth = false;
     _hasWrittenToLocalStorage = false;
+    _idbHydrated = false;
   }
 };
 
@@ -183,7 +194,10 @@ export const hydrateOnDemandFromIndexedDB = async (userId = null) => {
     _loggedOut = false;
   }
   const db = await openOnDemandDB();
-  if (!db) return false;
+  if (!db) {
+    _idbHydrated = true;
+    return false;
+  }
 
   try {
     const [snapshots, queues, syncedRecords, metaRecords] = await Promise.all([
@@ -219,6 +233,7 @@ export const hydrateOnDemandFromIndexedDB = async (userId = null) => {
       }
     });
 
+    _idbHydrated = true;
     const activeQueue = getOfflineQueue();
     notifyQueueChange(activeQueue);
     notifyStatusChange();
@@ -424,41 +439,114 @@ const initialMeta = getOnDemandMeta();
 if (initialMeta.lastCachedAt) _status.lastCachedAt = initialMeta.lastCachedAt;
 if (initialMeta.lastSyncedAt) _status.lastSyncedAt = initialMeta.lastSyncedAt;
 
+const sliceRecentMovements = (movementsList) => {
+  if (!Array.isArray(movementsList) || movementsList.length <= MAX_BOUNDED_MOVEMENTS) {
+    return movementsList;
+  }
+  const isAscending =
+    String(movementsList[0]?.date || '') < String(movementsList[movementsList.length - 1]?.date || '');
+  return isAscending
+    ? movementsList.slice(-MAX_BOUNDED_MOVEMENTS).reverse()
+    : movementsList.slice(0, MAX_BOUNDED_MOVEMENTS);
+};
+
+const buildBoundedLocalStorageMirror = (key, data) => {
+  if (key === 'movements' && Array.isArray(data)) {
+    return sliceRecentMovements(data);
+  }
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    if (Array.isArray(data.movements)) {
+      return {
+        ...data,
+        movements: sliceRecentMovements(data.movements)
+      };
+    }
+    return data;
+  }
+  if (FULL_LOCALSTORAGE_MIRROR_KEYS.has(key)) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data.slice(0, MAX_BOUNDED_MOVEMENTS);
+  }
+  return data;
+};
+
 /**
- * Guarda una instantánea (snapshot) de una colección en memoria, localStorage e IndexedDB
+ * Guarda una instantánea (snapshot) completa en memoria e IndexedDB,
+ * y mantiene un espejo acotado en localStorage si supera ~450 KB para evitar QuotaExceededError.
  */
-export const saveLocalSnapshot = (key, data) => {
+export const saveOfflineSnapshot = (key, data) => {
   ensureStorageCoherence();
   if (!key || data === undefined) return false;
+
+  const currentMeta = getOnDemandMeta();
+  const prevBoundedCount = currentMeta?.boundedSnapshots?.[key];
+  if (!_idbHydrated && prevBoundedCount && Array.isArray(data) && data.length < prevBoundedCount) {
+    _memorySnapshots.set(key, data);
+    return true;
+  }
+
   _memorySnapshots.set(key, data);
   const now = new Date().toISOString();
 
+  // Escribir siempre el 100% de los registros en IndexedDB
+  idbPut('snapshots', { key, data, updatedAt: now });
+
+  let boundedTotalCount = null;
   if (typeof localStorage !== 'undefined') {
     try {
-      localStorage.setItem(`${SNAPSHOT_PREFIX}${key}`, JSON.stringify(data));
+      const serialized = JSON.stringify(data);
+      if (serialized && serialized.length > MAX_LOCALSTORAGE_SNAPSHOT_CHARS) {
+        const boundedMirror = buildBoundedLocalStorageMirror(key, data);
+        const mirrorSerialized =
+          boundedMirror === data ? serialized : JSON.stringify(boundedMirror);
+        localStorage.setItem(`${SNAPSHOT_PREFIX}${key}`, mirrorSerialized);
+        if (Array.isArray(data) && Array.isArray(boundedMirror) && boundedMirror.length < data.length) {
+          boundedTotalCount = data.length;
+        }
+      } else if (serialized !== undefined) {
+        localStorage.setItem(`${SNAPSHOT_PREFIX}${key}`, serialized);
+      }
       markLocalStorageAlive();
     } catch (err) {
       console.warn(`[OnDemand] Fallback a IndexedDB/memoria para snapshot '${key}':`, err?.message);
     }
   }
 
-  updateOnDemandMeta({ lastCachedAt: now });
-  idbPut('snapshots', { key, data, updatedAt: now });
+  const nextBoundedMap = { ...(currentMeta.boundedSnapshots || {}) };
+  if (boundedTotalCount !== null) {
+    nextBoundedMap[key] = boundedTotalCount;
+  } else {
+    delete nextBoundedMap[key];
+  }
+  updateOnDemandMeta({ lastCachedAt: now, boundedSnapshots: nextBoundedMap });
   return true;
 };
 
+export const saveLocalSnapshot = saveOfflineSnapshot;
+
 /**
- * Carga una instantánea (snapshot) desde localStorage o caché en memoria hidratado por IndexedDB
+ * Carga una instantánea (snapshot) priorizando IndexedDB hidratado en memoria cuando está completo,
+ * o localStorage para arranque síncrono inmediato.
  */
 export const loadLocalSnapshot = (key, fallback = []) => {
   ensureStorageCoherence();
+  if (_idbHydrated && _memorySnapshots.has(key)) {
+    const hydrated = _memorySnapshots.get(key);
+    if (hydrated !== null && hydrated !== undefined) {
+      return hydrated;
+    }
+  }
   if (typeof localStorage !== 'undefined') {
     try {
       const raw = localStorage.getItem(`${SNAPSHOT_PREFIX}${key}`);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed !== null && parsed !== undefined) {
-          _memorySnapshots.set(key, parsed);
+          if (!_memorySnapshots.has(key)) {
+            _memorySnapshots.set(key, parsed);
+          }
           return parsed;
         }
       }
@@ -866,28 +954,34 @@ export const isNetworkOrOfflineError = (error, response = null) => {
 };
 
 /**
- * Actualiza el estado de accesibilidad de la página / servidor
+ * Actualiza el estado de accesibilidad de la página / servidor.
+ * Si únicamente cambió lastCheckedAt, actualiza en memoria sin despachar ondemand:status-change.
  */
-export const setOnDemandConnectivity = (patch) => {
-  const prevOnline = _status.isOnline;
-  const prevAccessible = _status.isPageAccessible;
-  const prevWaitingAuth = _status.waitingAuth;
-  _status = {
-    ..._status,
+export const setOnDemandConnectivity = (patch = {}) => {
+  const prev = _status;
+  const next = {
+    ...prev,
     ...patch,
     lastCheckedAt: new Date().toISOString()
   };
-  if (
-    prevOnline !== _status.isOnline ||
-    prevAccessible !== _status.isPageAccessible ||
-    prevWaitingAuth !== _status.waitingAuth ||
-    patch.isSyncing !== undefined ||
-    patch.lastSyncedAt !== undefined
-  ) {
+  _status = next;
+
+  const hasMeaningfulChange =
+    prev.isOnline !== next.isOnline ||
+    prev.isPageAccessible !== next.isPageAccessible ||
+    prev.dbConnected !== next.dbConnected ||
+    prev.isSyncing !== next.isSyncing ||
+    prev.waitingAuth !== next.waitingAuth ||
+    prev.lastSyncedAt !== next.lastSyncedAt ||
+    prev.lastError !== next.lastError;
+
+  if (hasMeaningfulChange) {
     notifyStatusChange();
   }
   return { ..._status };
 };
+
+export const setOnDemandStatus = setOnDemandConnectivity;
 
 /**
  * Devuelve el estado actual de OnDemand

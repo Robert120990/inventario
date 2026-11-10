@@ -139,6 +139,8 @@ export const InventoryProvider = ({ children }) => {
     const saved = localStorage.getItem('inv_current_user');
     return saved ? JSON.parse(saved) : null;
   });
+  const currentUserId = currentUser?.id;
+  const currentUsername = currentUser?.username;
   const [sessionId, setSessionId] = useState(() => {
     return localStorage.getItem('inv_session_id') || null;
   });
@@ -167,18 +169,21 @@ export const InventoryProvider = ({ children }) => {
 
   // Hidratación inicial asíncrona desde IndexedDB para grandes volúmenes de datos
   useEffect(() => {
-    hydrateOnDemandFromIndexedDB(currentUser?.id);
+    hydrateOnDemandFromIndexedDB(currentUserId);
     const handleIdbHydrated = () => {
-      setProducts(prev => (prev.length > 0 ? prev : loadLocalSnapshot('products', [])));
-      setMovements(prev => (prev.length > 0 ? prev : loadLocalSnapshot('movements', [])));
-      setDailyCuts(prev => (prev.length > 0 ? prev : loadLocalSnapshot('dailyCuts', [])));
+      const idbProducts = loadLocalSnapshot('products', []);
+      const idbMovements = loadLocalSnapshot('movements', []);
+      const idbDailyCuts = loadLocalSnapshot('dailyCuts', []);
+      setProducts(prev => (idbProducts.length > prev.length ? idbProducts : prev));
+      setMovements(prev => (idbMovements.length > prev.length ? idbMovements : prev));
+      setDailyCuts(prev => (idbDailyCuts.length > prev.length ? idbDailyCuts : prev));
       setOfflineQueue(getOfflineQueue());
       setSyncedHistory(getSyncedHistory());
-      setOtherUsersPending(getOtherUsersPendingSummary(currentUser?.id));
+      setOtherUsersPending(getOtherUsersPendingSummary(currentUserId));
     };
     window.addEventListener('ondemand:idb-hydrated', handleIdbHydrated);
     return () => window.removeEventListener('ondemand:idb-hydrated', handleIdbHydrated);
-  }, [currentUser?.id]);
+  }, [currentUserId]);
 
   // Enlazar cola OnDemand aislada por cuenta de usuario activa
   useEffect(() => {
@@ -205,7 +210,7 @@ export const InventoryProvider = ({ children }) => {
     }
   }, [categoryUnits]);
 
-  const fetchContractRates = async () => {
+  const fetchContractRates = useCallback(async () => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/contract-rates`);
       if (res.ok) {
@@ -221,7 +226,7 @@ export const InventoryProvider = ({ children }) => {
       // Fallback silencioso a las tarifas locales en memoria
     }
     return CONTRACT_INFO;
-  };
+  }, []);
 
   const checkSipeContract = async () => {
     try {
@@ -310,10 +315,10 @@ export const InventoryProvider = ({ children }) => {
     };
   }, [currentUser?.id]);
 
-  const fetchJsonOrNull = (url) =>
+  const fetchJsonOrNull = useCallback((url) =>
     apiFetch(url)
       .then(res => (res && res.ok ? res.json() : null))
-      .catch(() => null);
+      .catch(() => null), []);
 
   // Carga diferida del historial completo de versiones sin bloquear el bundle inicial
   useEffect(() => {
@@ -390,12 +395,48 @@ export const InventoryProvider = ({ children }) => {
     }
   }, []);
 
+  const refreshData = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    try {
+      const bootData = await fetchJsonOrNull(`${API_BASE_URL}/api/bootstrap`);
+      if (bootData && bootData.success) {
+        hydrateFromBootstrapData(bootData);
+        return;
+      }
+
+      fetchContractRates();
+      const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes, rolesRes, notifRes] = await Promise.all([
+        fetchJsonOrNull(`${API_BASE_URL}/api/products`),
+        fetchJsonOrNull(`${API_BASE_URL}/api/movements`),
+        fetchJsonOrNull(`${API_BASE_URL}/api/users`),
+        fetchJsonOrNull(`${API_BASE_URL}/api/config`),
+        fetchJsonOrNull(`${API_BASE_URL}/api/settings`),
+        fetchJsonOrNull(`${API_BASE_URL}/api/versions`),
+        fetchJsonOrNull(`${API_BASE_URL}/api/roles`),
+        fetchJsonOrNull(`${API_BASE_URL}/api/notifications`)
+      ]);
+
+      hydrateFromBootstrapData({
+        products: prodRes,
+        movements: movRes,
+        users: userRes,
+        config: configRes,
+        settings: settingsRes,
+        versions: versionsRes,
+        roles: rolesRes,
+        notifications: notifRes
+      });
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    }
+  }, [fetchJsonOrNull, hydrateFromBootstrapData, fetchContractRates]);
+
   /**
    * Sincronización incremental desde el servidor (/api/sync/changes?since=...)
    * Obtiene solo los deltas modificados o eliminados sin pisar entidades pendientes en cola local.
    */
   const fetchIncrementalChanges = useCallback(async () => {
-    if (!currentUser?.id) return null;
+    if (!currentUserId) return null;
     if (typeof navigator !== 'undefined' && !navigator.onLine) return null;
     const status = getOnDemandStatus();
     if (status.isSyncing) return null;
@@ -406,15 +447,19 @@ export const InventoryProvider = ({ children }) => {
       if (!res.ok) return null;
 
       const data = await res.json();
-      if (data?.syncCursor) {
-        syncCursorRef.current = data.syncCursor;
-        setLastServerSyncAt(data.syncCursor);
-        updateOnDemandMeta({ syncCursor: data.syncCursor, lastServerSyncAt: data.syncCursor });
+      if (data?.requiresFullBootstrap) {
+        await refreshData();
+        return data;
       }
 
       if (data?.hasChanges) {
+        const nextCursor = data.syncCursor || new Date().toISOString();
+        syncCursorRef.current = nextCursor;
+        setLastServerSyncAt(nextCursor);
+        updateOnDemandMeta({ syncCursor: nextCursor, lastServerSyncAt: nextCursor });
+
         const pendingEntityIds = new Set(
-          getOfflineQueue(currentUser.id)
+          getOfflineQueue(currentUserId)
             .map(i => (i.entityId !== null && i.entityId !== undefined ? String(i.entityId) : null))
             .filter(Boolean)
         );
@@ -459,12 +504,18 @@ export const InventoryProvider = ({ children }) => {
           setContractRates({ ...updatedRates });
           saveLocalSnapshot('contractRates', updatedRates);
         }
+      } else {
+        if (data?.syncCursor) {
+          syncCursorRef.current = data.syncCursor;
+          updateOnDemandMeta({ syncCursor: data.syncCursor });
+        }
+        setLastServerSyncAt(prev => prev || (data?.syncCursor || new Date().toISOString()));
       }
       return data;
     } catch {
       return null;
     }
-  }, [currentUser?.id]);
+  }, [currentUserId, refreshData]);
 
   // Polling incremental periódico (cada 20s en pestaña visible) y al recuperar el foco
   useEffect(() => {
@@ -668,42 +719,6 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
-  const refreshData = useCallback(async () => {
-    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-    try {
-      const bootData = await fetchJsonOrNull(`${API_BASE_URL}/api/bootstrap`);
-      if (bootData && bootData.success) {
-        hydrateFromBootstrapData(bootData);
-        return;
-      }
-
-      fetchContractRates();
-      const [prodRes, movRes, userRes, configRes, settingsRes, versionsRes, rolesRes, notifRes] = await Promise.all([
-        fetchJsonOrNull(`${API_BASE_URL}/api/products`),
-        fetchJsonOrNull(`${API_BASE_URL}/api/movements`),
-        fetchJsonOrNull(`${API_BASE_URL}/api/users`),
-        fetchJsonOrNull(`${API_BASE_URL}/api/config`),
-        fetchJsonOrNull(`${API_BASE_URL}/api/settings`),
-        fetchJsonOrNull(`${API_BASE_URL}/api/versions`),
-        fetchJsonOrNull(`${API_BASE_URL}/api/roles`),
-        fetchJsonOrNull(`${API_BASE_URL}/api/notifications`)
-      ]);
-
-      hydrateFromBootstrapData({
-        products: prodRes,
-        movements: movRes,
-        users: userRes,
-        config: configRes,
-        settings: settingsRes,
-        versions: versionsRes,
-        roles: rolesRes,
-        notifications: notifRes
-      });
-    } catch (error) {
-      console.error('Error refreshing data:', error);
-    }
-  }, [hydrateFromBootstrapData]);
-
   // Funciones públicas de sincronización y gestión de cola OnDemand
   const syncOnDemandNow = useCallback(async (onProgress) => {
     const result = await syncOfflineQueueWithServer({
@@ -726,33 +741,33 @@ export const InventoryProvider = ({ children }) => {
   const checkOnDemandConnection = useCallback(async () => {
     const status = await checkPageAccessibility(API_BASE_URL);
     if (status.isOnline && status.isPageAccessible) {
-      if (getOfflineQueue(currentUser?.id).length > 0) {
+      if (getOfflineQueue(currentUserId).length > 0) {
         await syncOnDemandNow();
       } else {
         await fetchIncrementalChanges();
       }
     }
     return status;
-  }, [currentUser?.id, syncOnDemandNow, fetchIncrementalChanges]);
+  }, [currentUserId, syncOnDemandNow, fetchIncrementalChanges]);
 
   const removeOfflineQueueItem = useCallback((opId) => {
-    return removeOfflineOperation(opId, currentUser?.id);
-  }, [currentUser?.id]);
+    return removeOfflineOperation(opId, currentUserId);
+  }, [currentUserId]);
 
   const retryOfflineQueueItem = useCallback(async (opId, options = {}) => {
-    const updated = retryOfflineOperation(opId, { ...options, userId: currentUser?.id });
+    const updated = retryOfflineOperation(opId, { ...options, userId: currentUserId });
     if (updated && getOnDemandStatus().isOnline && getOnDemandStatus().isPageAccessible) {
       await syncOnDemandNow();
     }
     return updated;
-  }, [currentUser?.id, syncOnDemandNow]);
+  }, [currentUserId, syncOnDemandNow]);
 
   const clearAllOfflineQueue = useCallback(() => {
-    clearOfflineQueue(currentUser?.id);
-  }, [currentUser?.id]);
+    clearOfflineQueue(currentUserId);
+  }, [currentUserId]);
 
   const importOfflineQueueItems = useCallback((items = []) => {
-    const existing = getOfflineQueue(currentUser?.id);
+    const existing = getOfflineQueue(currentUserId);
     const existingIds = new Set(existing.map(i => i.id));
     let importedCount = 0;
     const merged = [...existing];
@@ -763,8 +778,8 @@ export const InventoryProvider = ({ children }) => {
           ...item,
           id: genId,
           idempotencyKey: item.idempotencyKey || genId,
-          userId: currentUser?.id ? String(currentUser.id) : (item.userId || 'default'),
-          username: currentUser?.username || item.username || 'Sistema',
+          userId: currentUserId ? String(currentUserId) : (item.userId || 'default'),
+          username: currentUsername || item.username || 'Sistema',
           status: 'pending',
           error: null
         };
@@ -772,9 +787,9 @@ export const InventoryProvider = ({ children }) => {
         importedCount++;
       }
     });
-    saveOfflineQueue(merged, currentUser?.id);
+    saveOfflineQueue(merged, currentUserId);
     return importedCount;
-  }, [currentUser?.id, currentUser?.username]);
+  }, [currentUserId, currentUsername]);
 
   // Guardia de seguridad para acciones sensibles que requieren servidor en vivo
   const ensureOnlineForSensitiveAction = useCallback((actionLabel) => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Menu, ShieldAlert } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import { Toaster } from 'react-hot-toast';
@@ -30,24 +30,24 @@ const ChangeHistory = lazy(() => import('./components/Security/Changelog/ChangeH
 const NotificationCenter = lazy(() => import('./components/Security/Notifications/NotificationCenter'));
 const UserManual = lazy(() => import('./components/Security/Manual/UserManual'));
 
-// Precarga inteligente en segundo plano para garantizar que todos los módulos estén en caché OnDemand sin internet
-const preloadLazyModulesForOffline = () => {
-  import('./components/Products/ProductList').catch(() => {});
-  import('./components/Movements/MovementList').catch(() => {});
-  import('./components/Summary/Summary').catch(() => {});
-  import('./components/Summary/Summary2').catch(() => {});
-  import('./components/Insurance/InsuranceReport').catch(() => {});
-  import('./components/Inventory/InventoryCount').catch(() => {});
-  import('./components/Settings/Settings').catch(() => {});
-  import('./components/Users/UserList').catch(() => {});
-  import('./components/Security/UserAccess/UserAccess').catch(() => {});
-  import('./components/Security/Roles/RoleList').catch(() => {});
-  import('./components/Security/Audit/SystemLog').catch(() => {});
-  import('./components/Security/Sessions/ConnectedUsers').catch(() => {});
-  import('./components/Security/Changelog/ChangeHistory').catch(() => {});
-  import('./components/Security/Notifications/NotificationCenter').catch(() => {});
-  import('./components/Security/Manual/UserManual').catch(() => {});
-};
+// Cola escalonada de módulos secundarios filtrada por permisos RBAC para disponibilidad offline OnDemand
+const OFFLINE_LAZY_MODULES = [
+  { perm: 'products', load: () => import('./components/Products/ProductList') },
+  { perm: 'movements', load: () => import('./components/Movements/MovementList') },
+  { perm: 'inventory-count', load: () => import('./components/Inventory/InventoryCount') },
+  { perm: 'summary', load: () => import('./components/Summary/Summary') },
+  { perm: 'summary2', load: () => import('./components/Summary/Summary2') },
+  { perm: 'insurance', load: () => import('./components/Insurance/InsuranceReport') },
+  { perm: 'security-users', load: () => import('./components/Users/UserList') },
+  { perm: 'security-access', load: () => import('./components/Security/UserAccess/UserAccess') },
+  { perm: 'security-roles', load: () => import('./components/Security/Roles/RoleList') },
+  { perm: 'security-logs', load: () => import('./components/Security/Audit/SystemLog') },
+  { perm: 'security-sessions', load: () => import('./components/Security/Sessions/ConnectedUsers') },
+  { perm: 'security-changelog', load: () => import('./components/Security/Changelog/ChangeHistory') },
+  { perm: 'security-notifications', load: () => import('./components/Security/Notifications/NotificationCenter') },
+  { perm: 'security-manual', load: () => import('./components/Security/Manual/UserManual') },
+  { perm: 'settings', load: () => import('./components/Settings/Settings') }
+];
 
 function ViewLoader() {
   return (
@@ -77,13 +77,82 @@ function AppContent() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Precargar módulos secundarios para disponibilidad inmediata cuando el usuario pierda internet
+  const canViewRef = useRef(canView);
+  const preloadedPermsRef = useRef(new Set());
+
   useEffect(() => {
-    const timer = setTimeout(() => {
-      preloadLazyModulesForOffline();
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, []);
+    canViewRef.current = canView;
+  }, [canView]);
+
+  // Precargar módulos permitidos por RBAC uno por uno en tiempos ociosos (requestIdleCallback)
+  useEffect(() => {
+    if (!currentUser?.id) {
+      preloadedPermsRef.current.clear();
+      return undefined;
+    }
+
+    let cancelled = false;
+    let idleHandle = null;
+    let fallbackTimeout = null;
+
+    const scheduleIdleStep = (cb) => {
+      if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+        idleHandle = window.requestIdleCallback(cb, { timeout: 1500 });
+      } else {
+        fallbackTimeout = setTimeout(cb, 180);
+      }
+    };
+
+    const clearIdleStep = () => {
+      if (idleHandle !== null && typeof window !== 'undefined' && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleHandle);
+        idleHandle = null;
+      }
+      if (fallbackTimeout !== null) {
+        clearTimeout(fallbackTimeout);
+        fallbackTimeout = null;
+      }
+    };
+
+    const settleTimer = setTimeout(() => {
+      if (cancelled) return;
+      const checkCanView = canViewRef.current;
+      const allowedQueue = OFFLINE_LAZY_MODULES.filter(
+        (entry) =>
+          (!entry.perm || checkCanView(entry.perm)) &&
+          !preloadedPermsRef.current.has(entry.perm || '__public__')
+      );
+
+      let index = 0;
+      const loadNextModule = () => {
+        idleHandle = null;
+        fallbackTimeout = null;
+        if (cancelled || index >= allowedQueue.length) return;
+        const entry = allowedQueue[index++];
+        entry
+          .load()
+          .then(() => {
+            preloadedPermsRef.current.add(entry.perm || '__public__');
+          })
+          .catch(() => {})
+          .finally(() => {
+            if (!cancelled && index < allowedQueue.length) {
+              scheduleIdleStep(loadNextModule);
+            }
+          });
+      };
+
+      if (allowedQueue.length > 0) {
+        scheduleIdleStep(loadNextModule);
+      }
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(settleTimer);
+      clearIdleStep();
+    };
+  }, [currentUser?.id, currentUser?.role, currentUser?.role_id, currentUser?.permissions]);
 
   const handleSelectCutFromModal = async (cutSummary) => {
     try {

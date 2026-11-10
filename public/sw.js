@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inventario-shell-v3-ondemand';
+const CACHE_NAME = 'inventario-shell-v4-ondemand';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/favicon.svg', '/pwa-icon.svg'];
 
 self.addEventListener('install', event => {
@@ -18,8 +18,35 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
+  if (!event.data) return;
+
+  if (event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+    return;
+  }
+
+  if (event.data.type === 'CACHE_ACTIVE_ASSETS' && Array.isArray(event.data.urls)) {
+    event.waitUntil(
+      caches.open(CACHE_NAME).then(cache =>
+        Promise.allSettled(
+          event.data.urls.map(async rawUrl => {
+            if (!rawUrl || typeof rawUrl !== 'string') return;
+            const parsed = new URL(rawUrl, self.location.origin);
+            if (parsed.origin !== self.location.origin || parsed.pathname.startsWith('/api/')) {
+              return;
+            }
+            parsed.hash = '';
+            const normalizedUrl = parsed.href;
+            const cached = await cache.match(normalizedUrl);
+            if (cached) return;
+            const res = await fetch(normalizedUrl);
+            if (res && res.ok) {
+              await cache.put(normalizedUrl, res);
+            }
+          })
+        )
+      )
+    );
   }
 });
 
