@@ -12,12 +12,15 @@ import { createRequire } from 'node:module';
 import { verifyToken, generateToken, invalidateAuthCache } from './middleware/auth.js';
 import { requirePermission, requireAdmin } from './middleware/permissions.js';
 
+export { requirePermission, requireAdmin };
+
 const _require = createRequire(import.meta.url);
 const bcrypt = (() => {
     try { return _require('bcryptjs'); } catch { return _require('bcrypt'); }
 })();
 
 const app = express();
+app.set('trust proxy', 1);
 const router = express.Router();
 
 // 1. Cabeceras HTTP de seguridad con Helmet
@@ -29,22 +32,58 @@ app.use(helmet({
 // 2. Compresión HTTP Gzip/Deflate
 app.use(compression());
 
-// 3. CORS permitido para desarrollo local y dominios en la nube (Vercel)
-const envOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
-    : [];
+// 3. CORS endurecido para desarrollo local, orígenes autorizados y dominios propios en Vercel
+export const isAllowedCorsOrigin = (
+    origin,
+    allowedOriginsEnv = process.env.ALLOWED_ORIGINS,
+    nodeEnv = process.env.NODE_ENV
+) => {
+    if (!origin) return true;
+
+    let parsed;
+    try {
+        parsed = new URL(origin);
+    } catch {
+        return false;
+    }
+
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return false;
+    }
+
+    const normalizedOrigin = parsed.origin;
+    const allowedSet = new Set(
+        String(allowedOriginsEnv || '')
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean)
+            .map(entry => {
+                try {
+                    return new URL(entry).origin;
+                } catch {
+                    return entry.replace(/\/+$/, '');
+                }
+            })
+    );
+
+    if (allowedSet.has(normalizedOrigin)) {
+        return true;
+    }
+
+    if (nodeEnv !== 'production' && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')) {
+        return true;
+    }
+
+    if (parsed.protocol === 'https:' && /^inventario(-[a-z0-9-]+)?\.vercel\.app$/i.test(parsed.hostname)) {
+        return true;
+    }
+
+    return false;
+};
 
 app.use(cors({
     origin: (origin, callback) => {
-        // Permitir peticiones sin origen (como curl o apps móviles), localhost, o cualquier subdominio de Vercel
-        if (
-            !origin ||
-            envOrigins.includes('*') ||
-            envOrigins.includes(origin) ||
-            (origin.endsWith('.vercel.app') && origin.toLowerCase().includes('inventario')) ||
-            origin.includes('localhost') ||
-            origin.includes('127.0.0.1')
-        ) {
+        if (isAllowedCorsOrigin(origin)) {
             return callback(null, true);
         }
         return callback(new Error('Bloqueado por política CORS'));
@@ -322,6 +361,29 @@ const recordSyncTombstone = async (entityType, entityId, deletedBy = 'Sistema', 
     }
 };
 
+// Mantenimiento no bloqueante con throttling (máximo 1 ejecución cada 6 horas por proceso)
+const MAINTENANCE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const TOMBSTONE_HORIZON_MS = 29 * 24 * 60 * 60 * 1000;
+let lastMaintenanceAt = 0;
+
+export const maybePruneSyncTables = async (force = false) => {
+    const now = Date.now();
+    if (!force && lastMaintenanceAt > 0 && (now - lastMaintenanceAt) < MAINTENANCE_INTERVAL_MS) {
+        return false;
+    }
+    lastMaintenanceAt = now;
+    try {
+        await Promise.all([
+            pool.query('DELETE FROM idempotency_keys WHERE created_at < DATE_SUB(NOW(), INTERVAL 7 DAY)'),
+            pool.query('DELETE FROM sync_tombstones WHERE deleted_at < DATE_SUB(NOW(), INTERVAL 30 DAY)')
+        ]);
+        return true;
+    } catch (err) {
+        console.warn('[Maintenance] maybePruneSyncTables warning:', err?.message || err);
+        return false;
+    }
+};
+
 // Helper de concurrencia optimista (detecta conflictos 409 VERSION_CONFLICT al sincronizar ediciones offline)
 export const checkEntityVersionConflict = (req, currentRow) => {
     if (!currentRow) return null;
@@ -470,7 +532,7 @@ router.get('/version', (req, res) => {
 });
 
 // Helper seguro para extraer YYYY-MM-DD de columnas DATE de MySQL sin desfases por zona horaria UTC
-const formatSqlDateOnly = (val) => {
+export const formatSqlDateOnly = (val) => {
     if (!val) return null;
     if (val instanceof Date) {
         if (Number.isNaN(val.getTime())) return null;
@@ -480,6 +542,7 @@ const formatSqlDateOnly = (val) => {
         return `${y}-${m}-${d}`;
     }
     const str = String(val).trim();
+    if (!str) return null;
     const match = str.match(/^(\d{4}-\d{2}-\d{2})/);
     return match ? match[1] : str.split('T')[0].split(' ')[0];
 };
@@ -518,8 +581,30 @@ const resolveBackendDailyCutDates = (rawStart, rawEnd, rawTitle, congelados = []
     return { cleanStart, cleanEnd, cleanTitle };
 };
 
-// Helper para mapear filas de daily_cuts (con soporte opcional de modo resumen ?summary=1)
-const formatDailyCutRow = (r, index = 0, summaryOnly = false) => {
+const extractSeriesClosingStock = (seriesRows, targetEndDate) => {
+    if (!Array.isArray(seriesRows) || seriesRows.length === 0) return null;
+    let targetRow = null;
+    if (targetEndDate) {
+        for (let i = seriesRows.length - 1; i >= 0; i--) {
+            const rowDate = formatSqlDateOnly(seriesRows[i]?.fecha || seriesRows[i]?.date);
+            if (rowDate && rowDate === targetEndDate) {
+                targetRow = seriesRows[i];
+                break;
+            }
+        }
+    }
+    if (!targetRow) {
+        targetRow = seriesRows[seriesRows.length - 1];
+    }
+    if (!targetRow || targetRow.stockFinal === undefined || targetRow.stockFinal === null || targetRow.stockFinal === '') {
+        return null;
+    }
+    const num = Number(targetRow.stockFinal);
+    return Number.isFinite(num) ? num : null;
+};
+
+// Helper para mapear filas de daily_cuts (con soporte opcional de modo resumen y preservación de closingStock)
+export const formatDailyCutRow = (r, _index = 0, summaryOnly = false) => {
     let totals = {};
     try {
         totals = typeof r.totalsData === 'string' ? JSON.parse(r.totalsData) : (r.totalsData || {});
@@ -542,7 +627,14 @@ const formatDailyCutRow = (r, index = 0, summaryOnly = false) => {
         preparados
     );
 
-    if (summaryOnly && index > 0) {
+    const closingStock = {
+        congeladosData: extractSeriesClosingStock(congelados, cleanEnd)
+            ?? (typeof r.closingStock?.congeladosData === 'number' ? r.closingStock.congeladosData : null),
+        preparadosData: extractSeriesClosingStock(preparados, cleanEnd)
+            ?? (typeof r.closingStock?.preparadosData === 'number' ? r.closingStock.preparadosData : null)
+    };
+
+    if (summaryOnly) {
         return {
             ...r,
             title: cleanTitle,
@@ -553,6 +645,7 @@ const formatDailyCutRow = (r, index = 0, summaryOnly = false) => {
             preparadosData: [],
             servicesData: [],
             isSummaryOnly: true,
+            closingStock,
             totals,
             totalsData: totals,
             sipeSaleId: r.sipe_sale_id ?? null,
@@ -578,6 +671,7 @@ const formatDailyCutRow = (r, index = 0, summaryOnly = false) => {
         congeladosData: congelados,
         preparadosData: preparados,
         servicesData: services,
+        closingStock,
         totals,
         totalsData: totals,
         sipeSaleId: r.sipe_sale_id ?? null,
@@ -688,10 +782,9 @@ router.get('/bootstrap', async (req, res) => {
                 date: n.date || (n.created_at instanceof Date ? n.created_at.toISOString().slice(0, 16).replace('T', ' ') : (n.created_at ? String(n.created_at).slice(0, 16) : null))
             }))),
             canView('summary2')
-                ? pool.query('SELECT * FROM daily_cuts ORDER BY endDate DESC, startDate DESC, created_at DESC').then(([rows]) => {
-                    const isSummaryMode = req.query?.summary === '1' || req.query?.summary === 'true';
-                    return rows.map((r, idx) => formatDailyCutRow(r, idx, isSummaryMode));
-                })
+                ? pool.query('SELECT * FROM daily_cuts ORDER BY endDate DESC, startDate DESC, created_at DESC').then(([rows]) =>
+                    rows.map((r, idx) => formatDailyCutRow(r, idx, idx >= 3))
+                )
                 : Promise.resolve([]),
             canView('security-users')
                 ? pool.query(`
@@ -756,7 +849,20 @@ router.get('/bootstrap', async (req, res) => {
 // Endpoint de sincronización incremental multi-dispositivo (/api/sync/changes?since=...)
 router.get('/sync/changes', async (req, res) => {
     try {
+        void maybePruneSyncTables();
+        const syncCursor = new Date().toISOString();
         const sinceRaw = req.query?.since;
+        if (sinceRaw) {
+            const sinceDate = new Date(sinceRaw);
+            if (!Number.isNaN(sinceDate.getTime()) && (Date.now() - sinceDate.getTime() > TOMBSTONE_HORIZON_MS)) {
+                return res.json({
+                    success: true,
+                    hasChanges: true,
+                    requiresFullBootstrap: true,
+                    syncCursor
+                });
+            }
+        }
         const sinceTime = sinceRaw ? new Date(sinceRaw) : new Date(Date.now() - 60000);
         const safeSince = new Date((Number.isNaN(sinceTime.getTime()) ? Date.now() - 60000 : sinceTime.getTime()) - 1000);
         const safeSinceIso = safeSince.toISOString().slice(0, 19).replace('T', ' ');
@@ -827,8 +933,8 @@ router.get('/sync/changes', async (req, res) => {
                     let rowsData = [];
                     try { totals = typeof r.totalsData === 'string' ? JSON.parse(r.totalsData) : (r.totalsData || {}); } catch { totals = {}; }
                     try { rowsData = typeof r.rowsData === 'string' ? JSON.parse(r.rowsData) : (r.rowsData || []); } catch { rowsData = []; }
-                    const cleanStart = r.startDate ? (r.startDate instanceof Date ? r.startDate.toISOString().split('T')[0] : String(r.startDate).split('T')[0]) : null;
-                    const cleanCutoff = r.cutoffDate instanceof Date ? r.cutoffDate.toISOString().split('T')[0] : String(r.cutoffDate || '').split('T')[0];
+                    const cleanStart = formatSqlDateOnly(r.startDate);
+                    const cleanCutoff = formatSqlDateOnly(r.cutoffDate) || '';
                     return {
                         ...r,
                         startDate: cleanStart,
@@ -1898,6 +2004,8 @@ router.post('/auth/login', authLimiter, async (req, res) => {
         // Generar JWT incluyendo el identificador de sesión activa
         const token = generateToken({ id: user.id, username: user.username, role: user.role, sessionId });
 
+        void maybePruneSyncTables();
+
         res.json({ success: true, user: safeUser, sessionId, token });
     } catch (error) {
         sendApiError(res, error);
@@ -2414,12 +2522,16 @@ router.put('/notifications/:id/read', async (req, res) => {
 });
 
 router.put('/notifications/read-all', async (req, res) => {
-    const userId = req.user?.id || req.body.userId;
+    const userId = req.user?.id;
+    if (!userId) {
+        return res.status(401).json({ error: 'No autenticado.' });
+    }
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'Administrador';
     try {
-        if (userId) {
-            await pool.query('UPDATE notifications SET isRead = 1 WHERE userId IS NULL OR userId = ?', [userId]);
+        if (isAdmin) {
+            await pool.query('UPDATE notifications SET isRead = 1 WHERE userId = ? OR userId IS NULL', [userId]);
         } else {
-            await pool.query('UPDATE notifications SET isRead = 1');
+            await pool.query('UPDATE notifications SET isRead = 1 WHERE userId = ?', [userId]);
         }
         res.json({ success: true });
     } catch (error) {
@@ -2494,14 +2606,29 @@ router.get('/settings', requirePermission('settings', 'view'), async (req, res) 
     }
 });
 
+export const isValidSettingsLogo = (logo) => {
+    if (logo === undefined || logo === null || logo === '') return true;
+    if (typeof logo !== 'string') return false;
+    if (logo.length > 2_800_000) return false;
+    return /^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=\s]+$/i.test(logo.trim());
+};
+
 router.post('/settings', requirePermission('settings', 'edit'), async (req, res) => {
-    const { name, logo } = req.body;
+    const { name, logo } = req.body || {};
     const actor = req.user?.username || 'Sistema';
     const actorId = req.user?.id || null;
 
+    if (!isValidSettingsLogo(logo)) {
+        return res.status(400).json({
+            error: 'Formato de logotipo inválido. Solo se permiten imágenes PNG, JPEG o WEBP en Base64 (máx. ~2 MB).'
+        });
+    }
+
+    const cleanLogo = (logo === undefined || logo === null || logo === '') ? null : logo.trim();
+
     try {
         await pool.query('INSERT INTO settings (id, name, logo) VALUES (1, ?, ?) ON DUPLICATE KEY UPDATE name = ?, logo = ?', 
-        [name, logo, name, logo]);
+        [name, cleanLogo, name, cleanLogo]);
         
         await logSystemEvent({
             userId: actorId,
@@ -2717,7 +2844,7 @@ router.get('/daily-cuts', requirePermission('summary2', 'view'), async (req, res
         `);
 
         const isSummaryMode = req.query?.summary === '1' || req.query?.summary === 'true';
-        const cuts = rows.map((r, index) => formatDailyCutRow(r, index, isSummaryMode));
+        const cuts = rows.map((r, index) => formatDailyCutRow(r, index, isSummaryMode && index > 0));
 
         res.json(cuts);
     } catch (error) {
@@ -2746,6 +2873,11 @@ router.get('/daily-cuts/:id', requirePermission('summary2', 'view'), async (req,
             preparadosParsed
         );
 
+        const closingStock = {
+            congeladosData: extractSeriesClosingStock(congeladosParsed, cleanEnd),
+            preparadosData: extractSeriesClosingStock(preparadosParsed, cleanEnd)
+        };
+
         let dtePayload = null;
         if (cut.dte_payload) {
             try {
@@ -2762,6 +2894,7 @@ router.get('/daily-cuts/:id', requirePermission('summary2', 'view'), async (req,
             congeladosData: congeladosParsed,
             preparadosData: preparadosParsed,
             servicesData: servicesParsed,
+            closingStock,
             totalsData: totalsParsed,
             sipeSaleId: cut.sipe_sale_id ?? null,
             dteCodigoGeneracion: cut.dte_codigo_generacion ?? null,
@@ -2794,11 +2927,13 @@ router.post('/daily-cuts', requirePermission('summary2', 'edit'), async (req, re
         const actor = req.user?.username || 'admin';
         const actorId = req.user?.id || null;
 
-        if (!startDate || !endDate) {
+        const cleanStartDate = formatSqlDateOnly(startDate);
+        const cleanEndDate = formatSqlDateOnly(endDate);
+        if (!cleanStartDate || !cleanEndDate) {
             return res.status(400).json({ error: 'Las fechas de inicio y fin son obligatorias.' });
         }
 
-        const autoTitle = title || `Corte ${startDate} al ${endDate}`;
+        const autoTitle = title || `Corte ${cleanStartDate} al ${cleanEndDate}`;
         const autoClient = clientName || 'SUPER SELECTOS';
 
         const jsonCongelados = typeof congeladosData === 'string' ? congeladosData : JSON.stringify(congeladosData);
@@ -2810,7 +2945,7 @@ router.post('/daily-cuts', requirePermission('summary2', 'edit'), async (req, re
             `INSERT INTO daily_cuts 
             (id, title, clientName, startDate, endDate, isLocked, congeladosData, preparadosData, servicesData, totalsData, created_by)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [id, autoTitle, autoClient, startDate, endDate, isLocked ? 1 : 0, jsonCongelados, jsonPreparados, jsonServices, jsonTotals, actor]
+            [id, autoTitle, autoClient, cleanStartDate, cleanEndDate, isLocked ? 1 : 0, jsonCongelados, jsonPreparados, jsonServices, jsonTotals, actor]
         );
 
         await logSystemEvent({
@@ -2818,7 +2953,7 @@ router.post('/daily-cuts', requirePermission('summary2', 'edit'), async (req, re
             username: actor,
             action: 'FREEZE_DAILY_CUT',
             module: 'summary2',
-            details: `Cierre y congelamiento de corte diario '${autoTitle}' (${startDate} al ${endDate})`
+            details: `Cierre y congelamiento de corte diario '${autoTitle}' (${cleanStartDate} al ${cleanEndDate})`
         });
 
         res.status(201).json({
@@ -2826,8 +2961,8 @@ router.post('/daily-cuts', requirePermission('summary2', 'edit'), async (req, re
             id,
             title: autoTitle,
             clientName: autoClient,
-            startDate,
-            endDate,
+            startDate: cleanStartDate,
+            endDate: cleanEndDate,
             isLocked: Boolean(isLocked),
             dteStatus: 'UNBILLED',
             created_by: actor
@@ -2877,8 +3012,8 @@ router.put('/daily-cuts/:id', requirePermission('summary2', 'edit'), async (req,
 
         const newTitle = title !== undefined ? title : current.title;
         const newClient = clientName !== undefined ? clientName : current.clientName;
-        const newStartDate = startDate !== undefined ? startDate : current.startDate;
-        const newEndDate = endDate !== undefined ? endDate : current.endDate;
+        const newStartDate = formatSqlDateOnly(startDate !== undefined ? startDate : current.startDate);
+        const newEndDate = formatSqlDateOnly(endDate !== undefined ? endDate : current.endDate);
         const newIsLocked = isLocked !== undefined ? (isLocked ? 1 : 0) : current.isLocked;
 
         const newCongelados = congeladosData !== undefined 
@@ -2962,7 +3097,7 @@ router.put('/daily-cuts/:id/lock-status', requirePermission('summary2', 'edit'),
 });
 
 // Eliminar un corte registrado (solo permitido si está desbloqueado y sin DTE emitido)
-router.delete('/daily-cuts/:id', requirePermission('summary2', 'edit'), async (req, res) => {
+router.delete('/daily-cuts/:id', requirePermission('summary2', 'delete'), async (req, res) => {
     const actor = req.user?.username || 'Sistema';
     const actorId = req.user?.id || null;
     try {
@@ -3024,12 +3159,8 @@ router.get('/insurance-cuts', requirePermission('insurance', 'view'), async (req
                 rowsData = typeof r.rowsData === 'string' ? JSON.parse(r.rowsData) : (r.rowsData || []);
             } catch { rowsData = []; }
 
-            const cleanStart = r.startDate 
-                ? (r.startDate instanceof Date ? r.startDate.toISOString().split('T')[0] : String(r.startDate).split('T')[0])
-                : null;
-            const cleanCutoff = r.cutoffDate instanceof Date 
-                ? r.cutoffDate.toISOString().split('T')[0] 
-                : String(r.cutoffDate || '').split('T')[0];
+            const cleanStart = formatSqlDateOnly(r.startDate);
+            const cleanCutoff = formatSqlDateOnly(r.cutoffDate) || '';
 
             return {
                 ...r,
@@ -3062,12 +3193,8 @@ router.get('/insurance-cuts/:id', requirePermission('insurance', 'view'), async 
             return res.status(404).json({ error: 'Corte de seguro no encontrado' });
         }
         const cut = rows[0];
-        const cleanStart = cut.startDate 
-            ? (cut.startDate instanceof Date ? cut.startDate.toISOString().split('T')[0] : String(cut.startDate).split('T')[0])
-            : null;
-        const cleanCutoff = cut.cutoffDate instanceof Date 
-            ? cut.cutoffDate.toISOString().split('T')[0] 
-            : String(cut.cutoffDate || '').split('T')[0];
+        const cleanStart = formatSqlDateOnly(cut.startDate);
+        const cleanCutoff = formatSqlDateOnly(cut.cutoffDate) || '';
 
         let dtePayload = null;
         if (cut.dte_payload) {
@@ -3115,11 +3242,13 @@ router.post('/insurance-cuts', requirePermission('insurance', 'edit'), async (re
         const actor = req.user?.username || 'admin';
         const actorId = req.user?.id || null;
 
-        if (!cutoffDate) {
+        const cleanCutoffDate = formatSqlDateOnly(cutoffDate);
+        const cleanStartDate = startDate ? formatSqlDateOnly(startDate) : null;
+        if (!cleanCutoffDate) {
             return res.status(400).json({ error: 'La fecha de corte es obligatoria.' });
         }
 
-        const autoTitle = title || `Corte de Seguro al ${cutoffDate}`;
+        const autoTitle = title || `Corte de Seguro al ${cleanCutoffDate}`;
         const jsonRows = typeof rowsData === 'string' ? rowsData : JSON.stringify(rowsData);
         const jsonTotals = typeof totalsData === 'string' ? totalsData : JSON.stringify(totalsData);
 
@@ -3127,7 +3256,7 @@ router.post('/insurance-cuts', requirePermission('insurance', 'edit'), async (re
             `INSERT INTO insurance_cuts 
             (id, title, customerName, warehouseName, startDate, cutoffDate, premiumRate, isLocked, rowsData, totalsData, created_by)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [id, autoTitle, customerName, warehouseName, startDate || null, cutoffDate, premiumRate, isLocked ? 1 : 0, jsonRows, jsonTotals, actor]
+            [id, autoTitle, customerName, warehouseName, cleanStartDate, cleanCutoffDate, premiumRate, isLocked ? 1 : 0, jsonRows, jsonTotals, actor]
         );
 
         await logSystemEvent({
@@ -3135,7 +3264,7 @@ router.post('/insurance-cuts', requirePermission('insurance', 'edit'), async (re
             username: actor,
             action: 'FREEZE_INSURANCE_CUT',
             module: 'insurance',
-            details: `Cierre y congelamiento de póliza de seguro '${autoTitle}' al ${cutoffDate}`
+            details: `Cierre y congelamiento de póliza de seguro '${autoTitle}' al ${cleanCutoffDate}`
         });
 
         res.status(201).json({
@@ -3144,8 +3273,8 @@ router.post('/insurance-cuts', requirePermission('insurance', 'edit'), async (re
             title: autoTitle,
             customerName,
             warehouseName,
-            startDate,
-            cutoffDate,
+            startDate: cleanStartDate,
+            cutoffDate: cleanCutoffDate,
             premiumRate,
             isLocked: Boolean(isLocked),
             dteStatus: 'UNBILLED',
@@ -3196,8 +3325,8 @@ router.put('/insurance-cuts/:id', requirePermission('insurance', 'edit'), async 
         const newTitle = title !== undefined ? title : current.title;
         const newCustomer = customerName !== undefined ? customerName : current.customerName;
         const newWarehouse = warehouseName !== undefined ? warehouseName : current.warehouseName;
-        const newStartDate = startDate !== undefined ? startDate : current.startDate;
-        const newCutoffDate = cutoffDate !== undefined ? cutoffDate : current.cutoffDate;
+        const newStartDate = formatSqlDateOnly(startDate !== undefined ? startDate : current.startDate);
+        const newCutoffDate = formatSqlDateOnly(cutoffDate !== undefined ? cutoffDate : current.cutoffDate);
         const newPremiumRate = premiumRate !== undefined ? premiumRate : current.premiumRate;
         const newIsLocked = isLocked !== undefined ? (isLocked ? 1 : 0) : current.isLocked;
 
@@ -3274,7 +3403,7 @@ router.put('/insurance-cuts/:id/lock-status', requirePermission('insurance', 'ed
 });
 
 // Eliminar corte de seguro registrado (solo permitido si está desbloqueado y sin DTE emitido)
-router.delete('/insurance-cuts/:id', requirePermission('insurance', 'edit'), async (req, res) => {
+router.delete('/insurance-cuts/:id', requirePermission('insurance', 'delete'), async (req, res) => {
     const actor = req.user?.username || 'Sistema';
     const actorId = req.user?.id || null;
     try {
@@ -3328,12 +3457,8 @@ const loadCutForBilling = async (cutType, cutId) => {
         const [rows] = await pool.query('SELECT * FROM insurance_cuts WHERE id = ?', [cutId]);
         if (rows.length === 0) return null;
         const cut = rows[0];
-        const cleanStart = cut.startDate
-            ? (cut.startDate instanceof Date ? cut.startDate.toISOString().split('T')[0] : String(cut.startDate).split('T')[0])
-            : null;
-        const cleanCutoff = cut.cutoffDate instanceof Date
-            ? cut.cutoffDate.toISOString().split('T')[0]
-            : String(cut.cutoffDate || '').split('T')[0];
+        const cleanStart = formatSqlDateOnly(cut.startDate);
+        const cleanCutoff = formatSqlDateOnly(cut.cutoffDate) || '';
         const rowsData = typeof cut.rowsData === 'string' ? JSON.parse(cut.rowsData || '[]') : (cut.rowsData || []);
         const totalsData = typeof cut.totalsData === 'string' ? JSON.parse(cut.totalsData || '{}') : (cut.totalsData || {});
         return {
@@ -3358,12 +3483,8 @@ const loadCutForBilling = async (cutType, cutId) => {
     const [rows] = await pool.query('SELECT * FROM daily_cuts WHERE id = ?', [cutId]);
     if (rows.length === 0) return null;
     const cut = rows[0];
-    const cleanStart = cut.startDate instanceof Date
-        ? cut.startDate.toISOString().split('T')[0]
-        : String(cut.startDate || '').split('T')[0];
-    const cleanEnd = cut.endDate instanceof Date
-        ? cut.endDate.toISOString().split('T')[0]
-        : String(cut.endDate || '').split('T')[0];
+    const cleanStart = formatSqlDateOnly(cut.startDate) || '';
+    const cleanEnd = formatSqlDateOnly(cut.endDate) || '';
     const congeladosData = typeof cut.congeladosData === 'string' ? JSON.parse(cut.congeladosData || '[]') : (cut.congeladosData || []);
     const preparadosData = typeof cut.preparadosData === 'string' ? JSON.parse(cut.preparadosData || '[]') : (cut.preparadosData || []);
     const servicesData = typeof cut.servicesData === 'string' ? JSON.parse(cut.servicesData || '[]') : (cut.servicesData || []);
@@ -3579,8 +3700,8 @@ router.get('/billing/history', verifyToken, requireBillingPermission('view'), as
         const formatDaily = dailyRows.map(r => {
             let totals = {};
             try { totals = typeof r.totalsData === 'string' ? JSON.parse(r.totalsData) : (r.totalsData || {}); } catch { totals = {}; }
-            const cleanStart = r.startDate instanceof Date ? r.startDate.toISOString().split('T')[0] : String(r.startDate || '').split('T')[0];
-            const cleanEnd = r.endDate instanceof Date ? r.endDate.toISOString().split('T')[0] : String(r.endDate || '').split('T')[0];
+            const cleanStart = formatSqlDateOnly(r.startDate) || '';
+            const cleanEnd = formatSqlDateOnly(r.endDate) || '';
             return {
                 id: r.id,
                 cutId: r.id,
@@ -3605,8 +3726,8 @@ router.get('/billing/history', verifyToken, requireBillingPermission('view'), as
         const formatInsurance = insuranceRows.map(r => {
             let totals = {};
             try { totals = typeof r.totalsData === 'string' ? JSON.parse(r.totalsData) : (r.totalsData || {}); } catch { totals = {}; }
-            const cleanStart = r.startDate ? (r.startDate instanceof Date ? r.startDate.toISOString().split('T')[0] : String(r.startDate).split('T')[0]) : null;
-            const cleanCutoff = r.cutoffDate instanceof Date ? r.cutoffDate.toISOString().split('T')[0] : String(r.cutoffDate || '').split('T')[0];
+            const cleanStart = formatSqlDateOnly(r.startDate);
+            const cleanCutoff = formatSqlDateOnly(r.cutoffDate) || '';
             return {
                 id: r.id,
                 cutId: r.id,
@@ -3793,7 +3914,7 @@ router.post('/system/restore', requireAdmin, async (req, res) => {
 
         if (Array.isArray(tables.movements)) {
             for (const m of tables.movements) {
-                const cleanDate = m.date ? String(m.date).split('T')[0] : null;
+                const cleanDate = formatSqlDateOnly(m.date);
                 await connection.query(
                     'INSERT INTO movements (id, type, equipment, carrier, seal, refType, refNumber, date, timeStart, timeEnd, auditUser) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                     [m.id, m.type, m.equipment || '', m.carrier || '', m.seal || '', m.refType || '', m.refNumber || '', cleanDate, m.timeStart || null, m.timeEnd || null, m.auditUser || actor]

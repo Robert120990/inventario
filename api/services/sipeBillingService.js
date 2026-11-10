@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
-import inventoryPool from '../db.js';
+import { pool as mainPool } from '../db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -180,10 +180,21 @@ export const EXPECTED_SIPE_CONTRACT = {
     ]
 };
 
-// Pool dedicado para consultar db_sistema_saas en el servidor MySQL configurado por variables de entorno
+// Pool dedicado o compartido para consultar db_sistema_saas en el servidor MySQL configurado por variables de entorno
 let sipeDbPool = null;
 
-function getSipeDbPool() {
+export function shouldReuseMainPool(env = process.env) {
+    const sameOrUnsetHost = !env.SIPE_DB_HOST || env.SIPE_DB_HOST === env.DB_HOST;
+    const sameDbName = (env.SIPE_DB_NAME || env.DB_NAME) === env.DB_NAME;
+    const sameDbUser = (env.SIPE_DB_USER || env.DB_USER) === env.DB_USER;
+    const samePort = String(env.SIPE_DB_PORT || env.DB_PORT || 3306) === String(env.DB_PORT || 3306);
+    return Boolean(sameOrUnsetHost && sameDbName && sameDbUser && samePort);
+}
+
+export function getSipeDbPool() {
+    if (shouldReuseMainPool(process.env)) {
+        return mainPool;
+    }
     if (!sipeDbPool) {
         const sslConfig = process.env.DB_SSL === 'true'
             ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
@@ -300,12 +311,12 @@ export async function ensureCutBillingColumns() {
     const tables = ['daily_cuts', 'insurance_cuts'];
     for (const table of tables) {
         try {
-            const [existingCols] = await inventoryPool.query(`SHOW COLUMNS FROM ${table}`);
+            const [existingCols] = await mainPool.query(`SHOW COLUMNS FROM ${table}`);
             const existingSet = new Set(existingCols.map(c => c.Field));
             for (const col of columnsToEnsure) {
                 if (!existingSet.has(col.name)) {
                     try {
-                        await inventoryPool.query(`ALTER TABLE ${table} ADD COLUMN ${col.def}`);
+                        await mainPool.query(`ALTER TABLE ${table} ADD COLUMN ${col.def}`);
                     } catch (_) {
                         // Ignore duplicate column race condition
                     }
@@ -584,11 +595,19 @@ export async function checkSipeContractStatus(options = {}) {
 }
 
 function toDateStr(val) {
-    if (!val) return new Date().toISOString().split('T')[0];
+    const formatLocal = (d) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    };
+    if (!val) return formatLocal(new Date());
     if (val instanceof Date) {
-        return val.toISOString().split('T')[0];
+        return Number.isNaN(val.getTime()) ? formatLocal(new Date()) : formatLocal(val);
     }
     const str = String(val).trim();
+    const match = str.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
     if (str.includes('T')) return str.split('T')[0];
     return str.substring(0, 10);
 }
@@ -1112,7 +1131,7 @@ export async function emitCutToSipe({ cutId, cutType = 'daily_cut', cutData = nu
     const effectiveCutId = cutId || cutData?.id;
 
     if (effectiveCutId) {
-        const [rows] = await inventoryPool.query(`SELECT * FROM ${tableName} WHERE id = ? LIMIT 1`, [effectiveCutId]);
+        const [rows] = await mainPool.query(`SELECT * FROM ${tableName} WHERE id = ? LIMIT 1`, [effectiveCutId]);
         if (rows.length === 0 && !targetCut) {
             throw new Error(`El corte (${normalizedType}) con ID "${effectiveCutId}" no existe en la base de datos.`);
         }
@@ -1362,7 +1381,7 @@ export async function emitCutToSipe({ cutId, cutType = 'daily_cut', cutData = nu
     };
 
     if (effectiveCutId) {
-        await inventoryPool.query(
+        await mainPool.query(
             `UPDATE ${tableName}
              SET sipe_sale_id = ?,
                  dte_codigo_generacion = ?,
@@ -1388,7 +1407,7 @@ export async function emitCutToSipe({ cutId, cutType = 'daily_cut', cutData = nu
 
     // 7. Registrar evento en bitácora system_logs de Inventario
     try {
-        await inventoryPool.query(
+        await mainPool.query(
             `INSERT INTO system_logs (id, userId, username, action, module, details, ip_address)
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [
@@ -1447,7 +1466,7 @@ export async function getCutSipeBillingStatus({ cutId, cutType = 'daily_cut' }) 
         : 'daily_cut';
     const tableName = normalizedType === 'insurance_cut' ? 'insurance_cuts' : 'daily_cuts';
 
-    const [rows] = await inventoryPool.query(
+    const [rows] = await mainPool.query(
         `SELECT id, title, isLocked, sipe_sale_id, dte_codigo_generacion, dte_numero_control, dte_sello_recepcion, dte_status, dte_emitted_at, dte_payload
          FROM ${tableName} WHERE id = ? LIMIT 1`,
         [cutId]
@@ -1479,5 +1498,7 @@ export default {
     emitCutToSipe,
     getCutSipeBillingStatus,
     ensureCutBillingColumns,
-    getAmountInWords
+    getAmountInWords,
+    getSipeDbPool,
+    shouldReuseMainPool
 };

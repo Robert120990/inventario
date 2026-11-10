@@ -1,5 +1,14 @@
-import { formatDate, formatCurrency, formatPrice } from './formatUtils.js';
+import {
+  formatDate,
+  formatCurrency,
+  formatPrice,
+  formatTimeShort,
+  findProductForMovementItem,
+  toLocalDateISO
+} from './formatUtils.js';
 import { formatTemperatureDisplay, resolveServiceDetails } from './contractRates.js';
+
+export { formatTimeShort, findProductForMovementItem };
 
 /**
  * Escapa caracteres especiales HTML para prevenir XSS en plantillas de impresión
@@ -14,30 +23,23 @@ const escapeHtml = (value) => {
 };
 
 /**
- * Valida que una fuente de imagen sea segura para incrustar (data:image o URL http/https/ruta relativa)
+ * Valida que una fuente de imagen sea segura para incrustar.
+ * Rechaza svg+xml para prevenir ejecución de scripts embebidos.
+ * En modo rasterBase64Only (documentos Word .doc), bloquea URLs remotas/relativas para evitar beacons externos/UNC.
  */
-const sanitizeLogoSrc = (logo) => {
+export const sanitizeLogoSrc = (logo, { rasterBase64Only = false } = {}) => {
   if (!logo || typeof logo !== 'string') return null;
   const trimmed = logo.trim();
-  if (/^data:image\/(png|jpeg|jpg|webp|gif|svg\+xml);base64,/i.test(trimmed)) {
+  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,/i.test(trimmed)) {
     return trimmed;
   }
-  if (/^(https?:\/\/|\/)/i.test(trimmed)) {
+  if (rasterBase64Only) {
+    return null;
+  }
+  if ((trimmed.startsWith('/') && !trimmed.startsWith('//')) || /^https:\/\//i.test(trimmed)) {
     return trimmed;
   }
   return null;
-};
-
-/**
- * Formatea una cadena de hora HH:MM:SS o HH:MM a HH:MM
- */
-export const formatTimeShort = (timeStr) => {
-  if (!timeStr) return '--:--';
-  const clean = String(timeStr).trim();
-  if (clean.length >= 5 && clean.includes(':')) {
-    return clean.slice(0, 5);
-  }
-  return clean;
 };
 
 /**
@@ -80,32 +82,18 @@ export const formatMovementPounds = (value) => {
 };
 
 /**
- * Busca el producto asociado a un ítem del movimiento de forma resiliente
- */
-export const findProductForMovementItem = (item, products = []) => {
-  if (!item || !Array.isArray(products)) return null;
-  return (
-    products.find(
-      (prod) =>
-        prod.id === item.productId ||
-        String(prod.id) === String(item.productId) ||
-        prod.sku === item.productId ||
-        (item.sku && prod.sku === item.sku)
-    ) || null
-  );
-};
-
-/**
  * Construye el modelo estructurado de datos del movimiento para el modal de detalle,
  * impresión de Nota de Envío / Nota de Recibido y exportación a PDF.
  */
 export const buildMovementNoteData = ({
   movement,
   products = [],
+  productsMap = null,
   settings = {},
   contractRates = {},
   observations = '',
-  includeServices = true
+  includeServices = true,
+  rasterBase64Only = false
 }) => {
   const mov = movement || {};
   const isExit = mov.type === 'out';
@@ -126,7 +114,7 @@ export const buildMovementNoteData = ({
   const systemName = settings?.name || 'Inventario Pro';
   const facilityName = contractRates?.facility || '';
   const clientName = contractRates?.clientName || '';
-  const logoSrc = sanitizeLogoSrc(settings?.logo);
+  const logoSrc = sanitizeLogoSrc(settings?.logo, { rasterBase64Only });
 
   const docType = mov.refType || 'Documento';
   const refNumber = mov.refNumber ? String(mov.refNumber) : 'S/N';
@@ -142,7 +130,7 @@ export const buildMovementNoteData = ({
 
   const rawItems = Array.isArray(mov.items) ? mov.items : [];
   const items = rawItems.map((it, idx) => {
-    const product = findProductForMovementItem(it, products);
+    const product = findProductForMovementItem(it, products, productsMap);
     const hasTemp =
       it.temperature !== null &&
       it.temperature !== undefined &&
@@ -855,6 +843,7 @@ export const printMovementNote = (options) => {
 
   const printWindow = window.open('', '_blank', 'width=940,height=780');
   if (printWindow) {
+    printWindow.opener = null;
     const htmlWithAutoPrint = html.replace(
       '</body>',
       `<script>
@@ -1139,7 +1128,7 @@ export const downloadMovementNotePdf = async (options) => {
   }
 
   // Observaciones y Firmas
-  if (currentY > 215) {
+  if (currentY > 192) {
     doc.addPage();
     currentY = 18;
   }
@@ -1195,7 +1184,7 @@ export const downloadMovementNotePdf = async (options) => {
   );
 
   const safeRef = String(data.refNumber || 'SN').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const safeDate = String(data.rawDate || 'fecha').replace(/[^0-9-]/g, '');
+  const safeDate = String(data.rawDate || toLocalDateISO()).replace(/[^0-9-]/g, '') || toLocalDateISO();
   const prefix = data.isExit ? 'Nota_de_Envio' : 'Nota_de_Recibido';
   doc.save(`${prefix}_${safeRef}_${safeDate}.pdf`);
 
@@ -1231,6 +1220,7 @@ const triggerWordDownload = (html, filename) => {
 export const buildMovementNoteWordHtml = (data) => {
   const accentPrimary = data.isExit ? '#1e3a8a' : '#065f46';
   const accentBadgeBg = data.isExit ? '#eff6ff' : '#ecfdf5';
+  const safeWordLogoSrc = sanitizeLogoSrc(data.logoSrc, { rasterBase64Only: true });
 
   const itemsRowsHtml =
     data.items.length === 0
@@ -1339,8 +1329,8 @@ export const buildMovementNoteWordHtml = (data) => {
             <table cellspacing="0" cellpadding="0">
               <tr>
                 ${
-                  data.logoSrc
-                    ? `<td valign="middle" style="padding-right: 10pt;"><img src="${escapeHtml(data.logoSrc)}" width="56" height="56" alt="Logo" /></td>`
+                  safeWordLogoSrc
+                    ? `<td valign="middle" style="padding-right: 10pt;"><img src="${escapeHtml(safeWordLogoSrc)}" width="56" height="56" alt="Logo" /></td>`
                     : ''
                 }
                 <td valign="middle">
@@ -1521,10 +1511,10 @@ export const buildMovementNoteWordHtml = (data) => {
  * Descarga un archivo Microsoft Word (.doc) de la Nota de Envío o Nota de Recibido
  */
 export const downloadMovementNoteWord = (options) => {
-  const data = buildMovementNoteData(options);
+  const data = buildMovementNoteData({ ...options, rasterBase64Only: true });
   const html = buildMovementNoteWordHtml(data);
   const safeRef = String(data.refNumber || 'SN').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const safeDate = String(data.rawDate || 'fecha').replace(/[^0-9-]/g, '');
+  const safeDate = String(data.rawDate || toLocalDateISO()).replace(/[^0-9-]/g, '') || toLocalDateISO();
   const prefix = data.isExit ? 'Nota_de_Envio' : 'Nota_de_Recibido';
   triggerWordDownload(html, `${prefix}_${safeRef}_${safeDate}.doc`);
   return { success: true, noteTitle: data.noteShortLabel };
@@ -1533,10 +1523,19 @@ export const downloadMovementNoteWord = (options) => {
 /**
  * Normaliza filas consolidadas del listado de movimientos filtrados para exportación masiva PDF / Word
  */
-const summarizeMovementsList = ({ movements = [], products = [], settings = {}, contractRates = {}, typeFilter = 'all' }) => {
+const summarizeMovementsList = ({
+  movements = [],
+  products = [],
+  productsMap = null,
+  settings = {},
+  contractRates = {},
+  typeFilter = 'all',
+  rasterBase64Only = false
+}) => {
   const companyName = contractRates?.contractorName || settings?.name || 'Inventario Pro';
   const facilityName = contractRates?.facility || '';
   const clientName = contractRates?.clientName || '';
+  const logoSrc = sanitizeLogoSrc(settings?.logo, { rasterBase64Only });
   const filterLabel =
     typeFilter === 'in'
       ? 'Solo Entradas (Notas de Recibido)'
@@ -1562,7 +1561,7 @@ const summarizeMovementsList = ({ movements = [], products = [], settings = {}, 
         ? 'Sin productos'
         : items
             .map((it) => {
-              const p = findProductForMovementItem(it, products);
+              const p = findProductForMovementItem(it, products, productsMap);
               return p ? `${p.sku} - ${p.description}` : String(it.sku || it.productId || 'Desconocido');
             })
             .join('; ');
@@ -1593,13 +1592,14 @@ const summarizeMovementsList = ({ movements = [], products = [], settings = {}, 
   });
 
   const now = new Date();
-  const dateStamp = now.toISOString().slice(0, 10);
+  const dateStamp = toLocalDateISO(now);
   const generatedAt = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
   return {
     companyName,
     facilityName,
     clientName,
+    logoSrc,
     filterLabel,
     rows,
     totals: {
@@ -1697,7 +1697,7 @@ export const downloadMovementsListPdf = async (options) => {
  * Descarga en Word (.doc Horizontal) el listado de movimientos filtrados
  */
 export const downloadMovementsListWord = (options) => {
-  const report = summarizeMovementsList(options);
+  const report = summarizeMovementsList({ ...options, rasterBase64Only: true });
 
   const rowsHtml = report.rows
     .map(

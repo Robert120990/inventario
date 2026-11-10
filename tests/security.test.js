@@ -733,9 +733,10 @@ describe('Seguridad y Control de Acceso (RBAC, Lockout y Escalabilidad)', () => 
 
             const handler = syncRoute.route.stack[syncRoute.route.stack.length - 1].handle;
             let syncJson = null;
+            const recentSince = new Date(Date.now() - 60 * 60 * 1000).toISOString();
             await handler(
                 {
-                    query: { since: '2026-10-23T10:00:00.000Z' },
+                    query: { since: recentSince },
                     user: { id: 1, username: 'admin', role: 'admin' }
                 },
                 {

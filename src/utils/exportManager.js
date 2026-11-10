@@ -1,5 +1,21 @@
-import { formatDate, formatCurrency } from './formatUtils.js';
+import { formatDate, formatCurrency, toLocalDateISO } from './formatUtils.js';
 import { resolveServiceDetails } from './contractRates.js';
+
+/**
+ * Prevención de inyección de fórmulas en hojas de cálculo (CSV/Excel Formula Injection - CWE-1236)
+ * Preserva literales numéricos simples como "-18.5" sin alterarlos.
+ */
+export const sanitizeSpreadsheetCell = (val) => {
+  if (typeof val !== 'string') return val;
+  const trimmedStart = val.trimStart();
+  if (
+    (/^[=+\-@\t\r]/.test(val) || /^[=+\-@]/.test(trimmedStart)) &&
+    !/^-?\d+(\.\d+)?$/.test(trimmedStart.trimEnd())
+  ) {
+    return `'${val}`;
+  }
+  return val;
+};
 
 let _cachedXLSX = null;
 
@@ -102,11 +118,7 @@ export class StyledSheetBuilder {
     } else if (val === null || val === undefined) {
       v = '';
     } else {
-      v = String(val);
-      // Prevención de inyección de fórmulas en hojas de cálculo (CSV/Formula Injection - CWE-1236)
-      if (/^[=+\-@\t\r]/.test(v)) {
-        v = `'${v}`;
-      }
+      v = sanitizeSpreadsheetCell(String(val));
     }
     const cell = { v, t };
     if (opt.z) cell.z = opt.z;
@@ -224,11 +236,7 @@ export const downloadCSV = (csvRows, filename) => {
  */
 export const escapeCsvCell = (val) => {
   if (val === null || val === undefined) return '';
-  let str = String(val);
-  // Prevención de inyección de fórmulas en CSV (CWE-1236)
-  if (typeof val !== 'number' && /^[=+\-@\t\r]/.test(str)) {
-    str = `'${str}`;
-  }
+  const str = typeof val === 'number' ? String(val) : sanitizeSpreadsheetCell(String(val));
   if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r') || str.includes(';')) {
     return `"${str.replace(/"/g, '""')}"`;
   }
@@ -250,8 +258,8 @@ export const exportCuadroClienteCuartoFrio = async ({
   totals = {},
   format = 'xlsx' // 'xlsx' | 'csv'
 }) => {
-  const safeStart = startDate ? String(startDate) : new Date().toISOString().split('T')[0];
-  const safeEnd = endDate ? String(endDate) : new Date().toISOString().split('T')[0];
+  const safeStart = startDate ? String(startDate) : toLocalDateISO();
+  const safeEnd = endDate ? String(endDate) : toLocalDateISO();
   const formattedStart = formatDate(safeStart);
   const formattedEnd = formatDate(safeEnd);
   const title = 'PROCESO DE FACTURACION POR ALMACENAMIENTO CONGELADO (-18°C) Y SERVICIOS EXTRAORDINARIOS';
@@ -352,7 +360,7 @@ export const exportCuadroClienteCuartoFrio = async ({
       alignment: { horizontal: 'right', vertical: 'center' },
       border: mediumBorder
     });
-    builder.mergeRange(rMeta2, 6, rMeta2, 7, formatDate(new Date().toISOString().split('T')[0]), {
+    builder.mergeRange(rMeta2, 6, rMeta2, 7, formatDate(toLocalDateISO()), {
       font: { name: FONT_NAME, sz: 10, bold: false, color: { rgb: PALETTE.TEXT_DARK } },
       fill: { fgColor: { rgb: 'FFFFFF' } },
       alignment: { horizontal: 'left', vertical: 'center' },
@@ -744,8 +752,8 @@ export const exportResumenCompleto = async ({
   totals = {},
   format = 'xlsx'
 }) => {
-  const safeStart = startDate ? String(startDate) : new Date().toISOString().split('T')[0];
-  const safeEnd = endDate ? String(endDate) : new Date().toISOString().split('T')[0];
+  const safeStart = startDate ? String(startDate) : toLocalDateISO();
+  const safeEnd = endDate ? String(endDate) : toLocalDateISO();
   const formattedStart = formatDate(safeStart);
   const formattedEnd = formatDate(safeEnd);
   const title = 'RESUMEN DE ACTIVIDAD Y VALORACION DE INVENTARIO';
@@ -797,7 +805,7 @@ export const exportResumenCompleto = async ({
       alignment: { horizontal: 'right', vertical: 'center' },
       border: mediumBorder
     });
-    builder.mergeRange(rMeta1, 6, rMeta1, 8, formatDate(new Date().toISOString().split('T')[0]), {
+    builder.mergeRange(rMeta1, 6, rMeta1, 8, formatDate(toLocalDateISO()), {
       font: { name: FONT_NAME, sz: 10, bold: false, color: { rgb: PALETTE.TEXT_DARK } },
       fill: { fgColor: { rgb: 'FFFFFF' } },
       alignment: { horizontal: 'left', vertical: 'center' },
@@ -1111,7 +1119,7 @@ export const exportCorteSeguro = async ({
   totals = {},
   format = 'xlsx'
 }) => {
-  const safeCutoff = cutoffDate ? String(cutoffDate) : new Date().toISOString().split('T')[0];
+  const safeCutoff = cutoffDate ? String(cutoffDate) : toLocalDateISO();
   const formattedDate = formatDate(safeCutoff);
   const title = `CIERRE DE INVENTARIO PARA SEGURO - ${warehouseName}`;
   
@@ -1336,11 +1344,11 @@ export const exportMovimientos = async ({
 }) => {
   const getProductName = (id) => {
     const p = products.find(prod => prod.id === id);
-    return p ? `${p.sku} - ${p.description}` : 'Desconocido';
+    return sanitizeSpreadsheetCell(p ? `${p.sku} - ${p.description}` : 'Desconocido');
   };
 
   const title = 'REGISTRO HISTORICO DE MOVIMIENTOS DE INVENTARIO Y SERVICIOS';
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = toLocalDateISO();
 
   if (format === 'xlsx') {
     const XLSX = await getXLSX();
@@ -1372,18 +1380,20 @@ export const exportMovimientos = async ({
 
     if (movements.length > 0) {
       movements.forEach(mov => {
-        const servicesStr = (mov.services || []).map(s => `${s.description} ($${Number(s.value || 0).toFixed(2)})`).join(' | ');
+        const servicesStr = sanitizeSpreadsheetCell(
+          (mov.services || []).map(s => `${s.description} ($${Number(s.value || 0).toFixed(2)})`).join(' | ')
+        );
         const baseInfo = [
-          formatDate(mov.date),
-          mov.timeStart || '',
-          mov.timeEnd || '',
+          sanitizeSpreadsheetCell(formatDate(mov.date)),
+          sanitizeSpreadsheetCell(mov.timeStart || ''),
+          sanitizeSpreadsheetCell(mov.timeEnd || ''),
           mov.type === 'in' ? 'Entrada' : 'Salida',
-          mov.refType || '',
-          mov.refNumber || '',
-          mov.carrier || '',
-          mov.equipment || '',
-          mov.seal || '',
-          mov.auditUser || ''
+          sanitizeSpreadsheetCell(mov.refType || ''),
+          sanitizeSpreadsheetCell(mov.refNumber != null ? String(mov.refNumber) : ''),
+          sanitizeSpreadsheetCell(mov.carrier || ''),
+          sanitizeSpreadsheetCell(mov.equipment || ''),
+          sanitizeSpreadsheetCell(mov.seal || ''),
+          sanitizeSpreadsheetCell(mov.auditUser || '')
         ];
 
         if (mov.items && mov.items.length > 0) {
@@ -1466,18 +1476,20 @@ export const exportMovimientos = async ({
     ].map(escapeCsvCell).join(','));
 
     movements.forEach(mov => {
-      const servicesStr = (mov.services || []).map(s => `${s.description} ($${Number(s.value || 0).toFixed(2)})`).join(' | ');
+      const servicesStr = sanitizeSpreadsheetCell(
+        (mov.services || []).map(s => `${s.description} ($${Number(s.value || 0).toFixed(2)})`).join(' | ')
+      );
       const baseInfo = [
-        formatDate(mov.date),
-        mov.timeStart || '',
-        mov.timeEnd || '',
+        sanitizeSpreadsheetCell(formatDate(mov.date)),
+        sanitizeSpreadsheetCell(mov.timeStart || ''),
+        sanitizeSpreadsheetCell(mov.timeEnd || ''),
         mov.type === 'in' ? 'Entrada' : 'Salida',
-        mov.refType || '',
-        mov.refNumber || '',
-        mov.carrier || '',
-        mov.equipment || '',
-        mov.seal || '',
-        mov.auditUser || ''
+        sanitizeSpreadsheetCell(mov.refType || ''),
+        sanitizeSpreadsheetCell(mov.refNumber != null ? String(mov.refNumber) : ''),
+        sanitizeSpreadsheetCell(mov.carrier || ''),
+        sanitizeSpreadsheetCell(mov.equipment || ''),
+        sanitizeSpreadsheetCell(mov.seal || ''),
+        sanitizeSpreadsheetCell(mov.auditUser || '')
       ];
 
       if (mov.items && mov.items.length > 0) {
@@ -1518,7 +1530,7 @@ export const exportProductos = async ({
   format = 'xlsx'
 }) => {
   const title = 'CATALOGO DE PRODUCTOS Y EXISTENCIAS ACTUALES';
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = toLocalDateISO();
 
   const totalUnits = products.reduce((acc, p) => acc + Number(p.stockUnits || 0), 0);
   const totalPounds = products.reduce((acc, p) => acc + Number(p.stockPounds || 0), 0);
@@ -1561,9 +1573,9 @@ export const exportProductos = async ({
 
         wsData.push([
           '',
-          p.sku,
-          p.description,
-          p.category,
+          sanitizeSpreadsheetCell(p.sku != null ? String(p.sku) : ''),
+          sanitizeSpreadsheetCell(p.description != null ? String(p.description) : ''),
+          sanitizeSpreadsheetCell(p.category != null ? String(p.category) : ''),
           unitLabel,
           Number(p.price || 0),
           Number(p.stockUnits || 0),
@@ -1630,9 +1642,9 @@ export const exportProductos = async ({
       const val = qty * Number(p.price || 0);
 
       lines.push([
-        p.sku,
-        p.description,
-        p.category,
+        sanitizeSpreadsheetCell(p.sku != null ? String(p.sku) : ''),
+        sanitizeSpreadsheetCell(p.description != null ? String(p.description) : ''),
+        sanitizeSpreadsheetCell(p.category != null ? String(p.category) : ''),
         unitLabel,
         p.price || 0,
         p.stockUnits || 0,
@@ -1656,7 +1668,7 @@ export const exportBitacora = async ({
   format = 'xlsx'
 }) => {
   const title = 'BITACORA Y AUDITORIA DE ACCIONES DEL SISTEMA';
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = toLocalDateISO();
 
   if (format === 'xlsx') {
     const XLSX = await getXLSX();
@@ -1672,12 +1684,12 @@ export const exportBitacora = async ({
       systemLogs.forEach(l => {
         wsData.push([
           '',
-          l.timestamp || '',
-          l.username || '',
-          l.action || '',
-          l.module || '',
-          l.details || '',
-          l.ip_address || 'Local'
+          sanitizeSpreadsheetCell(l.timestamp ? String(l.timestamp) : ''),
+          sanitizeSpreadsheetCell(l.username || ''),
+          sanitizeSpreadsheetCell(l.action || ''),
+          sanitizeSpreadsheetCell(l.module || ''),
+          sanitizeSpreadsheetCell(l.details || ''),
+          sanitizeSpreadsheetCell(l.ip_address || 'Local')
         ]);
       });
     }
@@ -1706,12 +1718,12 @@ export const exportBitacora = async ({
 
     systemLogs.forEach(l => {
       lines.push([
-        l.timestamp || '',
-        l.username || '',
-        l.action || '',
-        l.module || '',
-        l.details || '',
-        l.ip_address || 'Local'
+        sanitizeSpreadsheetCell(l.timestamp ? String(l.timestamp) : ''),
+        sanitizeSpreadsheetCell(l.username || ''),
+        sanitizeSpreadsheetCell(l.action || ''),
+        sanitizeSpreadsheetCell(l.module || ''),
+        sanitizeSpreadsheetCell(l.details || ''),
+        sanitizeSpreadsheetCell(l.ip_address || 'Local')
       ].map(escapeCsvCell).join(','));
     });
 

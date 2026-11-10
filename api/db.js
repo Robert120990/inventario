@@ -25,6 +25,7 @@ const pool = mysql.createPool({
     ssl: sslConfig
 });
 
+export { pool };
 export default pool;
 
 // Definición secuencial y versionada de migraciones
@@ -249,9 +250,9 @@ export const MIGRATIONS = [
                     products: { view: true, create: true, edit: true, delete: true, export: true },
                     'inventory-count': { view: true, create: true, edit: true, delete: true, export: true },
                     movements: { view: true, create: true, edit: true, delete: true, export: true },
-                    insurance: { view: true, edit: true, delete: true, export: true },
+                    insurance: { view: true, create: true, edit: true, delete: true, export: true },
                     summary: { view: true, export: true },
-                    summary2: { view: true, edit: true, delete: true, export: true },
+                    summary2: { view: true, create: true, edit: true, delete: true, export: true },
                     security: { view: true, create: true, edit: true, delete: true },
                     'security-users': { view: true, create: true, edit: true, delete: true, export: true },
                     'security-access': { view: true, edit: true },
@@ -343,8 +344,26 @@ export const MIGRATIONS = [
                 try {
                     const perms = role.permissions ? JSON.parse(role.permissions) : {};
                     const isAdmin = role.name === 'Administrador';
-                    perms.insurance = { ...(perms.insurance || {}), view: true, edit: true, delete: isAdmin, export: true };
-                    perms.summary2 = { ...(perms.summary2 || {}), view: true, edit: true, delete: isAdmin, export: true };
+                    perms.insurance = { ...(perms.insurance || {}), view: true, create: true, edit: true, delete: isAdmin, export: true };
+                    perms.summary2 = { ...(perms.summary2 || {}), view: true, create: true, edit: true, delete: isAdmin, export: true };
+                    await connection.query('UPDATE roles SET permissions = ? WHERE id = ?', [JSON.stringify(perms), role.id]);
+                } catch {
+                    // Ignorar si permissions no es JSON válido
+                }
+            }
+        }
+    },
+    {
+        version: '006_admin_cut_delete_permissions',
+        description: 'Asegurar permisos explícitos create/edit/delete en summary2 e insurance para Administrador',
+        run: async (connection) => {
+            const [roles] = await connection.query("SELECT id, name, permissions FROM roles WHERE name IN ('Administrador', 'Supervisor')");
+            for (const role of roles) {
+                try {
+                    const perms = role.permissions ? JSON.parse(role.permissions) : {};
+                    const isAdmin = role.name === 'Administrador';
+                    perms.insurance = { ...(perms.insurance || {}), view: true, create: true, edit: true, delete: isAdmin, export: true };
+                    perms.summary2 = { ...(perms.summary2 || {}), view: true, create: true, edit: true, delete: isAdmin, export: true };
                     await connection.query('UPDATE roles SET permissions = ? WHERE id = ?', [JSON.stringify(perms), role.id]);
                 } catch {
                     // Ignorar si permissions no es JSON válido
