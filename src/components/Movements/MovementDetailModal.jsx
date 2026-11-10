@@ -26,8 +26,19 @@ import {
   downloadMovementNoteWord
 } from '../../utils/movementNotePrinter';
 
-const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syncState = 'synced', syncError = '' }) => {
-  const { products, settings, contractRates } = useInventory();
+const MovementDetailModal = ({
+  movement,
+  onClose,
+  onEdit,
+  allowEdit = false,
+  allowExport,
+  syncState = 'synced',
+  syncError = ''
+}) => {
+  const { products, settings, contractRates, canExport } = useInventory();
+  const effectiveAllowExport = allowExport !== undefined
+    ? Boolean(allowExport)
+    : (canExport ? canExport('movements') : true);
   const [observations, setObservations] = useState('');
   const [includeServices, setIncludeServices] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -126,17 +137,15 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
     : '0 6px 16px rgba(5, 150, 105, 0.28)';
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1200, padding: '0.85rem' }}>
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1200 }}>
       <div
-        className="modal-content large"
+        className="modal-content large modal-shell-flex"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="movement-detail-modal-title"
         style={{
           maxWidth: '980px',
-          width: '100%',
-          maxHeight: '94vh',
-          display: 'flex',
-          flexDirection: 'column',
-          padding: 0,
-          overflow: 'hidden',
+          width: '95%',
           backgroundColor: 'var(--color-card)',
           borderRadius: 'var(--radius-xl)',
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35), 0 0 0 1px var(--color-border)'
@@ -145,22 +154,22 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
       >
         {/* 1. HEADER CON ISOTIPO EN GRADIENTE Y METADATOS */}
         <div
+          className="modal-shell-header"
           style={{
             padding: '0.95rem 1.35rem',
             borderBottom: '1px solid var(--color-border)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            gap: '1rem',
-            background: 'linear-gradient(180deg, var(--color-surface) 0%, var(--color-card) 100%)',
-            flexShrink: 0
+            gap: '0.85rem',
+            background: 'linear-gradient(180deg, var(--color-surface) 0%, var(--color-card) 100%)'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap', minWidth: 0 }}>
             <div
               style={{
-                width: '46px',
-                height: '46px',
+                width: '44px',
+                height: '44px',
                 borderRadius: '12px',
                 background: headerGradient,
                 display: 'flex',
@@ -171,15 +180,16 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
                 flexShrink: 0
               }}
             >
-              {isExit ? <ArrowUpCircle size={24} /> : <ArrowDownCircle size={24} />}
+              {isExit ? <ArrowUpCircle size={22} /> : <ArrowDownCircle size={22} />}
             </div>
 
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap' }}>
                 <h2
+                  id="movement-detail-modal-title"
                   style={{
                     margin: 0,
-                    fontSize: '1.22rem',
+                    fontSize: '1.15rem',
                     fontWeight: '700',
                     fontFamily: 'var(--font-headline)',
                     color: 'var(--color-text)',
@@ -273,181 +283,179 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
           </button>
         </div>
 
-        {/* 2. MICRO-TARJETAS KPI DE TRIPLE UNIDAD Y CADENA DE FRÍO */}
-        <div
-          style={{
-            padding: '0.7rem 1.35rem',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-            gap: '0.65rem',
-            backgroundColor: 'var(--color-surface)',
-            borderBottom: '1px solid var(--color-border)',
-            flexShrink: 0
-          }}
-        >
-          {/* KPI 1: Unidades */}
+        {/* 2 & 3. CUERPO DESPLAZABLE COMPLETO (KPIs + DOCUMENTO + PRODUCTOS + SERVICIOS) */}
+        <div className="modal-scroll-body">
+          {/* MICRO-TARJETAS KPI DE TRIPLE UNIDAD Y CADENA DE FRÍO */}
           <div
+            className="modal-kpi-grid"
             style={{
-              padding: '0.8rem 1rem',
-              backgroundColor: 'var(--color-card)',
-              borderRadius: 'var(--radius)',
-              border: '1px solid var(--color-border)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.8rem'
+              padding: '0.7rem 1.35rem',
+              backgroundColor: 'var(--color-surface)',
+              borderBottom: '1px solid var(--color-border)'
             }}
           >
+            {/* KPI 1: Unidades */}
             <div
               style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '9px',
-                backgroundColor: 'rgba(59, 130, 246, 0.12)',
-                color: '#3b82f6',
+                padding: '0.7rem 0.9rem',
+                backgroundColor: 'var(--color-card)',
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--color-border)',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0
+                gap: '0.7rem'
               }}
             >
-              <Package size={19} />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Unidades ({totals.totalItems} {totals.totalItems === 1 ? 'ítem' : 'ítems'})
-              </div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 800, fontFamily: 'var(--font-headline)', color: 'var(--color-text)' }}>
-                {totals.totalUnits.toLocaleString('en-US')}
-              </div>
-            </div>
-          </div>
-
-          {/* KPI 2: Peso Neto Libras */}
-          <div
-            style={{
-              padding: '0.8rem 1rem',
-              backgroundColor: 'var(--color-card)',
-              borderRadius: 'var(--radius)',
-              border: '1px solid var(--color-border)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.8rem'
-            }}
-          >
-            <div
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '9px',
-                backgroundColor: 'rgba(16, 185, 129, 0.12)',
-                color: '#10b981',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0
-              }}
-            >
-              <Scale size={19} />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Peso Neto Total
-              </div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 800, fontFamily: 'var(--font-headline)', color: 'var(--color-text)' }}>
-                {formatMovementPounds(totals.totalPounds)} <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>lbs</span>
-              </div>
-            </div>
-          </div>
-
-          {/* KPI 3: Cestas */}
-          <div
-            style={{
-              padding: '0.8rem 1rem',
-              backgroundColor: 'var(--color-card)',
-              borderRadius: 'var(--radius)',
-              border: '1px solid var(--color-border)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.8rem'
-            }}
-          >
-            <div
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '9px',
-                backgroundColor: 'rgba(139, 92, 246, 0.12)',
-                color: '#8b5cf6',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0
-              }}
-            >
-              <Layers size={19} />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Cestas / Embalajes
-              </div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 800, fontFamily: 'var(--font-headline)', color: 'var(--color-text)' }}>
-                {totals.totalBaskets.toLocaleString('en-US')}
-              </div>
-            </div>
-          </div>
-
-          {/* KPI 4: Temperatura Promedio Cadena de Frío */}
-          <div
-            style={{
-              padding: '0.8rem 1rem',
-              backgroundColor: 'var(--color-card)',
-              borderRadius: 'var(--radius)',
-              border: '1px solid var(--color-border)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.8rem'
-            }}
-          >
-            <div
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '9px',
-                backgroundColor: totals.isAvgTempOutOfRange ? 'rgba(245, 158, 11, 0.15)' : 'rgba(14, 165, 233, 0.12)',
-                color: totals.isAvgTempOutOfRange ? '#d97706' : '#0284c7',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0
-              }}
-            >
-              <ThermometerSnowflake size={19} />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Temp. Promedio
-              </div>
               <div
                 style={{
-                  fontSize: '1.15rem',
-                  fontWeight: 800,
-                  fontFamily: 'var(--font-headline)',
-                  color: totals.isAvgTempOutOfRange ? 'var(--color-warning)' : 'var(--color-text)'
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '9px',
+                  backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                  color: '#3b82f6',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
                 }}
               >
-                {totals.hasAnyTemp ? totals.avgTempFormatted : 'Sin registro'}
+                <Package size={18} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '0.66rem', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Unidades ({totals.totalItems} {totals.totalItems === 1 ? 'ítem' : 'ítems'})
+                </div>
+                <div style={{ fontSize: '1.15rem', fontWeight: 800, fontFamily: 'var(--font-headline)', color: 'var(--color-text)' }}>
+                  {totals.totalUnits.toLocaleString('en-US')}
+                </div>
+              </div>
+            </div>
+
+            {/* KPI 2: Peso Neto Libras */}
+            <div
+              style={{
+                padding: '0.7rem 0.9rem',
+                backgroundColor: 'var(--color-card)',
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--color-border)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.7rem'
+              }}
+            >
+              <div
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '9px',
+                  backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                  color: '#10b981',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}
+              >
+                <Scale size={18} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '0.66rem', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Peso Neto Total
+                </div>
+                <div style={{ fontSize: '1.15rem', fontWeight: 800, fontFamily: 'var(--font-headline)', color: 'var(--color-text)' }}>
+                  {formatMovementPounds(totals.totalPounds)} <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>lbs</span>
+                </div>
+              </div>
+            </div>
+
+            {/* KPI 3: Cestas */}
+            <div
+              style={{
+                padding: '0.7rem 0.9rem',
+                backgroundColor: 'var(--color-card)',
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--color-border)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.7rem'
+              }}
+            >
+              <div
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '9px',
+                  backgroundColor: 'rgba(139, 92, 246, 0.12)',
+                  color: '#8b5cf6',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}
+              >
+                <Layers size={18} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '0.66rem', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Cestas / Embalajes
+                </div>
+                <div style={{ fontSize: '1.15rem', fontWeight: 800, fontFamily: 'var(--font-headline)', color: 'var(--color-text)' }}>
+                  {totals.totalBaskets.toLocaleString('en-US')}
+                </div>
+              </div>
+            </div>
+
+            {/* KPI 4: Temperatura Promedio Cadena de Frío */}
+            <div
+              style={{
+                padding: '0.7rem 0.9rem',
+                backgroundColor: 'var(--color-card)',
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--color-border)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.7rem'
+              }}
+            >
+              <div
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '9px',
+                  backgroundColor: totals.isAvgTempOutOfRange ? 'rgba(245, 158, 11, 0.15)' : 'rgba(14, 165, 233, 0.12)',
+                  color: totals.isAvgTempOutOfRange ? '#d97706' : '#0284c7',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}
+              >
+                <ThermometerSnowflake size={18} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '0.66rem', fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Temp. Promedio
+                </div>
+                <div
+                  style={{
+                    fontSize: '1.1rem',
+                    fontWeight: 800,
+                    fontFamily: 'var(--font-headline)',
+                    color: totals.isAvgTempOutOfRange ? 'var(--color-warning)' : 'var(--color-text)'
+                  }}
+                >
+                  {totals.hasAnyTemp ? totals.avgTempFormatted : 'Sin registro'}
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* 3. CUERPO DESPLAZABLE */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.35rem' }}>
+          <div style={{ padding: '1rem 1.25rem' }}>
           {/* Paneles de Documento y Logística */}
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(265px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))',
               gap: '0.85rem',
               marginBottom: '1.15rem'
             }}
@@ -573,8 +581,13 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
               </h3>
             </div>
 
-            <div className="table-container" style={{ boxShadow: 'none' }}>
-              <table className="movements-table" style={{ minWidth: '540px' }}>
+            {noteData.items.length > 0 && (
+              <div className="show-on-mobile" style={{ marginBottom: '0.35rem', fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                Desliza horizontalmente la tabla para ver temperaturas, pesos y cestas ↔
+              </div>
+            )}
+            <div className="table-container table-scroll-both" style={{ boxShadow: 'none' }}>
+              <table className="movements-table" style={{ width: '100%', minWidth: '640px' }}>
                 <thead>
                   <tr>
                     <th style={{ width: '40px', textAlign: 'center' }}>#</th>
@@ -705,8 +718,8 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
                 </label>
               </div>
 
-              <div className="table-container" style={{ boxShadow: 'none' }}>
-                <table style={{ minWidth: '540px' }}>
+              <div className="table-container table-scroll-both" style={{ boxShadow: 'none' }}>
+                <table style={{ width: '100%', minWidth: '560px' }}>
                   <thead>
                     <tr>
                       <th style={{ width: '48px', textAlign: 'center' }}>#</th>
@@ -775,10 +788,12 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
               style={{ marginBottom: 0, fontSize: '0.85rem' }}
             />
           </div>
+          </div>
         </div>
 
         {/* 4. FOOTER FIJO CON ACCIONES DE IMPRESIÓN, PDF Y WORD */}
         <div
+          className="modal-shell-footer"
           style={{
             padding: '0.85rem 1.35rem',
             borderTop: '1px solid var(--color-border)',
@@ -787,8 +802,7 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
             justifyContent: 'space-between',
             alignItems: 'center',
             flexWrap: 'wrap',
-            gap: '0.75rem',
-            flexShrink: 0
+            gap: '0.75rem'
           }}
         >
           <div>
@@ -809,42 +823,46 @@ const MovementDetailModal = ({ movement, onClose, onEdit, allowEdit = false, syn
               Cerrar
             </button>
 
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={handleDownloadWord}
-              title={`Descargar ${noteData.noteShortLabel} en formato Microsoft Word (.doc)`}
-            >
-              <FileText size={16} /> Descargar Word
-            </button>
+            {effectiveAllowExport && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={handleDownloadWord}
+                  title={`Descargar ${noteData.noteShortLabel} en formato Microsoft Word (.doc)`}
+                >
+                  <FileText size={16} /> Descargar Word
+                </button>
 
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={handleDownloadPdf}
-              disabled={isGeneratingPdf}
-              title={`Descargar ${noteData.noteShortLabel} en formato PDF`}
-            >
-              <FileOutput size={16} /> {isGeneratingPdf ? 'Generando PDF...' : 'Descargar PDF'}
-            </button>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={handleDownloadPdf}
+                  disabled={isGeneratingPdf}
+                  title={`Descargar ${noteData.noteShortLabel} en formato PDF`}
+                >
+                  <FileOutput size={16} /> {isGeneratingPdf ? 'Generando PDF...' : 'Descargar PDF'}
+                </button>
 
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handlePrint}
-              style={
-                !isExit
-                  ? {
-                      backgroundColor: 'var(--color-success)',
-                      borderColor: 'var(--color-success)',
-                      color: '#ffffff'
-                    }
-                  : undefined
-              }
-              title={`Imprimir comprobante oficial: ${noteData.noteTitle}`}
-            >
-              <Printer size={17} /> Imprimir {noteData.noteShortLabel}
-            </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handlePrint}
+                  style={
+                    !isExit
+                      ? {
+                          backgroundColor: 'var(--color-success)',
+                          borderColor: 'var(--color-success)',
+                          color: '#ffffff'
+                        }
+                      : undefined
+                  }
+                  title={`Imprimir comprobante oficial: ${noteData.noteTitle}`}
+                >
+                  <Printer size={17} /> Imprimir {noteData.noteShortLabel}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

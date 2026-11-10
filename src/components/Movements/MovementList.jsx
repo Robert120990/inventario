@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useInventory } from '../../context/InventoryContext';
 import {
   Plus, Download, Search, FileSpreadsheet,
@@ -6,20 +7,11 @@ import {
   ArrowDownCircle, ArrowUpCircle, Eye, Printer, FileOutput, FileText,
   Edit3, Trash2, ChevronDown, Package, User
 } from 'lucide-react';
-import { exportMovimientos } from '../../utils/exportManager';
 import MovementForm from './MovementForm';
-import MovementDetailModal from './MovementDetailModal';
-import { formatDate } from '../../utils/formatUtils';
-import {
-  printMovementNote,
-  downloadMovementNotePdf,
-  downloadMovementNoteWord,
-  downloadMovementsListPdf,
-  downloadMovementsListWord,
-  formatTimeShort,
-  findProductForMovementItem
-} from '../../utils/movementNotePrinter';
+import { formatDate, formatTimeShort, findProductForMovementItem } from '../../utils/formatUtils';
 import { toast } from 'react-hot-toast';
+
+const MovementDetailModal = React.lazy(() => import('./MovementDetailModal'));
 
 const MovementList = () => {
   const {
@@ -39,6 +31,7 @@ const MovementList = () => {
   const [viewingMovement, setViewingMovement] = useState(null);
   const [noteMenu, setNoteMenu] = useState(null); // { mov, top, left }
   const menuRef = useRef(null);
+  const notePrinterModRef = useRef(null);
 
   const allowCreate = canCreate('movements');
   const allowEdit = canEdit('movements');
@@ -57,6 +50,7 @@ const MovementList = () => {
     if (!noteMenu) return undefined;
 
     const handlePointerDown = (e) => {
+      if (e.target?.closest?.('[data-note-trigger]')) return;
       if (menuRef.current && !menuRef.current.contains(e.target)) {
         setNoteMenu(null);
       }
@@ -79,45 +73,61 @@ const MovementList = () => {
     };
   }, [noteMenu]);
 
-  // Filter movements
-  const filteredMovements = movements.filter(mov => {
-    // Filter by type (in / out)
-    if (typeFilter !== 'all' && mov.type !== typeFilter) {
-      return false;
-    }
-
-    if (!searchTerm.trim()) return true;
-
-    const searchLow = searchTerm.toLowerCase();
-
-    // Buscar en datos generales del movimiento
-    const inMovement =
-      (mov.refNumber || '').toLowerCase().includes(searchLow) ||
-      (mov.refType || '').toLowerCase().includes(searchLow) ||
-      (mov.carrier || '').toLowerCase().includes(searchLow) ||
-      (mov.equipment || '').toLowerCase().includes(searchLow) ||
-      (mov.seal || '').toLowerCase().includes(searchLow) ||
-      (mov.auditUser || '').toLowerCase().includes(searchLow) ||
-      (mov.date || '').toLowerCase().includes(searchLow);
-
-    // Buscar en los productos dentro del movimiento
-    const inProducts = mov.items?.some(it => {
-      const p = findProductForMovementItem(it, products);
-      if (!p) return false;
-      return p.sku.toLowerCase().includes(searchLow) || p.description.toLowerCase().includes(searchLow);
+  // Pre-indexar productos por ID y SKU para búsquedas O(1)
+  const productsMap = useMemo(() => {
+    const map = new Map();
+    (products || []).forEach(p => {
+      if (!p) return;
+      if (p.id !== undefined && p.id !== null) map.set(String(p.id), p);
+      if (p.sku !== undefined && p.sku !== null && p.sku !== '') map.set(String(p.sku), p);
     });
+    return map;
+  }, [products]);
 
-    return inMovement || inProducts;
-  });
+  // Filter movements
+  const filteredMovements = useMemo(() => {
+    const trimmed = searchTerm.trim();
+    const searchLow = trimmed.toLowerCase();
+
+    return movements.filter(mov => {
+      // Filter by type (in / out)
+      if (typeFilter !== 'all' && mov.type !== typeFilter) {
+        return false;
+      }
+
+      if (!trimmed) return true;
+
+      // Buscar en datos generales del movimiento
+      const inMovement =
+        (mov.refNumber || '').toLowerCase().includes(searchLow) ||
+        (mov.refType || '').toLowerCase().includes(searchLow) ||
+        (mov.carrier || '').toLowerCase().includes(searchLow) ||
+        (mov.equipment || '').toLowerCase().includes(searchLow) ||
+        (mov.seal || '').toLowerCase().includes(searchLow) ||
+        (mov.auditUser || '').toLowerCase().includes(searchLow) ||
+        (mov.date || '').toLowerCase().includes(searchLow);
+
+      if (inMovement) return true;
+
+      // Buscar en los productos dentro del movimiento
+      return Boolean(mov.items?.some(it => {
+        const p = findProductForMovementItem(it, products, productsMap);
+        if (!p) return false;
+        return (p.sku || '').toLowerCase().includes(searchLow) || (p.description || '').toLowerCase().includes(searchLow);
+      }));
+    });
+  }, [movements, typeFilter, searchTerm, products, productsMap]);
 
   // Sort movements by date & time descending (newest first)
-  const sortedMovements = [...filteredMovements].sort((a, b) => {
-    const timeA = a.timeStart || '00:00';
-    const timeB = b.timeStart || '00:00';
-    const dateA = a.date ? `${a.date}T${timeA}` : (a.created_at || '');
-    const dateB = b.date ? `${b.date}T${timeB}` : (b.created_at || '');
-    return new Date(dateB) - new Date(dateA);
-  });
+  const sortedMovements = useMemo(() => {
+    return [...filteredMovements].sort((a, b) => {
+      const timeA = a.timeStart || '00:00';
+      const timeB = b.timeStart || '00:00';
+      const dateStrA = a.date ? `${String(a.date).split('T')[0]}T${timeA}` : (a.created_at || '');
+      const dateStrB = b.date ? `${String(b.date).split('T')[0]}T${timeB}` : (b.created_at || '');
+      return new Date(dateStrB) - new Date(dateStrA);
+    });
+  }, [filteredMovements]);
 
   // Reset to page 1 whenever search, filter or pageSize changes
   useEffect(() => {
@@ -138,13 +148,15 @@ const MovementList = () => {
   const paginatedMovements = isAll ? sortedMovements : sortedMovements.slice(startIndex, endIndex);
 
   // Total pounds for the filtered set
-  const totalPounds = filteredMovements.reduce(
-    (movementTotal, movement) => movementTotal + (movement.items || []).reduce(
-      (itemTotal, item) => itemTotal + Number(item.qtyPounds || 0),
+  const totalPounds = useMemo(() => {
+    return filteredMovements.reduce(
+      (movementTotal, movement) => movementTotal + (movement.items || []).reduce(
+        (itemTotal, item) => itemTotal + Number(item.qtyPounds || 0),
+        0
+      ),
       0
-    ),
-    0
-  );
+    );
+  }, [filteredMovements]);
 
   const formattedTotalPounds = totalPounds.toLocaleString('es-SV', {
     minimumFractionDigits: 0,
@@ -158,7 +170,7 @@ const MovementList = () => {
     }
 
     if (items.length === 1) {
-      const product = findProductForMovementItem(items[0], products);
+      const product = findProductForMovementItem(items[0], products, productsMap);
       const sku = product?.sku || items[0].sku || items[0].productId || 'SKU';
       const desc = product?.description || 'Desconocido';
       return (
@@ -180,7 +192,7 @@ const MovementList = () => {
     const previewTooltip = items
       .slice(0, 5)
       .map((it) => {
-        const p = findProductForMovementItem(it, products);
+        const p = findProductForMovementItem(it, products, productsMap);
         return p ? `${p.sku} - ${p.description}` : String(it.productId || 'Ítem');
       })
       .join('\n') + (items.length > 5 ? `\n...y ${items.length - 5} más` : '');
@@ -219,11 +231,27 @@ const MovementList = () => {
     );
   };
 
+  const getNotePrinterModule = async () => {
+    if (!notePrinterModRef.current) {
+      notePrinterModRef.current = await import('../../utils/movementNotePrinter');
+    }
+    return notePrinterModRef.current;
+  };
+
   const handleToggleNoteMenu = (e, mov) => {
     e.stopPropagation();
     if (noteMenu && noteMenu.mov.id === mov.id) {
       setNoteMenu(null);
       return;
+    }
+
+    // Precargar módulo de impresión al abrir el menú para que window.open se ejecute sincrónicamente al hacer clic
+    if (!notePrinterModRef.current) {
+      import('../../utils/movementNotePrinter')
+        .then(mod => {
+          notePrinterModRef.current = mod;
+        })
+        .catch(() => {});
     }
 
     const rect = e.currentTarget.getBoundingClientRect();
@@ -233,8 +261,7 @@ const MovementList = () => {
     const viewportH = window.innerHeight;
 
     let left = rect.right - menuWidth;
-    if (left < 10) left = 10;
-    if (left + menuWidth > viewportW - 10) left = viewportW - menuWidth - 10;
+    left = Math.max(8, Math.min(left, viewportW - 243));
 
     const spaceBelow = viewportH - rect.bottom;
     const top = spaceBelow < menuHeight + 12 ? Math.max(10, rect.top - menuHeight - 6) : rect.bottom + 6;
@@ -242,10 +269,11 @@ const MovementList = () => {
     setNoteMenu({ mov, top, left });
   };
 
-  const handleQuickPrintNote = (mov) => {
+  const handleQuickPrintNote = async (mov) => {
     setNoteMenu(null);
     try {
-      const res = printMovementNote({
+      const mod = notePrinterModRef.current || await getNotePrinterModule();
+      const res = mod.printMovementNote({
         movement: mov,
         products,
         settings,
@@ -265,6 +293,7 @@ const MovementList = () => {
   const handleQuickDownloadPdf = async (mov) => {
     setNoteMenu(null);
     try {
+      const { downloadMovementNotePdf } = await getNotePrinterModule();
       const res = await downloadMovementNotePdf({
         movement: mov,
         products,
@@ -278,9 +307,10 @@ const MovementList = () => {
     }
   };
 
-  const handleQuickDownloadWord = (mov) => {
+  const handleQuickDownloadWord = async (mov) => {
     setNoteMenu(null);
     try {
+      const { downloadMovementNoteWord } = await getNotePrinterModule();
       const res = downloadMovementNoteWord({
         movement: mov,
         products,
@@ -296,6 +326,7 @@ const MovementList = () => {
 
   const handleExportXlsx = async () => {
     try {
+      const { exportMovimientos } = await import('../../utils/exportManager');
       await exportMovimientos({
         movements: sortedMovements,
         products,
@@ -308,9 +339,10 @@ const MovementList = () => {
     }
   };
 
-  const handleExportCsv = () => {
+  const handleExportCsv = async () => {
     try {
-      exportMovimientos({
+      const { exportMovimientos } = await import('../../utils/exportManager');
+      await exportMovimientos({
         movements: sortedMovements,
         products,
         format: 'csv'
@@ -324,6 +356,7 @@ const MovementList = () => {
 
   const handleExportListPdf = async () => {
     try {
+      const { downloadMovementsListPdf } = await getNotePrinterModule();
       await downloadMovementsListPdf({
         movements: sortedMovements,
         products,
@@ -338,8 +371,9 @@ const MovementList = () => {
     }
   };
 
-  const handleExportListWord = () => {
+  const handleExportListWord = async () => {
     try {
+      const { downloadMovementsListWord } = await getNotePrinterModule();
       downloadMovementsListWord({
         movements: sortedMovements,
         products,
@@ -581,7 +615,12 @@ const MovementList = () => {
 
       {/* Grid / Table Container Compacta y Sin Desbordamiento en Monitores Cuadrados */}
       <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
-        <div className="table-container" style={{ border: 'none', boxShadow: 'none', marginBottom: 0 }}>
+        {paginatedMovements.length > 0 && (
+          <div className="show-on-mobile" style={{ padding: '0.4rem 0.85rem', fontSize: '0.72rem', color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface)', borderBottom: '1px solid var(--color-border-subtle)' }}>
+            Desliza horizontalmente la tabla para ver transporte, auditor y acciones ↔
+          </div>
+        )}
+        <div className="table-container table-scroll-both" style={{ border: 'none', boxShadow: 'none', marginBottom: 0 }}>
           <table className="movements-table">
             <thead>
               <tr>
@@ -781,17 +820,20 @@ const MovementList = () => {
                               <Eye size={15} />
                             </button>
 
-                            <button
-                              type="button"
-                              onClick={(e) => handleToggleNoteMenu(e, mov)}
-                              className={`mov-icon-btn ${isExit ? 'note-out-btn' : 'note-in-btn'} ${isMenuOpen ? 'active' : ''}`}
-                              title={`${noteLabel}: Imprimir / PDF / Word`}
-                              aria-label={`${noteLabel}: Imprimir / PDF / Word`}
-                              aria-expanded={isMenuOpen}
-                            >
-                              <Printer size={14} />
-                              <ChevronDown size={11} />
-                            </button>
+                            {allowExport && (
+                              <button
+                                type="button"
+                                data-note-trigger={mov.id}
+                                onClick={(e) => handleToggleNoteMenu(e, mov)}
+                                className={`mov-icon-btn ${isExit ? 'note-out-btn' : 'note-in-btn'} ${isMenuOpen ? 'active' : ''}`}
+                                title={`${noteLabel}: Imprimir / PDF / Word`}
+                                aria-label={`${noteLabel}: Imprimir / PDF / Word`}
+                                aria-expanded={isMenuOpen}
+                              >
+                                <Printer size={14} />
+                                <ChevronDown size={11} />
+                              </button>
+                            )}
 
                             {allowEdit && (
                               <button
@@ -921,7 +963,7 @@ const MovementList = () => {
       </div>
 
       {/* Menú Flotante de Comprobante (Imprimir / PDF / Word) libre de recortes de tabla */}
-      {noteMenu && (
+      {noteMenu && typeof document !== 'undefined' && createPortal(
         <div
           ref={menuRef}
           className="mov-popover-menu"
@@ -974,23 +1016,27 @@ const MovementList = () => {
             <FileText size={15} style={{ color: '#3b82f6', flexShrink: 0 }} />
             <span>Descargar en Word (.doc)</span>
           </button>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal de Detalle Completo del Movimiento e Impresión de Nota de Envío / Nota de Recibido */}
       {activeViewingMovement && (
-        <MovementDetailModal
-          movement={activeViewingMovement}
-          onClose={() => setViewingMovement(null)}
-          allowEdit={allowEdit}
-          onEdit={(mov) => {
-            setViewingMovement(null);
-            setEditingMovement(mov);
-            setIsAdding(true);
-          }}
-          syncState={effectiveViewingSyncState}
-          syncError={viewingSyncInfo?.operation?.error || ''}
-        />
+        <React.Suspense fallback={null}>
+          <MovementDetailModal
+            movement={activeViewingMovement}
+            onClose={() => setViewingMovement(null)}
+            allowEdit={allowEdit}
+            allowExport={allowExport}
+            onEdit={(mov) => {
+              setViewingMovement(null);
+              setEditingMovement(mov);
+              setIsAdding(true);
+            }}
+            syncState={effectiveViewingSyncState}
+            syncError={viewingSyncInfo?.operation?.error || ''}
+          />
+        </React.Suspense>
       )}
     </div>
   );

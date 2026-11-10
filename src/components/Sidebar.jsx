@@ -67,6 +67,8 @@ const Sidebar = ({ currentView, setCurrentView, isCollapsed, setIsCollapsed, isM
         </div>
         
         <button
+          type="button"
+          className="hide-on-mobile"
           onClick={() => setIsCollapsed(!isCollapsed)}
           style={{ background: 'rgba(255, 255, 255, 0.08)', border: 'none', color: 'white', cursor: 'pointer', padding: '0.35rem', display: 'flex', borderRadius: '6px', transition: 'var(--transition)' }}
           title={isCollapsed ? "Expandir menú" : "Contraer menú"}

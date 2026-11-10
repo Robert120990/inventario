@@ -79,6 +79,16 @@ export function OnDemand() {
 
   const isOfflineOrUnreachable = !isOnline || !isAccessible || !dbConnected;
 
+  // Cerrar el modal OnDemand al presionar Escape
+  useEffect(() => {
+    if (!detailsOpen) return undefined;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setDetailsOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [detailsOpen]);
+
   // Escuchar eventos de sincronización automática completada para mostrar confirmación
   useEffect(() => {
     const handleSyncDone = (e) => {
@@ -570,134 +580,156 @@ export function OnDemand() {
 
       {/* Modal de Gestión OnDemand (Cola Offline Aislada por Usuario, Resolución de Conflictos e Historial) */}
       {detailsOpen && (
-        <div className="modal-overlay" style={{ zIndex: 1200 }}>
+        <div
+          className="modal-overlay"
+          style={{ zIndex: 1200 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDetailsOpen(false);
+          }}
+        >
           <div
-            className="modal-content large"
-            style={{ maxWidth: '780px', width: '95%', maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}
+            className="modal-content large modal-shell-flex"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ondemand-modal-title"
+            style={{ maxWidth: '780px', width: '95%' }}
           >
             <div
-              className="topbar"
+              className="modal-shell-header"
               style={{
-                marginBottom: '0.85rem',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '0.75rem',
+                padding: '0.95rem 1.25rem',
                 borderBottom: '1px solid var(--color-border)',
-                paddingBottom: '0.75rem'
+                backgroundColor: 'var(--color-surface)'
               }}
             >
-              <div>
-                <h2 style={{ fontSize: '1.18rem', color: 'var(--color-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Database size={20} /> Centro de Continuidad Operativa OnDemand
+              <div style={{ minWidth: 0 }}>
+                <h2 id="ondemand-modal-title" style={{ fontSize: '1.12rem', color: 'var(--color-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Database size={19} style={{ flexShrink: 0 }} />
+                  <span>Centro de Continuidad Operativa OnDemand</span>
                 </h2>
-                <p style={{ fontSize: '0.79rem', color: 'var(--color-text-light)', margin: '0.2rem 0 0 0' }}>
+                <p style={{ fontSize: '0.78rem', color: 'var(--color-text-light)', margin: '0.2rem 0 0 0' }}>
                   Almacenamiento local IndexedDB aislado por usuario, control de versión base y sincronización incremental.
                 </p>
               </div>
-              <button type="button" className="btn btn-outline" onClick={() => setDetailsOpen(false)} style={{ padding: '0.3rem' }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setDetailsOpen(false)}
+                aria-label="Cerrar centro OnDemand"
+                style={{ padding: '0.35rem', flexShrink: 0 }}
+              >
                 <X size={18} />
               </button>
             </div>
 
-            {/* Tarjetas de estado */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: '0.65rem', marginBottom: '0.85rem' }}>
-              <div className="card" style={{ padding: '0.65rem 0.75rem', borderLeft: `4px solid ${isOnline ? 'var(--color-success)' : 'var(--color-danger)'}` }}>
-                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-light)' }}>Red y Servidor</div>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem', marginTop: '0.15rem' }}>
-                  {!isOfflineOrUnreachable ? 'En Línea · Activo' : 'Modo Local (Offline)'}
+            <div className="modal-scroll-body">
+              {/* Tarjetas de estado */}
+              <div className="modal-kpi-grid" style={{ padding: '0.8rem 1.25rem', backgroundColor: 'var(--color-bg)', borderBottom: '1px solid var(--color-border-subtle)' }}>
+                <div className="card" style={{ padding: '0.65rem 0.75rem', borderLeft: `4px solid ${isOnline ? 'var(--color-success)' : 'var(--color-danger)'}` }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--color-text-light)' }}>Red y Servidor</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginTop: '0.15rem' }}>
+                    {!isOfflineOrUnreachable ? 'En Línea · Activo' : 'Modo Local (Offline)'}
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '0.65rem 0.75rem', borderLeft: '4px solid var(--color-primary)' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--color-text-light)' }}>Pendientes ({currentUser?.username || 'Actual'})</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginTop: '0.15rem' }}>
+                    {pendingOnlyCount} operación(es)
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '0.65rem 0.75rem', borderLeft: `4px solid ${conflictCount > 0 ? 'var(--color-danger)' : 'var(--color-success)'}` }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--color-text-light)' }}>Requieren Revisión</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginTop: '0.15rem', color: conflictCount > 0 ? 'var(--color-danger)' : 'inherit' }}>
+                    {conflictCount} conflicto(s)
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '0.65rem 0.75rem', borderLeft: '4px solid #059669' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--color-text-light)' }}>Sincronizados Recientes</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginTop: '0.15rem', color: '#059669' }}>
+                    {syncedCount} operación(es)
+                  </div>
                 </div>
               </div>
 
-              <div className="card" style={{ padding: '0.65rem 0.75rem', borderLeft: '4px solid var(--color-primary)' }}>
-                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-light)' }}>Pendientes ({currentUser?.username || 'Actual'})</div>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem', marginTop: '0.15rem' }}>
-                  {pendingOnlyCount} operación(es)
+              <div style={{ padding: '0.85rem 1.25rem' }}>
+                {/* Aviso si existen operaciones resguardadas de otra cuenta en este navegador */}
+                {otherAccountsCount > 0 && (
+                  <div
+                    style={{
+                      backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                      border: '1px solid rgba(245, 158, 11, 0.4)',
+                      borderRadius: 'var(--radius)',
+                      padding: '0.55rem 0.85rem',
+                      marginBottom: '0.75rem',
+                      fontSize: '0.76rem',
+                      color: '#b45309',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}
+                  >
+                    <Lock size={15} style={{ flexShrink: 0 }} />
+                    <div>
+                      <strong>Aislamiento multiusuario activo:</strong> Existen{' '}
+                      <strong>{otherAccountsCount} operación(es)</strong> pendientes asociadas a otra cuenta (
+                      {otherUsersPending.accounts.map(a => `${a.username}: ${a.count}`).join(', ')}). Permanecen resguardadas y solo se enviarán cuando ese usuario inicie sesión.
+                    </div>
+                  </div>
+                )}
+
+                {/* Metadatos de caché local y servidor */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    justifyContent: 'space-between',
+                    gap: '0.5rem',
+                    fontSize: '0.75rem',
+                    color: 'var(--color-text-light)',
+                    backgroundColor: 'var(--color-bg)',
+                    padding: '0.55rem 0.85rem',
+                    borderRadius: 'var(--radius)',
+                    marginBottom: '0.75rem'
+                  }}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <Clock size={13} />
+                    Última copia local: {onDemandStatus?.lastCachedAt ? formatDate(onDemandStatus.lastCachedAt) : 'Activa en sesión'}
+                  </span>
+                  <span>
+                    Última actualización servidor: {formatSyncTimeLabel(lastServerSyncAt || onDemandStatus?.lastSyncedAt)}
+                  </span>
                 </div>
-              </div>
 
-              <div className="card" style={{ padding: '0.65rem 0.75rem', borderLeft: `4px solid ${conflictCount > 0 ? 'var(--color-danger)' : 'var(--color-success)'}` }}>
-                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-light)' }}>Requieren Revisión</div>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem', marginTop: '0.15rem', color: conflictCount > 0 ? 'var(--color-danger)' : 'inherit' }}>
-                  {conflictCount} conflicto(s)
+                {/* Pestañas: Cola Activa vs Historial Reciente */}
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.65rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('queue')}
+                    className={activeTab === 'queue' ? 'btn btn-primary' : 'btn btn-outline'}
+                    style={{ fontSize: '0.78rem', padding: '0.35rem 0.8rem' }}
+                  >
+                    Cola Activa ({totalQueueCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('history')}
+                    className={activeTab === 'history' ? 'btn btn-primary' : 'btn btn-outline'}
+                    style={{ fontSize: '0.78rem', padding: '0.35rem 0.8rem' }}
+                  >
+                    Historial Sincronizado ({syncedCount})
+                  </button>
                 </div>
-              </div>
 
-              <div className="card" style={{ padding: '0.65rem 0.75rem', borderLeft: '4px solid #059669' }}>
-                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-light)' }}>Sincronizados Recientes</div>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem', marginTop: '0.15rem', color: '#059669' }}>
-                  {syncedCount} operación(es)
-                </div>
-              </div>
-            </div>
-
-            {/* Aviso si existen operaciones resguardadas de otra cuenta en este navegador */}
-            {otherAccountsCount > 0 && (
-              <div
-                style={{
-                  backgroundColor: 'rgba(245, 158, 11, 0.12)',
-                  border: '1px solid rgba(245, 158, 11, 0.4)',
-                  borderRadius: 'var(--radius)',
-                  padding: '0.55rem 0.85rem',
-                  marginBottom: '0.75rem',
-                  fontSize: '0.76rem',
-                  color: '#b45309',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem'
-                }}
-              >
-                <Lock size={15} style={{ flexShrink: 0 }} />
-                <div>
-                  <strong>Aislamiento multiusuario activo:</strong> Existen{' '}
-                  <strong>{otherAccountsCount} operación(es)</strong> pendientes asociadas a otra cuenta (
-                  {otherUsersPending.accounts.map(a => `${a.username}: ${a.count}`).join(', ')}). Permanecen resguardadas y solo se enviarán cuando ese usuario inicie sesión.
-                </div>
-              </div>
-            )}
-
-            {/* Metadatos de caché local y servidor */}
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                justifyContent: 'space-between',
-                gap: '0.5rem',
-                fontSize: '0.75rem',
-                color: 'var(--color-text-light)',
-                backgroundColor: 'var(--color-bg)',
-                padding: '0.55rem 0.85rem',
-                borderRadius: 'var(--radius)',
-                marginBottom: '0.75rem'
-              }}
-            >
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                <Clock size={13} />
-                Última copia local: {onDemandStatus?.lastCachedAt ? formatDate(onDemandStatus.lastCachedAt) : 'Activa en sesión'}
-              </span>
-              <span>
-                Última actualización servidor: {formatSyncTimeLabel(lastServerSyncAt || onDemandStatus?.lastSyncedAt)}
-              </span>
-            </div>
-
-            {/* Pestañas: Cola Activa vs Historial Reciente */}
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.65rem' }}>
-              <button
-                type="button"
-                onClick={() => setActiveTab('queue')}
-                className={activeTab === 'queue' ? 'btn btn-primary' : 'btn btn-outline'}
-                style={{ fontSize: '0.78rem', padding: '0.35rem 0.8rem' }}
-              >
-                Cola Activa ({totalQueueCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('history')}
-                className={activeTab === 'history' ? 'btn btn-primary' : 'btn btn-outline'}
-                style={{ fontSize: '0.78rem', padding: '0.35rem 0.8rem' }}
-              >
-                Historial Sincronizado ({syncedCount})
-              </button>
-            </div>
-
-            {/* Contenido de la pestaña seleccionada */}
-            <div style={{ flex: 1, overflowY: 'auto', minHeight: '180px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', padding: '0.75rem' }}>
+                {/* Contenido de la pestaña seleccionada */}
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', padding: '0.75rem' }}>
               {activeTab === 'queue' ? (
                 totalQueueCount === 0 ? (
                   <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--color-text-light)' }}>
@@ -848,14 +880,17 @@ export function OnDemand() {
                   ))}
                 </div>
               )}
+                </div>
+              </div>
             </div>
 
             {/* Acciones de sincronización y compartición */}
             <div
+              className="modal-shell-footer"
               style={{
-                marginTop: '0.9rem',
-                paddingTop: '0.8rem',
+                padding: '0.85rem 1.25rem',
                 borderTop: '1px solid var(--color-border)',
+                backgroundColor: 'var(--color-surface)',
                 display: 'flex',
                 flexWrap: 'wrap',
                 justifyContent: 'space-between',
@@ -894,7 +929,7 @@ export function OnDemand() {
                 )}
               </div>
 
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <button type="button" className="btn btn-outline" onClick={handleQuickRefresh} style={{ fontSize: '0.78rem' }}>
                   <RefreshCw size={14} /> Actualizar Servidor
                 </button>

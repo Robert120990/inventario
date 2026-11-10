@@ -82,6 +82,15 @@ const Summary2 = ({ openHistoryOnLoad }) => {
   const activeCutRef = useRef(selectedCutForSummary || null);
   const userModifiedLiveDatesRef = useRef(false);
   const isFreezingCutRef = useRef(false);
+  const latestStateRef = useRef({
+    activeCut: null,
+    congeladosRows: [],
+    preparadosRows: [],
+    servicesData: [],
+    startDate: '',
+    endDate: '',
+    clientName: CONTRACT_INFO.clientName
+  });
 
   // Sincronizar referencia inmediata del corte activo e identificador global para el modal de historial
   useEffect(() => {
@@ -208,6 +217,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     if (targetProducts.length === 0 || dateList.length === 0) return [];
 
     const d0 = dateList[0];
+    const dEnd = dateList[dateList.length - 1];
     const unitTypeKey = unitField === 'qtyPounds' ? 'congeladosData' : 'preparadosData';
 
     // Buscar cortes congelados estrictamente anteriores (cutEnd < d0) para usar su stockFinal como saldo inicial
@@ -221,7 +231,9 @@ const Summary2 = ({ openHistoryOnLoad }) => {
         if (activeCut && String(c.id) === String(activeCut.id)) return false;
         const cutEnd = c._resolvedEnd;
         const rows = c[unitTypeKey];
-        return cutEnd && cutEnd < d0 && Array.isArray(rows) && rows.length > 0;
+        const hasRows = Array.isArray(rows) && rows.length > 0;
+        const hasClosingStock = c.closingStock && c.closingStock[unitTypeKey] !== null && c.closingStock[unitTypeKey] !== undefined;
+        return Boolean(cutEnd && cutEnd < d0 && (hasRows || hasClosingStock));
       })
       .sort((a, b) => b._resolvedEnd.localeCompare(a._resolvedEnd));
 
@@ -230,65 +242,87 @@ const Summary2 = ({ openHistoryOnLoad }) => {
 
     if (priorCuts.length > 0) {
       const lastCut = priorCuts[0];
-      const cutRows = lastCut[unitTypeKey] || [];
+      const cutRows = Array.isArray(lastCut[unitTypeKey]) ? lastCut[unitTypeKey] : [];
       const cutEnd = lastCut._resolvedEnd;
-      
-      const rowOnEnd = cutRows.find(r => normalizeDateOnly(r.fecha) === cutEnd) || cutRows[cutRows.length - 1];
-      if (rowOnEnd && rowOnEnd.stockFinal !== undefined && rowOnEnd.stockFinal !== null) {
+
+      if (cutRows.length > 0) {
+        const rowOnEnd = cutRows.find(r => normalizeDateOnly(r.fecha) === cutEnd) || cutRows[cutRows.length - 1];
+        if (rowOnEnd && rowOnEnd.stockFinal !== undefined && rowOnEnd.stockFinal !== null) {
+          baselineDate = cutEnd;
+          baselineFinalStock = Number(rowOnEnd.stockFinal || 0);
+        } else if (lastCut.closingStock && lastCut.closingStock[unitTypeKey] !== null && lastCut.closingStock[unitTypeKey] !== undefined) {
+          baselineDate = cutEnd;
+          baselineFinalStock = Number(lastCut.closingStock[unitTypeKey] || 0);
+        }
+      } else if (lastCut.closingStock && lastCut.closingStock[unitTypeKey] !== null && lastCut.closingStock[unitTypeKey] !== undefined) {
         baselineDate = cutEnd;
-        baselineFinalStock = Number(rowOnEnd.stockFinal || 0);
+        baselineFinalStock = Number(lastCut.closingStock[unitTypeKey] || 0);
+      }
+    }
+
+    // Pre-indexar movimientos en una sola pasada O(M) usando un Set de IDs de productos objetivo
+    const targetIds = new Set(targetProducts.map(p => String(p.id)));
+    const byDate = new Map();
+    let betweenBaselineNet = 0;
+    let afterD0In = 0;
+    let afterD0Out = 0;
+    let onD0In = 0;
+    let onD0Out = 0;
+
+    for (let i = 0; i < movements.length; i++) {
+      const m = movements[i];
+      if (!m || !Array.isArray(m.items) || m.items.length === 0) continue;
+      if (m.type !== 'in' && m.type !== 'out') continue;
+
+      let movQty = 0;
+      for (let j = 0; j < m.items.length; j++) {
+        const item = m.items[j];
+        if (item && item.productId !== undefined && item.productId !== null && targetIds.has(String(item.productId))) {
+          movQty += Number(item[unitField] || 0);
+        }
+      }
+      if (movQty === 0) continue;
+
+      const mDate = String(m.date || '').split('T')[0];
+      const isIn = m.type === 'in';
+
+      if (mDate >= d0 && mDate <= dEnd) {
+        let bucket = byDate.get(mDate);
+        if (!bucket) {
+          bucket = { inQty: 0, outQty: 0 };
+          byDate.set(mDate, bucket);
+        }
+        if (isIn) bucket.inQty += movQty;
+        else bucket.outQty += movQty;
+      }
+
+      if (baselineDate !== null && baselineFinalStock !== null) {
+        if (mDate > baselineDate && mDate < d0) {
+          betweenBaselineNet += isIn ? movQty : -movQty;
+        }
+      } else {
+        if (mDate > d0) {
+          if (isIn) afterD0In += movQty;
+          else afterD0Out += movQty;
+        } else if (mDate === d0) {
+          if (isIn) onD0In += movQty;
+          else onD0Out += movQty;
+        }
       }
     }
 
     let startingStockForD0 = 0;
 
     if (baselineDate !== null && baselineFinalStock !== null) {
-      let accumulated = baselineFinalStock;
-      if (baselineDate < d0) {
-        targetProducts.forEach(p => {
-          const pMovs = movements.filter(m => m.items && m.items.some(it => it.productId === p.id));
-          pMovs.forEach(m => {
-            const mDate = String(m.date || '').split('T')[0];
-            if (mDate > baselineDate && mDate < d0) {
-              const matchingItems = m.items.filter(it => it.productId === p.id);
-              matchingItems.forEach(item => {
-                if (m.type === 'in') accumulated += Number(item[unitField] || 0);
-                if (m.type === 'out') accumulated -= Number(item[unitField] || 0);
-              });
-            }
-          });
-        });
-      }
-      startingStockForD0 = accumulated;
+      startingStockForD0 = baselineFinalStock + (baselineDate < d0 ? betweenBaselineNet : 0);
     } else {
       // Cálculo hacia atrás desde stock actual de productos
-      targetProducts.forEach(p => {
-        const pMovs = movements.filter(m => m.items && m.items.some(it => it.productId === p.id));
-        let stockAtD0End = Number(p[stockField] || 0);
-
-        const afterD0 = pMovs.filter(m => String(m.date || '').split('T')[0] > d0);
-        afterD0.forEach(m => {
-          const matchingItems = m.items.filter(it => it.productId === p.id);
-          matchingItems.forEach(item => {
-            if (m.type === 'in') stockAtD0End -= Number(item[unitField] || 0);
-            if (m.type === 'out') stockAtD0End += Number(item[unitField] || 0);
-          });
-        });
-
-        const onD0 = pMovs.filter(m => String(m.date || '').split('T')[0] === d0);
-        let inOnD0 = 0;
-        let outOnD0 = 0;
-        onD0.forEach(m => {
-          const matchingItems = m.items.filter(it => it.productId === p.id);
-          matchingItems.forEach(item => {
-            if (m.type === 'in') inOnD0 += Number(item[unitField] || 0);
-            if (m.type === 'out') outOnD0 += Number(item[unitField] || 0);
-          });
-        });
-
-        const initialOnD0 = stockAtD0End - inOnD0 + outOnD0;
-        startingStockForD0 += initialOnD0;
-      });
+      let currentStockSum = 0;
+      for (let i = 0; i < targetProducts.length; i++) {
+        currentStockSum += Number(targetProducts[i][stockField] || 0);
+      }
+      const stockAtD0End = currentStockSum - afterD0In + afterD0Out;
+      startingStockForD0 = stockAtD0End - onD0In + onD0Out;
     }
 
     // Encadenamiento hacia adelante día a día garantizando continuidad
@@ -296,20 +330,9 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     const resultRows = [];
 
     dateList.forEach(dateStr => {
-      let dayIn = 0;
-      let dayOut = 0;
-
-      targetProducts.forEach(p => {
-        const pMovs = movements.filter(m => m.items && m.items.some(it => it.productId === p.id));
-        const onDate = pMovs.filter(m => String(m.date || '').split('T')[0] === dateStr);
-        onDate.forEach(m => {
-          const matchingItems = m.items.filter(it => it.productId === p.id);
-          matchingItems.forEach(item => {
-            if (m.type === 'in') dayIn += Number(item[unitField] || 0);
-            if (m.type === 'out') dayOut += Number(item[unitField] || 0);
-          });
-        });
-      });
+      const dayBucket = byDate.get(dateStr);
+      const dayIn = dayBucket ? dayBucket.inQty : 0;
+      const dayOut = dayBucket ? dayBucket.outQty : 0;
 
       const dayFinal = runningInitial + dayIn - dayOut;
       const dayTotalCost = dayFinal * rate;
@@ -445,13 +468,43 @@ const Summary2 = ({ openHistoryOnLoad }) => {
   const reportIva = reportSubtotal * CONTRACT_INFO.ivaRate;
   const reportGrandTotal = reportSubtotal + reportIva;
 
+  // Mantener snapshot actualizado de lecturas y fechas para evitar cierres obsoletos (stale closures) en autoguardado
+  useEffect(() => {
+    latestStateRef.current = {
+      activeCut,
+      congeladosRows,
+      preparadosRows,
+      servicesData,
+      startDate,
+      endDate,
+      clientName
+    };
+  }, [activeCut, congeladosRows, preparadosRows, servicesData, startDate, endDate, clientName]);
+
   // =========================================================================
   // GESTIÓN DE CORTES CONGELADOS, DESBLOQUEO, EDICIÓN Y AUTO-GUARDADO
   // =========================================================================
 
   // Disparador de autoguardado con debounce cuando se edita un corte activo
-  const triggerAutoSave = (updatedCong, updatedPrep, updatedServ, customStart, customEnd) => {
-    if (!activeCut) return;
+  const triggerAutoSave = useCallback((updatedCong, updatedPrep, updatedServ, customStart, customEnd) => {
+    const currentCutImmediate = activeCutRef.current || latestStateRef.current.activeCut;
+    if (!currentCutImmediate) return;
+
+    if (updatedCong !== null && updatedCong !== undefined) {
+      latestStateRef.current.congeladosRows = updatedCong;
+    }
+    if (updatedPrep !== null && updatedPrep !== undefined) {
+      latestStateRef.current.preparadosRows = updatedPrep;
+    }
+    if (updatedServ !== null && updatedServ !== undefined) {
+      latestStateRef.current.servicesData = updatedServ;
+    }
+    if (customStart) {
+      latestStateRef.current.startDate = customStart;
+    }
+    if (customEnd) {
+      latestStateRef.current.endDate = customEnd;
+    }
 
     setSaveStatus('saving');
     if (autoSaveTimerRef.current) {
@@ -459,9 +512,14 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     }
 
     autoSaveTimerRef.current = setTimeout(async () => {
-      const cong = updatedCong || congeladosRows;
-      const prep = updatedPrep || preparadosRows;
-      const serv = (updatedServ !== null && updatedServ !== undefined ? updatedServ : servicesData).map(s => {
+      autoSaveTimerRef.current = null;
+      const snap = latestStateRef.current;
+      const targetCut = activeCutRef.current || snap.activeCut;
+      if (!targetCut) return;
+
+      const cong = snap.congeladosRows || [];
+      const prep = snap.preparadosRows || [];
+      const serv = (snap.servicesData || []).map(s => {
         const resolved = resolveServiceDetails(s);
         return {
           ...resolved,
@@ -470,15 +528,19 @@ const Summary2 = ({ openHistoryOnLoad }) => {
           value: Number(resolved.value) || 0
         };
       });
+      const currentStart = snap.startDate;
+      const currentEnd = snap.endDate;
+      const currentClient = snap.clientName;
+
       const periodInfo = resolveCutPeriod({
-        startDate: customStart || activeCut.startDate || startDate,
-        endDate: customEnd || activeCut.endDate || endDate,
-        title: activeCut.title,
+        startDate: currentStart || targetCut.startDate,
+        endDate: currentEnd || targetCut.endDate,
+        title: targetCut.title,
         congeladosData: cong,
         preparadosData: prep
       });
-      const effectiveStart = customStart || periodInfo.startDate || normalizeDateOnly(activeCut.startDate) || startDate;
-      const effectiveEnd = customEnd || periodInfo.endDate || normalizeDateOnly(activeCut.endDate) || endDate;
+      const effectiveStart = currentStart || periodInfo.startDate || normalizeDateOnly(targetCut.startDate);
+      const effectiveEnd = currentEnd || periodInfo.endDate || normalizeDateOnly(targetCut.endDate);
 
       const calcCongTotal = cong.reduce((acc, r) => acc + (Number(r.totalMonto) || 0), 0);
       const calcPrepTotal = prep.reduce((acc, r) => acc + (Number(r.totalMonto) || 0), 0);
@@ -497,11 +559,11 @@ const Summary2 = ({ openHistoryOnLoad }) => {
         serviciosMonto: calcServTotal
       };
 
-      const newTitle = activeCut.title?.startsWith('Corte ') 
+      const newTitle = targetCut.title?.startsWith('Corte ') 
         ? `Corte ${formatDate(effectiveStart)} al ${formatDate(effectiveEnd)}`
-        : (activeCut.title || `Corte ${formatDate(effectiveStart)} al ${formatDate(effectiveEnd)}`);
+        : (targetCut.title || `Corte ${formatDate(effectiveStart)} al ${formatDate(effectiveEnd)}`);
 
-      const res = await updateDailyCut(activeCut.id, {
+      const res = await updateDailyCut(targetCut.id, {
         title: newTitle,
         startDate: effectiveStart,
         endDate: effectiveEnd,
@@ -509,12 +571,12 @@ const Summary2 = ({ openHistoryOnLoad }) => {
         preparadosData: prep,
         servicesData: serv,
         totalsData: totalsPayload,
-        clientName
+        clientName: currentClient
       });
 
       if (res.success) {
         setSaveStatus('saved');
-        setActiveCut(prev => ({
+        setActiveCut(prev => prev ? ({
           ...prev,
           title: newTitle,
           startDate: effectiveStart,
@@ -523,8 +585,8 @@ const Summary2 = ({ openHistoryOnLoad }) => {
           preparadosData: prep,
           servicesData: serv,
           totalsData: totalsPayload,
-          clientName
-        }));
+          clientName: currentClient
+        }) : prev);
         // Sincronizar lista de cortes en memoria
         fetchDailyCuts().then(cuts => setCutsList(Array.isArray(cuts) ? cuts : []));
         setTimeout(() => setSaveStatus(null), 3000);
@@ -533,7 +595,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
         toast.error('Error al autoguardar cambios en el corte');
       }
     }, 600);
-  };
+  }, [updateDailyCut, fetchDailyCuts]);
 
   // Garantizar integridad matemática en cascada: Saldo Inicial (Día N) === Saldo Final (Día N-1)
   const ensureCascadingIntegrity = (rows, defaultRate = 0.001) => {
@@ -880,12 +942,25 @@ const Summary2 = ({ openHistoryOnLoad }) => {
   const handleToggleLock = async () => {
     if (!activeCut) return;
 
-    const newLockState = !isLocked;
+    // Cancelar cualquier autoguardado pendiente para evitar condición de carrera (409 Conflict o pérdida de edición)
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    setSaveStatus(null);
+
+    const prevLockState = isLocked;
+    const newLockState = !prevLockState;
     setIsLocked(newLockState);
 
-    const cong = congeladosRows;
-    const prep = preparadosRows;
-    const serv = servicesData.map(resolveServiceDetails);
+    const snap = latestStateRef.current;
+    const cong = snap.congeladosRows?.length ? snap.congeladosRows : congeladosRows;
+    const prep = snap.preparadosRows?.length ? snap.preparadosRows : preparadosRows;
+    const rawServ = snap.servicesData ?? servicesData;
+    const serv = (rawServ || []).map(resolveServiceDetails);
+    const currentStart = snap.startDate || startDate;
+    const currentEnd = snap.endDate || endDate;
+    const currentClient = snap.clientName || clientName;
 
     const calcCongTotal = cong.reduce((acc, r) => acc + (Number(r.totalMonto) || 0), 0);
     const calcPrepTotal = prep.reduce((acc, r) => acc + (Number(r.totalMonto) || 0), 0);
@@ -905,14 +980,14 @@ const Summary2 = ({ openHistoryOnLoad }) => {
     };
 
     const periodInfo = resolveCutPeriod({
-      startDate: activeCut.startDate || startDate,
-      endDate: activeCut.endDate || endDate,
+      startDate: currentStart || activeCut.startDate,
+      endDate: currentEnd || activeCut.endDate,
       title: activeCut.title,
       congeladosData: cong,
       preparadosData: prep
     });
-    const effectiveStart = periodInfo.startDate || normalizeDateOnly(activeCut.startDate) || startDate;
-    const effectiveEnd = periodInfo.endDate || normalizeDateOnly(activeCut.endDate) || endDate;
+    const effectiveStart = currentStart || periodInfo.startDate || normalizeDateOnly(activeCut.startDate);
+    const effectiveEnd = currentEnd || periodInfo.endDate || normalizeDateOnly(activeCut.endDate);
 
     const newTitle = activeCut.title?.startsWith('Corte ') 
       ? `Corte ${formatDate(effectiveStart)} al ${formatDate(effectiveEnd)}`
@@ -924,7 +999,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
         title: newTitle,
         startDate: effectiveStart,
         endDate: effectiveEnd,
-        clientName,
+        clientName: currentClient,
         congeladosData: cong,
         preparadosData: prep,
         servicesData: serv,
@@ -934,17 +1009,18 @@ const Summary2 = ({ openHistoryOnLoad }) => {
       if (res.success) {
         setStartDate(effectiveStart);
         setEndDate(effectiveEnd);
-        setActiveCut(prev => ({
+        setActiveCut(prev => prev ? ({
           ...prev,
           isLocked: newLockState,
           title: newTitle,
           startDate: effectiveStart,
           endDate: effectiveEnd,
+          clientName: currentClient,
           congeladosData: cong,
           preparadosData: prep,
           servicesData: serv,
           totalsData: totalsPayload
-        }));
+        }) : prev);
 
         // Actualizar lista en el historial
         fetchDailyCuts().then(cuts => {
@@ -956,8 +1032,12 @@ const Summary2 = ({ openHistoryOnLoad }) => {
         } else {
           toast('Corte desbloqueado. Ahora puedes editar fechas y lecturas.', { icon: '🔓' });
         }
+      } else {
+        setIsLocked(prevLockState);
+        toast.error(res.message || 'No se pudo actualizar el estado de bloqueo.');
       }
     } catch {
+      setIsLocked(prevLockState);
       toast.error('Error al actualizar estado de bloqueo');
     }
   };
@@ -1761,9 +1841,9 @@ const Summary2 = ({ openHistoryOnLoad }) => {
           ========================================================================= */}
       {showCongelados && (
         <div style={{ marginBottom: '2.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#2980b9' }}></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <div style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#2980b9', flexShrink: 0 }}></div>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--color-text)', margin: 0 }}>
                 ALMACENAMIENTO PRODUCTO CONGELADO (-18°C)
               </h2>
@@ -1782,8 +1862,13 @@ const Summary2 = ({ openHistoryOnLoad }) => {
           </div>
 
           <div className="card" style={{ padding: 0 }}>
-            <div className="table-container" style={{ border: 'none', boxShadow: 'none' }}>
-              <table>
+            {congeladosRows.length > 0 && (
+              <div className="show-on-mobile" style={{ padding: '0.4rem 0.85rem', fontSize: '0.72rem', color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface)', borderBottom: '1px solid var(--color-border-subtle)' }}>
+                Desliza horizontalmente la tabla para ver todos los saldos y montos ↔
+              </div>
+            )}
+            <div className="table-container table-scroll-both" style={{ border: 'none', boxShadow: 'none' }}>
+              <table style={{ width: '100%', minWidth: '740px' }}>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--color-bg)' }}>
                     <th>FECHA</th>
@@ -2014,9 +2099,9 @@ const Summary2 = ({ openHistoryOnLoad }) => {
           ========================================================================= */}
       {showPreparados && (
         <div style={{ marginBottom: '2.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#27ae60' }}></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <div style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#27ae60', flexShrink: 0 }}></div>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--color-text)', margin: 0 }}>
                 ALMACENAMIENTO PRODUCTOS PREPARADOS
               </h2>
@@ -2035,8 +2120,13 @@ const Summary2 = ({ openHistoryOnLoad }) => {
           </div>
 
           <div className="card" style={{ padding: 0 }}>
-            <div className="table-container" style={{ border: 'none', boxShadow: 'none' }}>
-              <table>
+            {preparadosRows.length > 0 && (
+              <div className="show-on-mobile" style={{ padding: '0.4rem 0.85rem', fontSize: '0.72rem', color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface)', borderBottom: '1px solid var(--color-border-subtle)' }}>
+                Desliza horizontalmente la tabla para ver todos los saldos y montos ↔
+              </div>
+            )}
+            <div className="table-container table-scroll-both" style={{ border: 'none', boxShadow: 'none' }}>
+              <table style={{ width: '100%', minWidth: '740px' }}>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--color-bg)' }}>
                     <th>FECHA</th>
@@ -2266,9 +2356,9 @@ const Summary2 = ({ openHistoryOnLoad }) => {
           TABLA 3: SERVICIOS EXTRAORDINARIOS (MANIOBRAS, HORAS EXTRAS, TEMPERATURA)
           ========================================================================= */}
       <div style={{ marginBottom: '2.5rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#e67e22' }}></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <div style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#e67e22', flexShrink: 0 }}></div>
             <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--color-text)', margin: 0 }}>
               SERVICIOS EXTRA-ORDINARIOS
             </h2>
@@ -2281,7 +2371,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             {activeCut && (
               <button
                 type="button"
@@ -2293,7 +2383,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
                 <RefreshCw size={13} /> Actualizar Servicios Extraordinarios
               </button>
             )}
-            <div style={{ fontSize: '0.85rem', color: 'var(--color-text-light)' }}>
+            <div style={{ fontSize: '0.85rem', color: 'var(--color-text-light)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
               {activeCut && !isLocked && (
                 <button
                   type="button"
@@ -2306,8 +2396,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
                     color: '#ffffff',
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '0.35rem',
-                    marginRight: '0.75rem'
+                    gap: '0.35rem'
                   }}
                   onClick={() => handleAddExtraService()}
                   title="Agregar un nuevo servicio extraordinario a este corte desbloqueado"
@@ -2321,8 +2410,13 @@ const Summary2 = ({ openHistoryOnLoad }) => {
         </div>
 
         <div className="card" style={{ padding: 0 }}>
-          <div className="table-container" style={{ border: 'none', boxShadow: 'none' }}>
-            <table>
+          {servicesData.length > 0 && (
+            <div className="show-on-mobile" style={{ padding: '0.4rem 0.85rem', fontSize: '0.72rem', color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface)', borderBottom: '1px solid var(--color-border-subtle)' }}>
+              Desliza horizontalmente la tabla para ver cantidades, tarifas y valores ↔
+            </div>
+          )}
+          <div className="table-container table-scroll-both" style={{ border: 'none', boxShadow: 'none' }}>
+            <table style={{ width: '100%', minWidth: '640px' }}>
               <thead>
                 <tr style={{ backgroundColor: 'var(--color-bg)' }}>
                   <th>FECHA</th>
@@ -2529,7 +2623,7 @@ const Summary2 = ({ openHistoryOnLoad }) => {
 
       {/* Resumen de Facturación Final */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-        <div className="card" style={{ minWidth: '400px', padding: '1.5rem', borderLeft: '4px solid var(--color-primary)' }}>
+        <div className="card" style={{ width: '100%', maxWidth: '460px', padding: '1.5rem', borderLeft: '4px solid var(--color-primary)' }}>
           <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--color-primary)', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem' }}>
             Resumen de Liquidación del Período
           </h3>
@@ -2568,20 +2662,48 @@ const Summary2 = ({ openHistoryOnLoad }) => {
           MODAL: CONGELAR CORTE ACTUAL
           ========================================================================= */}
       {freezeModalOpen && (
-        <div className="modal-backdrop">
-          <div className="modal" style={{ maxWidth: '520px' }}>
-            <div className="modal-header">
-              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div
+          className="modal-overlay"
+          style={{ zIndex: 1100 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isSavingCut) setFreezeModalOpen(false);
+          }}
+        >
+          <div
+            className="modal-content modal-shell-flex"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="freeze-cut-modal-title"
+            style={{ maxWidth: '520px', width: '95%' }}
+          >
+            <div
+              className="modal-shell-header"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '1rem 1.25rem',
+                borderBottom: '1px solid var(--color-border)',
+                backgroundColor: 'var(--color-surface)'
+              }}
+            >
+              <h3 id="freeze-cut-modal-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
                 <Snowflake size={20} style={{ color: 'var(--color-primary)' }} />
                 Congelar Período de Liquidación
               </h3>
-              <button className="btn btn-ghost" onClick={() => setFreezeModalOpen(false)}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setFreezeModalOpen(false)}
+                disabled={isSavingCut}
+                aria-label="Cerrar ventana"
+              >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleConfirmFreeze}>
-              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div className="modal-scroll-body" style={{ padding: '1.15rem 1.25rem' }}>
+              <form id="freeze-cut-form" onSubmit={handleConfirmFreeze} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <p style={{ fontSize: '0.875rem', color: 'var(--color-text-light)', margin: 0 }}>
                   Esta acción guardará una instantánea congelada de todas las lecturas diarias de congelados, preparados y servicios extraordinarios en el rango seleccionado:
                 </p>
@@ -2614,25 +2736,37 @@ const Summary2 = ({ openHistoryOnLoad }) => {
                     onChange={(e) => setFreezeTitle(e.target.value)}
                     placeholder="Ej. Corte Primera Quincena Agosto 2026"
                     required
-                    autoFocus
+                    autoFocus={typeof window !== 'undefined' && window.innerWidth > 768}
                   />
                 </div>
 
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                   🔒 El corte se guardará en modo bloqueado por seguridad. Podrás desbloquearlo en cualquier momento si necesitas ajustar lecturas o fechas.
                 </div>
-              </div>
+              </form>
+            </div>
 
-              <div className="modal-footer">
-                <button type="button" className="btn btn-outline" onClick={() => setFreezeModalOpen(false)}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={isSavingCut}>
-                  {isSavingCut ? <RefreshCw size={16} className="spin" /> : <Save size={16} />}
-                  <span>{isSavingCut ? 'Guardando...' : 'Confirmar y Congelar'}</span>
-                </button>
-              </div>
-            </form>
+            <div
+              className="modal-shell-footer"
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                gap: '0.65rem',
+                flexWrap: 'wrap',
+                padding: '0.85rem 1.25rem',
+                borderTop: '1px solid var(--color-border)',
+                backgroundColor: 'var(--color-surface)'
+              }}
+            >
+              <button type="button" className="btn btn-outline" onClick={() => setFreezeModalOpen(false)} disabled={isSavingCut}>
+                Cancelar
+              </button>
+              <button type="submit" form="freeze-cut-form" className="btn btn-primary" disabled={isSavingCut}>
+                {isSavingCut ? <RefreshCw size={16} className="spin" /> : <Save size={16} />}
+                <span>{isSavingCut ? 'Guardando...' : 'Confirmar y Congelar'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -2643,19 +2777,42 @@ const Summary2 = ({ openHistoryOnLoad }) => {
           MODAL: DESGLOSE DE MOVIMIENTOS VINCULADOS (DOBLE CLIC EN ENTRADA / SALIDA)
           ========================================================================= */}
       {movementModalData && (
-        <div className="modal-overlay" style={{ zIndex: 1100 }}>
-          <div className="modal-content" style={{ maxWidth: '980px', width: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.85rem', marginBottom: '1rem' }}>
-              <div>
+        <div
+          className="modal-overlay"
+          style={{ zIndex: 1100 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setMovementModalParams(null);
+          }}
+        >
+          <div
+            className="modal-content large modal-shell-flex"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="linked-movements-modal-title"
+            style={{ maxWidth: '980px', width: '95%' }}
+          >
+            <div
+              className="modal-shell-header"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '0.75rem',
+                borderBottom: '1px solid var(--color-border)',
+                padding: '0.95rem 1.25rem',
+                backgroundColor: 'var(--color-surface)'
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                  <span className={`badge ${movementModalData.type === 'in' ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem', fontWeight: 'bold' }}>
+                  <span className={`badge ${movementModalData.type === 'in' ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '0.8rem', padding: '0.25rem 0.7rem', fontWeight: 'bold' }}>
                     {movementModalData.type === 'in' ? '📥 ENTRADAS VINCULADAS' : '📤 SALIDAS VINCULADAS'}
                   </span>
-                  <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--color-text)', margin: 0 }}>
+                  <h2 id="linked-movements-modal-title" style={{ fontSize: '1.15rem', fontWeight: 'bold', color: 'var(--color-text)', margin: 0 }}>
                     {movementModalData.dateTitle}
                   </h2>
                 </div>
-                <p style={{ fontSize: '0.825rem', color: 'var(--color-text-light)', margin: '0.35rem 0 0 0' }}>
+                <p style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', margin: '0.25rem 0 0 0' }}>
                   {movementModalData.category === 'congelados'
                     ? 'Almacenamiento Producto Congelado (-18°C) · Tarifa: $0.001 / libra / día'
                     : 'Almacenamiento Productos Preparados · Tarifa: $0.038 / cesta / día'}
@@ -2665,62 +2822,65 @@ const Summary2 = ({ openHistoryOnLoad }) => {
                 type="button" 
                 className="btn btn-ghost" 
                 onClick={() => setMovementModalParams(null)}
-                style={{ padding: '0.4rem', borderRadius: '50%' }}
+                style={{ padding: '0.4rem', borderRadius: '50%', flexShrink: 0 }}
                 title="Cerrar ventana"
+                aria-label="Cerrar ventana"
               >
                 <X size={20} />
               </button>
             </div>
 
-            {/* KPI Cards de Resumen */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
-              <div className="card" style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--color-surface)', borderLeft: `4px solid ${movementModalData.type === 'in' ? 'var(--color-success)' : 'var(--color-danger)'}` }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>
-                  Sumatoria en Cuadro
-                </span>
-                <div style={{ fontSize: '1.35rem', fontWeight: 800, color: movementModalData.type === 'in' ? 'var(--color-success)' : 'var(--color-danger)', marginTop: '0.2rem' }}>
-                  {movementModalData.expectedTotal.toLocaleString('en-US')} {movementModalData.category === 'congelados' ? 'Lbs' : 'Cst'}
+            <div className="modal-scroll-body">
+              {/* KPI Cards de Resumen */}
+              <div className="modal-kpi-grid" style={{ padding: '0.85rem 1.25rem', backgroundColor: 'var(--color-bg)', borderBottom: '1px solid var(--color-border-subtle)' }}>
+                <div className="card" style={{ padding: '0.7rem 0.95rem', backgroundColor: 'var(--color-surface)', borderLeft: `4px solid ${movementModalData.type === 'in' ? 'var(--color-success)' : 'var(--color-danger)'}` }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>
+                    Sumatoria en Cuadro
+                  </span>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: movementModalData.type === 'in' ? 'var(--color-success)' : 'var(--color-danger)', marginTop: '0.15rem' }}>
+                    {movementModalData.expectedTotal.toLocaleString('en-US')} {movementModalData.category === 'congelados' ? 'Lbs' : 'Cst'}
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '0.7rem 0.95rem', backgroundColor: 'var(--color-surface)', borderLeft: '4px solid var(--color-primary)' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>
+                    Documentos / Registros
+                  </span>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-primary)', marginTop: '0.15rem' }}>
+                    {movementModalData.movementCount} {movementModalData.movementCount === 1 ? 'movimiento' : 'movimientos'}
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '0.7rem 0.95rem', backgroundColor: 'var(--color-surface)', borderLeft: '4px solid var(--color-border)' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>
+                    Productos / Lotes
+                  </span>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-text)', marginTop: '0.15rem' }}>
+                    {movementModalData.items.length} {movementModalData.items.length === 1 ? 'línea' : 'líneas'}
+                  </div>
                 </div>
               </div>
 
-              <div className="card" style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--color-surface)', borderLeft: '4px solid var(--color-primary)' }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>
-                  Documentos / Registros
-                </span>
-                <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--color-primary)', marginTop: '0.2rem' }}>
-                  {movementModalData.movementCount} {movementModalData.movementCount === 1 ? 'movimiento' : 'movimientos'}
+              {/* Buscador dentro del Modal */}
+              {movementModalData.items.length > 0 && (
+                <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--color-border-subtle)', backgroundColor: 'var(--color-card)' }}>
+                  <div style={{ position: 'relative' }}>
+                    <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Filtrar por producto, SKU, # Documento, cliente o motivo..."
+                      value={movementSearch}
+                      onChange={(e) => setMovementSearch(e.target.value)}
+                      style={{ paddingLeft: '2.2rem', marginBottom: 0, fontSize: '0.85rem' }}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div className="card" style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--color-surface)', borderLeft: '4px solid var(--color-border)' }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>
-                  Productos / Lotes
-                </span>
-                <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--color-text)', marginTop: '0.2rem' }}>
-                  {movementModalData.items.length} {movementModalData.items.length === 1 ? 'línea' : 'líneas'}
-                </div>
-              </div>
-            </div>
-
-            {/* Buscador dentro del Modal */}
-            {movementModalData.items.length > 0 && (
-              <div style={{ marginBottom: '0.85rem', position: 'relative' }}>
-                <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="Filtrar por producto, SKU, # Documento, cliente o motivo..."
-                  value={movementSearch}
-                  onChange={(e) => setMovementSearch(e.target.value)}
-                  style={{ paddingLeft: '2.2rem', marginBottom: 0, fontSize: '0.85rem' }}
-                />
-              </div>
-            )}
-
-            {/* Tabla Detallada de Movimientos */}
-            <div className="modal-body" style={{ maxHeight: '48vh', overflowY: 'auto', padding: 0, borderRadius: 'var(--radius)', border: '1px solid var(--color-border)' }}>
+              {/* Tabla Detallada de Movimientos */}
               {movementModalData.items.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '2.5rem', backgroundColor: 'var(--color-bg)' }}>
+                <div style={{ textAlign: 'center', padding: '2.5rem 1.25rem', backgroundColor: 'var(--color-bg)' }}>
                   <Layers size={36} style={{ color: 'var(--color-text-muted)', margin: '0 auto 0.5rem', opacity: 0.4 }} />
                   <p style={{ fontWeight: '600', color: 'var(--color-text)', marginBottom: '0.25rem' }}>No se encontraron movimientos registrados en vivo</p>
                   <p style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', maxWidth: '480px', margin: '0 auto' }}>
@@ -2730,12 +2890,16 @@ const Summary2 = ({ openHistoryOnLoad }) => {
                   </p>
                 </div>
               ) : filteredMovementItems.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>
+                <div style={{ textAlign: 'center', padding: '2rem 1.25rem', color: 'var(--color-text-muted)' }}>
                   No se encontraron ítems que coincidan con "{movementSearch}".
                 </div>
               ) : (
-                <div className="table-container" style={{ margin: 0, border: 'none', boxShadow: 'none' }}>
-                  <table style={{ width: '100%', minWidth: '880px' }}>
+                <>
+                  <div className="show-on-mobile" style={{ padding: '0.4rem 0.9rem', fontSize: '0.72rem', color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface)', borderBottom: '1px solid var(--color-border-subtle)' }}>
+                    Desliza horizontalmente la tabla para ver documentos, lotes, cliente y acciones ↔
+                  </div>
+                  <div className="table-container table-scroll-both" style={{ margin: 0, border: 'none', borderRadius: 0, boxShadow: 'none' }}>
+                    <table style={{ width: '100%', minWidth: '880px' }}>
                     <thead>
                       <tr style={{ backgroundColor: 'var(--color-bg)' }}>
                         <th style={{ width: '110px' }}># DOC / REF</th>
@@ -2843,13 +3007,26 @@ const Summary2 = ({ openHistoryOnLoad }) => {
                         <td colSpan={4}></td>
                       </tr>
                     </tfoot>
-                  </table>
-                </div>
+                    </table>
+                  </div>
+                </>
               )}
             </div>
 
             {/* Footer del Modal */}
-            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--color-border)', paddingTop: '0.85rem', marginTop: '1rem' }}>
+            <div
+              className="modal-shell-footer"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '0.75rem',
+                flexWrap: 'wrap',
+                borderTop: '1px solid var(--color-border)',
+                padding: '0.85rem 1.25rem',
+                backgroundColor: 'var(--color-surface)'
+              }}
+            >
               <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                 💡 Puedes hacer <strong>doble clic</strong> o clic en el ícono 👁️ sobre cualquier celda de Entrada o Salida para abrir este detalle.
               </div>
@@ -2871,7 +3048,10 @@ const Summary2 = ({ openHistoryOnLoad }) => {
       {editingMovement && (
         <div className="modal-overlay" style={{ zIndex: 1300 }}>
           <div 
-            className="modal-content" 
+            className="modal-content"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Editar movimiento vinculado" 
             style={{ 
               maxWidth: '1050px', 
               width: '95%', 

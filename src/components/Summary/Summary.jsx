@@ -39,9 +39,23 @@ const Summary = () => {
 
   const summaryData = useMemo(() => {
     if (!startDate || !endDate || products.length === 0) return [];
-    
-    const start = new Date(startDate + 'T00:00:00');
-    const end = new Date(endDate + 'T23:59:59');
+
+    // Pre-indexar movimientos por producto en una sola pasada O(M) con fecha normalizada YYYY-MM-DD
+    const movsByProduct = new Map();
+    movements.forEach(m => {
+      if (!Array.isArray(m.items) || m.items.length === 0) return;
+      const mDateStr = String(m.date || '').split('T')[0];
+      if (!mDateStr) return;
+      m.items.forEach(it => {
+        const key = String(it.productId);
+        let bucket = movsByProduct.get(key);
+        if (!bucket) {
+          bucket = [];
+          movsByProduct.set(key, bucket);
+        }
+        bucket.push({ type: m.type, dateStr: mDateStr, item: it });
+      });
+    });
 
     return products.map(p => {
       const unitType = categoryUnits[p.category] || 'units';
@@ -52,35 +66,20 @@ const Summary = () => {
       const unitLabel = unitType === 'units' ? 'Und' : 
                        unitType === 'pounds' ? 'Lbs' : 'Cst';
 
-      const pMovs = movements.filter(m => m.items && m.items.some(it => it.productId === p.id));
-      let currentStock = Number(p[stockField] || 0);
-      
-      const afterEnd = pMovs.filter(m => {
-        const mDate = new Date(m.date + 'T23:59:59');
-        return mDate > end;
-      });
-
+      const pEntries = movsByProduct.get(String(p.id)) || [];
+      const currentStock = Number(p[stockField] || 0);
       let stockAtEnd = currentStock;
-      afterEnd.forEach(m => {
-        const item = m.items.find(it => it.productId === p.id);
-        if (item) {
-          if (m.type === 'in') stockAtEnd -= Number(item[qtyField] || 0);
-          if (m.type === 'out') stockAtEnd += Number(item[qtyField] || 0);
-        }
-      });
-
-      const inRange = pMovs.filter(m => {
-        const mDate = new Date(m.date + 'T12:00:00');
-        return mDate >= start && mDate <= end;
-      });
-
       let entradas = 0;
       let salidas = 0;
-      inRange.forEach(m => {
-        const item = m.items.find(it => it.productId === p.id);
-        if (item) {
-          if (m.type === 'in') entradas += Number(item[qtyField] || 0);
-          if (m.type === 'out') salidas += Number(item[qtyField] || 0);
+
+      pEntries.forEach(({ type, dateStr, item }) => {
+        const qty = Number(item[qtyField] || 0);
+        if (dateStr > endDate) {
+          if (type === 'in') stockAtEnd -= qty;
+          if (type === 'out') stockAtEnd += qty;
+        } else if (dateStr >= startDate && dateStr <= endDate) {
+          if (type === 'in') entradas += qty;
+          if (type === 'out') salidas += qty;
         }
       });
 
@@ -122,17 +121,15 @@ const Summary = () => {
 
   const servicesData = useMemo(() => {
     if (!startDate || !endDate) return [];
-    const start = new Date(startDate + 'T00:00:00');
-    const end = new Date(endDate + 'T23:59:59');
 
     const services = [];
     movements.forEach(m => {
-      const mDate = new Date(m.date + 'T12:00:00');
-      if (mDate >= start && mDate <= end && m.services) {
+      const mDateStr = String(m.date || '').split('T')[0];
+      if (mDateStr && mDateStr >= startDate && mDateStr <= endDate && m.services) {
         m.services.forEach(s => {
           const res = resolveServiceDetails(s);
           services.push({
-            date: m.date,
+            date: mDateStr,
             description: res.description,
             quantity: res.quantity,
             unitPrice: res.unitPrice,
@@ -351,9 +348,9 @@ const Summary = () => {
         </div>
       </div>
 
-      <div className="card" style={{ padding: '0' }}>
-        <div className="table-container" style={{ border: 'none', boxShadow: 'none' }}>
-          <table>
+      <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+        <div className="table-container table-scroll-both" style={{ border: 'none', boxShadow: 'none', margin: 0 }}>
+          <table style={{ width: '100%', minWidth: '720px' }}>
             <thead>
               <tr>
                 <th>Producto</th>
@@ -416,9 +413,9 @@ const Summary = () => {
           <h2 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <FileText size={20} /> Servicios Extraordinarios del Periodo
           </h2>
-          <div className="card" style={{ padding: '0' }}>
-            <div className="table-container" style={{ border: 'none', boxShadow: 'none' }}>
-              <table>
+          <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+            <div className="table-container table-scroll-both" style={{ border: 'none', boxShadow: 'none', margin: 0 }}>
+              <table style={{ width: '100%', minWidth: '580px' }}>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--color-bg)' }}>
                     <th>Fecha</th>
@@ -450,8 +447,8 @@ const Summary = () => {
       )}
 
       {(invTotal > 0 || totalServices > 0) && (
-        <div style={{ marginTop: '2rem', textAlign: 'right', padding: '1.5rem' }}>
-          <div style={{ display: 'inline-block', backgroundColor: 'var(--color-primary)', color: 'white', padding: '1.5rem', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)', textAlign: 'right', minWidth: '350px' }}>
+        <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end', padding: '0.5rem 0' }}>
+          <div style={{ width: '100%', maxWidth: '420px', backgroundColor: 'var(--color-primary)', color: 'white', padding: '1.35rem', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)', textAlign: 'right' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', opacity: 0.9 }}>
               <span>Subtotal (Inv + Serv):</span>
               <span>${formatCurrency(reportSubtotal)}</span>

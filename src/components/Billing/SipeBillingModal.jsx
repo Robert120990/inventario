@@ -624,19 +624,17 @@ export default function SipeBillingModal({
     <div
       className="modal-overlay"
       onClick={() => !emitting && onClose()}
-      style={{ zIndex: 1350, padding: '1rem' }}
+      style={{ zIndex: 1350 }}
     >
       <div
-        className="modal-content"
+        className="modal-content large modal-shell-flex"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sipe-billing-modal-title"
         onClick={(e) => e.stopPropagation()}
         style={{
           maxWidth: '1040px',
-          width: '100%',
-          maxHeight: '93vh',
-          display: 'flex',
-          flexDirection: 'column',
-          padding: 0,
-          overflow: 'hidden',
+          width: '95%',
           backgroundColor: 'var(--color-card)',
           borderRadius: 'var(--radius-xl)',
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--color-border)'
@@ -646,22 +644,23 @@ export default function SipeBillingModal({
             1. CABECERA EJECUTIVA Y BANNER DE CONTRATO API (sys.sipesv.com)
             ========================================================================= */}
         <div
+          className="modal-shell-header"
           style={{
-            padding: '1.15rem 1.5rem',
+            padding: '1rem 1.35rem',
             borderBottom: '1px solid var(--color-border)',
             background: 'linear-gradient(180deg, var(--color-surface) 0%, var(--color-card) 100%)',
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            gap: '1rem',
-            flexShrink: 0
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '0.75rem'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', minWidth: 0, flex: '1 1 260px' }}>
             <div
               style={{
-                width: '44px',
-                height: '44px',
+                width: '42px',
+                height: '42px',
                 borderRadius: '12px',
                 background: isAlreadyBilled
                   ? 'linear-gradient(135deg, #059669 0%, #047857 100%)'
@@ -674,15 +673,16 @@ export default function SipeBillingModal({
                 flexShrink: 0
               }}
             >
-              <Receipt size={22} />
+              <Receipt size={20} />
             </div>
 
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap' }}>
                 <h2
+                  id="sipe-billing-modal-title"
                   style={{
                     margin: 0,
-                    fontSize: '1.2rem',
+                    fontSize: '1.12rem',
                     fontWeight: 800,
                     fontFamily: 'var(--font-headline)',
                     color: 'var(--color-text)'
@@ -711,24 +711,24 @@ export default function SipeBillingModal({
                   </span>
                 )}
               </div>
-              <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+              <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
                 Corte: <strong>{cutData.title}</strong> · Comprobante de Crédito Fiscal (Versión MH v3) hacia{' '}
                 <code>sys.sipesv.com</code>
               </p>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             {/* Badge de Estado de Contrato API */}
             <div
               title={`Hash Contrato: ${contractHash} · Modo: ${contractStatus?.mode || 'verificado'}`}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '0.4rem',
-                padding: '0.35rem 0.75rem',
+                gap: '0.35rem',
+                padding: '0.3rem 0.65rem',
                 borderRadius: '999px',
-                fontSize: '0.73rem',
+                fontSize: '0.71rem',
                 fontWeight: 700,
                 backgroundColor: driftDetected
                   ? 'rgba(245, 158, 11, 0.15)'
@@ -737,7 +737,7 @@ export default function SipeBillingModal({
                 border: `1px solid ${driftDetected ? 'rgba(245, 158, 11, 0.4)' : 'rgba(16, 185, 129, 0.35)'}`
               }}
             >
-              {driftDetected ? <AlertTriangle size={14} /> : <ShieldCheck size={14} />}
+              {driftDetected ? <AlertTriangle size={13} /> : <ShieldCheck size={13} />}
               <span>
                 {driftDetected
                   ? 'Cambio Detectado en API SIPE'
@@ -752,15 +752,15 @@ export default function SipeBillingModal({
               disabled={checkingContract}
               title="Verificar cambios en el contrato de API sys.sipesv.com"
               style={{
-                padding: '0.35rem 0.65rem',
-                fontSize: '0.75rem',
+                padding: '0.3rem 0.6rem',
+                fontSize: '0.73rem',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.35rem'
               }}
             >
               <RefreshCw size={13} className={checkingContract ? 'spin' : ''} />
-              <span>Verificar cambios en API</span>
+              <span>Verificar API</span>
             </button>
 
             <button
@@ -768,6 +768,7 @@ export default function SipeBillingModal({
               className="btn btn-ghost"
               onClick={onClose}
               disabled={emitting}
+              aria-label="Cerrar facturación SIPE"
               style={{
                 borderRadius: '50%',
                 width: '34px',
@@ -783,71 +784,72 @@ export default function SipeBillingModal({
           </div>
         </div>
 
-        {/* Alerta de Modo Offline: La emisión DTE requiere conexión en vivo */}
-        {isOfflineForDte && (
-          <div
-            style={{
-              backgroundColor: 'rgba(220, 38, 38, 0.12)',
-              borderBottom: '1px solid rgba(220, 38, 38, 0.35)',
-              padding: '0.65rem 1.5rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.65rem',
-              fontSize: '0.8rem',
-              color: '#dc2626'
-            }}
-          >
-            <WifiOff size={18} style={{ flexShrink: 0 }} />
-            <div>
-              <strong>Conexión requerida para emitir DTE-03:</strong> Este dispositivo se encuentra en modo sin conexión (Offline). Puedes revisar y exportar la vista previa JSON del corte, pero la transmisión fiscal hacia <code>sys.sipesv.com</code> y el Ministerio de Hacienda requiere conexión activa con el servidor.
-            </div>
-          </div>
-        )}
-
-        {/* Alerta de Drift si la API de sys.sipesv.com cambió */}
-        {driftDetected && (
-          <div
-            style={{
-              backgroundColor: 'rgba(245, 158, 11, 0.12)',
-              borderBottom: '1px solid rgba(245, 158, 11, 0.35)',
-              padding: '0.65rem 1.5rem',
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '0.65rem',
-              fontSize: '0.8rem',
-              color: '#b45309'
-            }}
-          >
-            <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
-            <div>
-              <strong>Atención: Se detectaron diferencias en el esquema de integración de sys.sipesv.com:</strong>
-              {driftDetails.length > 0 ? (
-                <ul style={{ margin: '0.25rem 0 0 1.1rem', padding: 0 }}>
-                  {driftDetails.map((detail, idx) => (
-                    <li key={idx}>{detail}</li>
-                  ))}
-                </ul>
-              ) : (
-                <span style={{ marginLeft: '0.35rem' }}>
-                  El hash del contrato remoto difiere de la versión esperada. Se recomienda usar modo Pre-Factura/Contingencia.
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* =========================================================================
             CUERPO DEL MODAL CON SCROLL
             ========================================================================= */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
-          {/* Tarjetas Emisor y Receptor */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-              gap: '0.85rem'
-            }}
-          >
+        <div className="modal-scroll-body">
+          {/* Alerta de Modo Offline: La emisión DTE requiere conexión en vivo */}
+          {isOfflineForDte && (
+            <div
+              style={{
+                backgroundColor: 'rgba(220, 38, 38, 0.12)',
+                borderBottom: '1px solid rgba(220, 38, 38, 0.35)',
+                padding: '0.65rem 1.25rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.65rem',
+                fontSize: '0.79rem',
+                color: '#dc2626'
+              }}
+            >
+              <WifiOff size={18} style={{ flexShrink: 0 }} />
+              <div>
+                <strong>Conexión requerida para emitir DTE-03:</strong> Este dispositivo se encuentra en modo sin conexión (Offline). Puedes revisar y exportar la vista previa JSON del corte, pero la transmisión fiscal hacia <code>sys.sipesv.com</code> y el Ministerio de Hacienda requiere conexión activa con el servidor.
+              </div>
+            </div>
+          )}
+
+          {/* Alerta de Drift si la API de sys.sipesv.com cambió */}
+          {driftDetected && (
+            <div
+              style={{
+                backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                borderBottom: '1px solid rgba(245, 158, 11, 0.35)',
+                padding: '0.65rem 1.25rem',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '0.65rem',
+                fontSize: '0.79rem',
+                color: '#b45309'
+              }}
+            >
+              <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div>
+                <strong>Atención: Se detectaron diferencias en el esquema de integración de sys.sipesv.com:</strong>
+                {driftDetails.length > 0 ? (
+                  <ul style={{ margin: '0.25rem 0 0 1.1rem', padding: 0 }}>
+                    {driftDetails.map((detail, idx) => (
+                      <li key={idx}>{detail}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <span style={{ marginLeft: '0.35rem' }}>
+                    El hash del contrato remoto difiere de la versión esperada. Se recomienda usar modo Pre-Factura/Contingencia.
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div style={{ padding: '1.1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+            {/* Tarjetas Emisor y Receptor */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))',
+                gap: '0.85rem'
+              }}
+            >
             {/* Emisor */}
             <div
               style={{
@@ -1171,9 +1173,9 @@ export default function SipeBillingModal({
               3. TABLA DE VISTA PREVIA DEL CUERPO DEL DOCUMENTO (DTE 03)
               ========================================================================= */}
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Layers size={16} style={{ color: 'var(--color-primary)' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <Layers size={16} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
                 <strong style={{ fontSize: '0.9rem', color: 'var(--color-text)' }}>
                   Vista Previa del Cuerpo del Documento (<code>cuerpoDocumento</code> · Tipo Ítem 2 - Servicio)
                 </strong>
@@ -1188,8 +1190,14 @@ export default function SipeBillingModal({
               </span>
             </div>
 
-            <div className="table-container" style={{ margin: 0, border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', boxShadow: 'none' }}>
-              <table style={{ width: '100%', fontSize: '0.83rem' }}>
+            {activePreview.items.length > 0 && (
+              <div className="show-on-mobile" style={{ marginBottom: '0.35rem', fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                Desliza horizontalmente la tabla para ver precios unitarios y ventas gravadas ↔
+              </div>
+            )}
+
+            <div className="table-container table-scroll-both" style={{ margin: 0, border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', boxShadow: 'none' }}>
+              <table style={{ width: '100%', minWidth: '680px', fontSize: '0.83rem' }}>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--color-surface)' }}>
                     <th style={{ width: '55px', textAlign: 'center' }}>#</th>
@@ -1258,7 +1266,7 @@ export default function SipeBillingModal({
                   El DTE-03 se transmite vinculado a <strong>Inversiones LIL, S.A. de C.V.</strong> (Sucursal <code>S001</code>) y queda auditado en este corte con bloqueo contra doble facturación.
                 </span>
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.2rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.2rem' }}>
                 <button
                   type="button"
                   className="btn btn-outline"
@@ -1285,7 +1293,9 @@ export default function SipeBillingModal({
 
             <div
               style={{
-                minWidth: '330px',
+                minWidth: 'min(100%, 330px)',
+                flex: '1 1 280px',
+                maxWidth: '440px',
                 padding: '1rem 1.25rem',
                 borderRadius: 'var(--radius)',
                 backgroundColor: 'var(--color-surface)',
@@ -1317,21 +1327,23 @@ export default function SipeBillingModal({
               </div>
             </div>
           </div>
+          </div>
         </div>
 
         {/* =========================================================================
             FOOTER DE ACCIONES
             ========================================================================= */}
         <div
+          className="modal-shell-footer"
           style={{
-            padding: '0.95rem 1.5rem',
+            padding: '0.95rem 1.35rem',
             borderTop: '1px solid var(--color-border)',
             backgroundColor: 'var(--color-surface)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            gap: '1rem',
-            flexShrink: 0
+            flexWrap: 'wrap',
+            gap: '0.75rem'
           }}
         >
           <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -1346,7 +1358,7 @@ export default function SipeBillingModal({
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <button
               type="button"
               className="btn btn-outline"

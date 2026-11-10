@@ -322,7 +322,8 @@ html, body, #root {
 /* Mobile Elements Hidden by Default on Desktop */
 .mobile-header,
 .mobile-close-button,
-.sidebar-backdrop {
+.sidebar-backdrop,
+.show-on-mobile {
   display: none;
 }
 
@@ -758,13 +759,53 @@ button, input, select, textarea {
 
 /* Tables (Fluent Design Spec: Soft rounded tonal wrappers, subtle borders) */
 .table-container {
-  overflow-x: auto;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto !important;
   background-color: var(--color-card);
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
   box-shadow: var(--editorial-shadow);
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-x pan-y !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+}
+
+.table-scroll-both {
+  width: 100%;
   max-width: 100%;
-  -webkit-overflow-scrolling: touch;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-x pan-y !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+}
+
+.table-container::-webkit-scrollbar,
+.table-scroll-both::-webkit-scrollbar,
+.modal-scroll-body::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.table-container::-webkit-scrollbar-track,
+.table-scroll-both::-webkit-scrollbar-track,
+.modal-scroll-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.table-container::-webkit-scrollbar-thumb,
+.table-scroll-both::-webkit-scrollbar-thumb,
+.modal-scroll-body::-webkit-scrollbar-thumb {
+  background-color: rgba(100, 116, 139, 0.45);
+  border-radius: 999px;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover,
+.table-scroll-both::-webkit-scrollbar-thumb:hover,
+.modal-scroll-body::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(100, 116, 139, 0.68);
 }
 
 table {
@@ -1005,6 +1046,42 @@ tr:hover td {
   max-width: 920px;
 }
 
+/* Structured Flex Modal Shell (Desktop & Mobile Full-Viewport Scroll) */
+.modal-content.modal-shell-flex {
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  max-height: 92vh !important;
+  max-height: 92dvh !important;
+  overflow: hidden !important;
+}
+
+.modal-shell-header {
+  flex-shrink: 0;
+}
+
+.modal-scroll-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+}
+
+.modal-shell-footer {
+  flex-shrink: 0;
+}
+
+.modal-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.85rem;
+}
+
 @keyframes modalPop {
   from {
     opacity: 0;
@@ -1083,6 +1160,17 @@ input[type="date"]::-webkit-clear-button {
 
 .animate-pulse-glow {
   animation: pulseGlow 3s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin,
+.spin-icon {
+  animation: spin 0.9s linear infinite;
 }
 
 /* Responsive Media Queries (Full Fluid Multi-Device Suite) */
@@ -1309,8 +1397,10 @@ input[type="date"]::-webkit-clear-button {
   /* Responsive Table Container */
   .table-container {
     border-radius: var(--radius) !important;
-    margin-left: -0.15rem !important;
-    margin-right: -0.15rem !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
     -webkit-overflow-scrolling: touch !important;
     scrollbar-width: thin !important;
   }
@@ -1343,6 +1433,56 @@ input[type="date"]::-webkit-clear-button {
     padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px)) !important;
   }
 
+  .modal-content.modal-shell-flex,
+  .modal-content.large.modal-shell-flex {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 95vh !important;
+    height: 95dvh !important;
+    max-height: 95vh !important;
+    max-height: 95dvh !important;
+    border-radius: 1.15rem 1.15rem 0 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .modal-shell-header {
+    padding: 0.75rem 0.95rem !important;
+  }
+
+  .modal-shell-footer {
+    padding: 0.65rem 0.95rem calc(0.65rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .modal-kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important;
+    gap: 0.5rem !important;
+    padding: 0.65rem 0.9rem !important;
+  }
+
+  .movements-topbar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.75rem !important;
+    width: 100% !important;
+  }
+
+  .movements-topbar > div {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .mov-export-group {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    flex-wrap: wrap !important;
+  }
+
   /* Responsive DatePicker Popover */
   .calendar-popover {
     position: fixed !important;
@@ -1369,10 +1509,10 @@ input[type="date"]::-webkit-clear-button {
     flex-wrap: wrap !important;
   }
 
-  [style*="min-width: 350px"],
-  [style*="min-width: 280px"],
-  [style*="min-width: 260px"],
-  [style*="min-width: 220px"] {
+  [style*="min-width: 350px"]:not(th):not(td):not(table),
+  [style*="min-width: 280px"]:not(th):not(td):not(table),
+  [style*="min-width: 260px"]:not(th):not(td):not(table),
+  [style*="min-width: 220px"]:not(th):not(td):not(table) {
     min-width: 0 !important;
     width: 100% !important;
   }
@@ -1666,6 +1806,33 @@ input[type="date"]::-webkit-clear-button {
 .mov-popover-item:hover {
   background-color: var(--color-surface);
   color: var(--color-primary);
+}
+
+/* Optimización adicional para teléfonos en orientación horizontal (Landscape Mobile) */
+@media (max-height: 540px) and (max-width: 960px) {
+  .modal-overlay {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+
+  .modal-content.modal-shell-flex,
+  .modal-content.large.modal-shell-flex {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 97dvh !important;
+    max-height: 97dvh !important;
+    border-radius: 0.85rem 0.85rem 0 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .modal-shell-header {
+    padding: 0.5rem 0.9rem !important;
+  }
+
+  .modal-shell-footer {
+    padding: 0.45rem 0.9rem calc(0.45rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
 }
 
 /* Optimización adicional para monitores cuadrados o portátiles compactos (1024px - 1366px) */

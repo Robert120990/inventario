@@ -17,6 +17,7 @@ const InsuranceReport = () => {
     movements, 
     categoryUnits, 
     canExport,
+    canDelete,
     fetchInsuranceCuts,
     fetchInsuranceCutById,
     createInsuranceCut,
@@ -25,6 +26,7 @@ const InsuranceReport = () => {
   } = useInventory();
 
   const allowExport = canExport('insurance');
+  const allowDeleteCut = canDelete ? canDelete('insurance') : false;
 
   // Fechas del período: Fecha Inicio e Inicio del próximo corte
   const [startDate, setStartDate] = useState(() => {
@@ -56,10 +58,40 @@ const InsuranceReport = () => {
 
   const autoSaveTimerRef = useRef(null);
   const activeCutRef = useRef(null);
+  const latestStateRef = useRef({
+    reportRows: [],
+    customRows: null,
+    startDate: '',
+    cutoffDate: '',
+    customerName: '',
+    warehouseName: '',
+    premiumRate: 0.10
+  });
 
   useEffect(() => {
     activeCutRef.current = activeCut;
   }, [activeCut]);
+
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!historyModalOpen && !freezeModalOpen) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (historyModalOpen) setHistoryModalOpen(false);
+        if (freezeModalOpen && !isSavingCut) setFreezeModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [historyModalOpen, freezeModalOpen, isSavingCut]);
 
   const applyNextInsurancePeriod = (cuts) => {
     const todayStr = getLocalDateStr(new Date());
@@ -92,32 +124,40 @@ const InsuranceReport = () => {
       }
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [fetchInsuranceCuts]);
 
   // Cálculo en vivo de existencias y valoración a la fecha de corte
   const liveRows = useMemo(() => {
     if (!cutoffDate) return [];
 
-    const cutoff = new Date(`${cutoffDate}T23:59:59`);
+    const normalizedCutoff = String(cutoffDate || '').split('T')[0];
+    if (!normalizedCutoff) return [];
+
+    const deltasByProduct = new Map();
+    movements.forEach(movement => {
+      const movDateStr = String(movement.date || '').split('T')[0];
+      if (!movDateStr || movDateStr <= normalizedCutoff) return;
+
+      const direction = movement.type === 'in' ? -1 : 1;
+      (movement.items || []).forEach(item => {
+        if (item.productId === undefined || item.productId === null) return;
+        const key = String(item.productId);
+        let acc = deltasByProduct.get(key);
+        if (!acc) {
+          acc = { units: 0, pounds: 0, baskets: 0 };
+          deltasByProduct.set(key, acc);
+        }
+        acc.units += Number(item.qtyUnits || 0) * direction;
+        acc.pounds += Number(item.qtyPounds || 0) * direction;
+        acc.baskets += Number(item.qtyBaskets || 0) * direction;
+      });
+    });
 
     return products.map(product => {
-      let units = Number(product.stockUnits || 0);
-      let pounds = Number(product.stockPounds || 0);
-      let baskets = Number(product.stockBaskets || 0);
-
-      movements.forEach(movement => {
-        const movementDate = new Date(`${movement.date}T23:59:59`);
-        if (movementDate <= cutoff) return;
-
-        (movement.items || [])
-          .filter(item => item.productId === product.id)
-          .forEach(item => {
-            const direction = movement.type === 'in' ? -1 : 1;
-            units += Number(item.qtyUnits || 0) * direction;
-            pounds += Number(item.qtyPounds || 0) * direction;
-            baskets += Number(item.qtyBaskets || 0) * direction;
-          });
-      });
+      const delta = deltasByProduct.get(String(product.id));
+      const units = Number(product.stockUnits || 0) + (delta ? delta.units : 0);
+      const pounds = Number(product.stockPounds || 0) + (delta ? delta.pounds : 0);
+      const baskets = Number(product.stockBaskets || 0) + (delta ? delta.baskets : 0);
 
       const configuredMetric = categoryUnits[product.category];
       const valuationMetric = configuredMetric === 'baskets' ? 'baskets' : 'pounds';
@@ -157,6 +197,18 @@ const InsuranceReport = () => {
     return liveRows;
   }, [activeCut, customRows, liveRows]);
 
+  useEffect(() => {
+    latestStateRef.current = {
+      reportRows,
+      customRows,
+      startDate,
+      cutoffDate,
+      customerName,
+      warehouseName,
+      premiumRate
+    };
+  }, [reportRows, customRows, startDate, cutoffDate, customerName, warehouseName, premiumRate]);
+
   const totalInsuredValue = reportRows.reduce((total, row) => total + Number(row.insuredValue || 0), 0);
   const totalPremium = reportRows.reduce((total, row) => total + Number(row.premium || 0), 0);
   const totalPounds = reportRows.reduce((total, row) => total + Number(row.pounds || 0), 0);
@@ -164,7 +216,8 @@ const InsuranceReport = () => {
 
   const periodLabel = useMemo(() => {
     if (!cutoffDate) return '';
-    return new Date(`${cutoffDate}T12:00:00`).toLocaleDateString('es-SV', {
+    const cleanCutoff = String(cutoffDate || '').split('T')[0];
+    return new Date(`${cleanCutoff}T12:00:00`).toLocaleDateString('es-SV', {
       month: 'long',
       year: 'numeric'
     });
@@ -174,16 +227,31 @@ const InsuranceReport = () => {
   const triggerAutoSave = (updatedRows = null, newStartDate = null, newCutoffDate = null, newCustomer = null, newWarehouse = null, newRate = null) => {
     if (!activeCut || isLocked) return;
 
+    if (updatedRows) {
+      latestStateRef.current.customRows = updatedRows;
+      latestStateRef.current.reportRows = updatedRows;
+    }
+    if (newStartDate !== null) latestStateRef.current.startDate = newStartDate;
+    if (newCutoffDate !== null) latestStateRef.current.cutoffDate = newCutoffDate;
+    if (newCustomer !== null) latestStateRef.current.customerName = newCustomer;
+    if (newWarehouse !== null) latestStateRef.current.warehouseName = newWarehouse;
+    if (newRate !== null) latestStateRef.current.premiumRate = newRate;
+
     setSaveStatus('saving');
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
 
     autoSaveTimerRef.current = setTimeout(async () => {
-      const rowsPayload = updatedRows || reportRows;
-      const effectiveStart = newStartDate || startDate;
-      const effectiveCutoff = newCutoffDate || cutoffDate;
-      const effectiveCustomer = newCustomer !== null ? newCustomer : customerName;
-      const effectiveWarehouse = newWarehouse !== null ? newWarehouse : warehouseName;
-      const effectiveRate = newRate !== null ? newRate : premiumRate;
+      autoSaveTimerRef.current = null;
+      const currentCut = activeCutRef.current;
+      if (!currentCut) return;
+
+      const stateSnap = latestStateRef.current;
+      const rowsPayload = stateSnap.customRows || stateSnap.reportRows;
+      const effectiveStart = stateSnap.startDate;
+      const effectiveCutoff = stateSnap.cutoffDate;
+      const effectiveCustomer = stateSnap.customerName;
+      const effectiveWarehouse = stateSnap.warehouseName;
+      const effectiveRate = stateSnap.premiumRate;
 
       const calcInsured = rowsPayload.reduce((acc, r) => acc + (Number(r.insuredValue) || 0), 0);
       const calcPremium = rowsPayload.reduce((acc, r) => acc + (Number(r.premium) || 0), 0);
@@ -197,7 +265,7 @@ const InsuranceReport = () => {
         totalPremium: calcPremium
       };
 
-      const res = await updateInsuranceCut(activeCut.id, {
+      const res = await updateInsuranceCut(currentCut.id, {
         startDate: effectiveStart,
         cutoffDate: effectiveCutoff,
         customerName: effectiveCustomer,
@@ -209,7 +277,7 @@ const InsuranceReport = () => {
 
       if (res.success) {
         setSaveStatus('saved');
-        setActiveCut(prev => ({
+        setActiveCut(prev => prev ? ({
           ...prev,
           startDate: effectiveStart,
           cutoffDate: effectiveCutoff,
@@ -218,7 +286,7 @@ const InsuranceReport = () => {
           premiumRate: effectiveRate,
           rowsData: rowsPayload,
           totalsData: totalsPayload
-        }));
+        }) : prev);
         fetchInsuranceCuts().then(cuts => setCutsList(Array.isArray(cuts) ? cuts : []));
         setTimeout(() => setSaveStatus(null), 3000);
       } else {
@@ -370,42 +438,55 @@ const InsuranceReport = () => {
   const handleToggleLock = async () => {
     if (!activeCut) return;
 
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+      setSaveStatus(null);
+    }
+
+    const prevLockState = isLocked;
     const newLockState = !isLocked;
     setIsLocked(newLockState);
 
-    const rowsPayload = reportRows;
+    const stateSnap = latestStateRef.current;
+    const rowsPayload = stateSnap.customRows || stateSnap.reportRows || reportRows;
+    const calcPounds = rowsPayload.reduce((acc, r) => acc + Number(r.pounds || 0), 0);
+    const calcBaskets = rowsPayload.reduce((acc, r) => acc + Number(r.baskets || 0), 0);
+    const calcInsured = rowsPayload.reduce((acc, r) => acc + Number(r.insuredValue || 0), 0);
+    const calcPremium = rowsPayload.reduce((acc, r) => acc + Number(r.premium || 0), 0);
+
     const totalsPayload = {
-      totalPounds,
-      totalBaskets,
-      totalInsuredValue,
-      totalPremium
+      totalPounds: calcPounds,
+      totalBaskets: calcBaskets,
+      totalInsuredValue: calcInsured,
+      totalPremium: calcPremium
     };
 
     try {
       const res = await updateInsuranceCut(activeCut.id, {
         isLocked: newLockState ? 1 : 0,
         title: activeCut.title,
-        startDate,
-        cutoffDate,
-        customerName,
-        warehouseName,
-        premiumRate,
+        startDate: stateSnap.startDate || startDate,
+        cutoffDate: stateSnap.cutoffDate || cutoffDate,
+        customerName: stateSnap.customerName || customerName,
+        warehouseName: stateSnap.warehouseName || warehouseName,
+        premiumRate: stateSnap.premiumRate ?? premiumRate,
         rowsData: rowsPayload,
         totalsData: totalsPayload
       });
 
       if (res.success) {
-        setActiveCut(prev => ({
+        setActiveCut(prev => prev ? ({
           ...prev,
           isLocked: newLockState,
-          startDate,
-          cutoffDate,
-          customerName,
-          warehouseName,
-          premiumRate,
+          startDate: stateSnap.startDate || startDate,
+          cutoffDate: stateSnap.cutoffDate || cutoffDate,
+          customerName: stateSnap.customerName || customerName,
+          warehouseName: stateSnap.warehouseName || warehouseName,
+          premiumRate: stateSnap.premiumRate ?? premiumRate,
           rowsData: rowsPayload,
           totalsData: totalsPayload
-        }));
+        }) : prev);
 
         fetchInsuranceCuts().then(cuts => {
           if (Array.isArray(cuts)) setCutsList(cuts);
@@ -416,8 +497,11 @@ const InsuranceReport = () => {
         } else {
           toast('Corte desbloqueado. Ahora puedes editar valores y tarifas.', { icon: '🔓' });
         }
+      } else {
+        setIsLocked(prevLockState);
       }
     } catch {
+      setIsLocked(prevLockState);
       toast.error('Error al actualizar estado de bloqueo');
     }
   };
@@ -457,6 +541,11 @@ const InsuranceReport = () => {
 
   // Cargar un corte guardado desde el historial
   const handleSelectCutFromHistory = async (cutSummary) => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+      setSaveStatus(null);
+    }
     try {
       const fullCut = await fetchInsuranceCutById(cutSummary.id);
       if (fullCut) {
@@ -938,9 +1027,24 @@ const InsuranceReport = () => {
       </div>
 
       {/* Tabla Principal */}
-      <div className="card" style={{ padding: 0 }}>
-        <div className="table-container" style={{ border: 'none', boxShadow: 'none' }}>
-          <table>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        {reportRows.length > 0 && (
+          <div
+            className="show-on-mobile"
+            style={{
+              padding: '0.45rem 0.9rem',
+              fontSize: '0.73rem',
+              fontWeight: 600,
+              color: 'var(--color-primary)',
+              backgroundColor: 'rgba(0, 103, 192, 0.06)',
+              borderBottom: '1px solid var(--color-border)'
+            }}
+          >
+            Desliza horizontalmente la tabla para revisar todas las columnas y primas ↔
+          </div>
+        )}
+        <div className="table-container table-scroll-both" style={{ border: 'none', boxShadow: 'none' }}>
+          <table style={{ width: '100%', minWidth: '780px' }}>
             <thead>
               <tr>
                 <th>Código</th>
@@ -1082,70 +1186,110 @@ const InsuranceReport = () => {
 
       {/* MODAL PARA CONGELAR CORTE */}
       {freezeModalOpen && (
-        <div className="modal-overlay" style={{ zIndex: 1100 }}>
-          <div className="modal-content" style={{ maxWidth: '520px', width: '90%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Snowflake size={22} style={{ color: 'var(--color-primary)' }} /> Congelar Corte de Seguro
+        <div
+          className="modal-overlay"
+          onClick={() => !isSavingCut && setFreezeModalOpen(false)}
+          style={{ zIndex: 1100 }}
+        >
+          <div
+            className="modal-content modal-shell-flex"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="insurance-freeze-modal-title"
+            style={{ maxWidth: '520px', width: '100%' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="modal-shell-header"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '1.1rem 1.35rem',
+                borderBottom: '1px solid var(--color-border)',
+                background: 'linear-gradient(180deg, var(--color-surface) 0%, var(--color-card) 100%)'
+              }}
+            >
+              <h2
+                id="insurance-freeze-modal-title"
+                style={{ fontSize: '1.18rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                <Snowflake size={20} style={{ color: 'var(--color-primary)' }} /> Congelar Corte de Seguro
               </h2>
               <button 
                 type="button" 
-                className="btn btn-outline" 
-                style={{ padding: '0.25rem 0.5rem', border: 'none' }}
+                className="btn btn-ghost" 
+                aria-label="Cerrar ventana"
+                style={{ padding: '0.3rem', borderRadius: '50%' }}
                 onClick={() => setFreezeModalOpen(false)}
               >
-                <X size={20} />
+                <X size={19} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveFreezeCut}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label className="form-label" style={{ fontWeight: 600 }}>Título del Corte</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={freezeTitle}
-                  onChange={(e) => setFreezeTitle(e.target.value)}
-                  placeholder="Ej. Corte de Seguro Agosto 2026"
-                  required
-                  autoFocus
-                />
-                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>
-                  Identificador para ubicarlo fácilmente en el historial.
-                </span>
+            <form
+              onSubmit={handleSaveFreezeCut}
+              style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0, overflow: 'hidden' }}
+            >
+              <div className="modal-scroll-body" style={{ padding: '1.15rem 1.35rem' }}>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Título del Corte</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={freezeTitle}
+                    onChange={(e) => setFreezeTitle(e.target.value)}
+                    placeholder="Ej. Corte de Seguro Agosto 2026"
+                    required
+                    autoFocus={typeof window !== 'undefined' && window.innerWidth > 768}
+                  />
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>
+                    Identificador para ubicarlo fácilmente en el historial.
+                  </span>
+                </div>
+
+                {/* Resumen del Corte a Congelar */}
+                <div style={{
+                  backgroundColor: 'var(--color-bg)',
+                  borderRadius: 'var(--radius)',
+                  padding: '1rem',
+                  border: '1px solid var(--color-border)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.4rem', fontSize: '0.85rem' }}>
+                    <span style={{ color: 'var(--color-text-light)' }}>Período:</span>
+                    <strong>{formatDate(startDate)} al {formatDate(cutoffDate)}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.4rem', fontSize: '0.85rem' }}>
+                    <span style={{ color: 'var(--color-text-light)' }}>Cliente:</span>
+                    <span style={{ textAlign: 'right' }}>{customerName}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.4rem', fontSize: '0.85rem' }}>
+                    <span style={{ color: 'var(--color-text-light)' }}>Productos:</span>
+                    <strong>{reportRows.length} ítems</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.4rem', fontSize: '0.85rem' }}>
+                    <span style={{ color: 'var(--color-text-light)' }}>Valor Asegurado:</span>
+                    <strong>${formatCurrency(totalInsuredValue)}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed var(--color-border)', fontSize: '0.95rem' }}>
+                    <span style={{ fontWeight: 600 }}>Prima ({premiumRate}%):</span>
+                    <strong style={{ color: 'var(--color-primary)' }}>${formatCurrency(totalPremium)}</strong>
+                  </div>
+                </div>
               </div>
 
-              {/* Resumen del Corte a Congelar */}
-              <div style={{
-                backgroundColor: 'var(--color-bg)',
-                borderRadius: 'var(--radius)',
-                padding: '1rem',
-                marginBottom: '1.5rem',
-                border: '1px solid var(--color-border)'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.85rem' }}>
-                  <span style={{ color: 'var(--color-text-light)' }}>Período:</span>
-                  <strong>{formatDate(startDate)} al {formatDate(cutoffDate)}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.85rem' }}>
-                  <span style={{ color: 'var(--color-text-light)' }}>Cliente:</span>
-                  <span>{customerName}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.85rem' }}>
-                  <span style={{ color: 'var(--color-text-light)' }}>Productos:</span>
-                  <strong>{reportRows.length} ítems</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.85rem' }}>
-                  <span style={{ color: 'var(--color-text-light)' }}>Valor Asegurado:</span>
-                  <strong>${formatCurrency(totalInsuredValue)}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.5rem', borderTop: '1px dashed var(--color-border)', fontSize: '0.95rem' }}>
-                  <span style={{ fontWeight: 600 }}>Prima ({premiumRate}%):</span>
-                  <strong style={{ color: 'var(--color-primary)' }}>${formatCurrency(totalPremium)}</strong>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <div
+                className="modal-shell-footer"
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: '0.75rem',
+                  flexWrap: 'wrap',
+                  padding: '0.9rem 1.35rem',
+                  borderTop: '1px solid var(--color-border)',
+                  backgroundColor: 'var(--color-surface)'
+                }}
+              >
                 <button
                   type="button"
                   className="btn btn-outline"
@@ -1177,49 +1321,91 @@ const InsuranceReport = () => {
 
       {/* MODAL DE HISTORIAL DE CORTES */}
       {historyModalOpen && (
-        <div className="modal-overlay" style={{ zIndex: 1100 }}>
-          <div className="modal-content" style={{ maxWidth: '880px', width: '95%', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <div>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <History size={22} style={{ color: 'var(--color-primary)' }} /> Historial de Cortes de Seguro
+        <div
+          className="modal-overlay"
+          onClick={() => setHistoryModalOpen(false)}
+          style={{ zIndex: 1100 }}
+        >
+          <div
+            className="modal-content large modal-shell-flex"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="insurance-history-modal-title"
+            style={{ maxWidth: '900px', width: '100%' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="modal-shell-header"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '0.75rem',
+                padding: '1.1rem 1.35rem',
+                borderBottom: '1px solid var(--color-border)',
+                background: 'linear-gradient(180deg, var(--color-surface) 0%, var(--color-card) 100%)'
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <h2
+                  id="insurance-history-modal-title"
+                  style={{ fontSize: '1.18rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                >
+                  <History size={21} style={{ color: 'var(--color-primary)', flexShrink: 0 }} /> Historial de Cortes de Seguro
                 </h2>
-                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-text-light)' }}>
+                <p className="hide-on-mobile" style={{ margin: '0.15rem 0 0 0', fontSize: '0.8rem', color: 'var(--color-text-light)' }}>
                   Consulta o recupera cortes de póliza de seguro congelados anteriormente.
                 </p>
               </div>
               <button 
                 type="button" 
-                className="btn btn-outline" 
-                style={{ padding: '0.25rem 0.5rem', border: 'none' }}
+                className="btn btn-ghost" 
+                aria-label="Cerrar historial"
+                style={{
+                  borderRadius: '50%',
+                  width: '36px',
+                  height: '36px',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '1px solid var(--color-border)',
+                  flexShrink: 0
+                }}
                 onClick={() => setHistoryModalOpen(false)}
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
-            {/* Buscador */}
-            <div style={{ marginBottom: '1rem', position: 'relative' }}>
-              <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-light)' }} />
-              <input
-                type="text"
-                className="form-input"
-                style={{ paddingLeft: '2.2rem' }}
-                placeholder="Buscar por título, cliente o fecha..."
-                value={historySearch}
-                onChange={(e) => setHistorySearch(e.target.value)}
-              />
-            </div>
+            <div className="modal-scroll-body">
+              {/* Buscador */}
+              <div style={{
+                padding: '0.8rem 1.25rem',
+                borderBottom: '1px solid var(--color-border)',
+                backgroundColor: 'var(--color-surface)'
+              }}>
+                <div style={{ position: 'relative' }}>
+                  <Search size={16} style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-light)' }} />
+                  <input
+                    type="text"
+                    className="form-input"
+                    style={{ paddingLeft: '2.25rem', marginBottom: 0 }}
+                    placeholder="Buscar por título, cliente o fecha..."
+                    value={historySearch}
+                    onChange={(e) => setHistorySearch(e.target.value)}
+                  />
+                </div>
+              </div>
 
-            {/* Lista / Tabla de Cortes */}
-            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)' }}>
+              {/* Lista / Tabla de Cortes */}
               {loadingHistory ? (
-                <div style={{ textAlign: 'center', padding: '3rem' }}>
+                <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
                   <RefreshCw size={28} className="spin" style={{ color: 'var(--color-primary)', margin: '0 auto 0.5rem' }} />
                   <p style={{ color: 'var(--color-text-light)', margin: 0 }}>Cargando cortes guardados...</p>
                 </div>
               ) : filteredCuts.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '3rem' }}>
+                <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
                   <AlertCircle size={32} style={{ color: 'var(--color-text-light)', margin: '0 auto 0.5rem' }} />
                   <p style={{ fontWeight: 600, margin: 0 }}>No hay cortes registrados</p>
                   <p style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', marginTop: '0.25rem' }}>
@@ -1227,101 +1413,142 @@ const InsuranceReport = () => {
                   </p>
                 </div>
               ) : (
-                <table style={{ width: '100%', fontSize: '0.85rem' }}>
-                  <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--color-surface)', zIndex: 1 }}>
-                    <tr>
-                      <th>Título</th>
-                      <th>Fecha Corte</th>
-                      <th>Cliente</th>
-                      <th style={{ textAlign: 'right' }}>Valor Asegurado</th>
-                      <th style={{ textAlign: 'right' }}>Prima</th>
-                      <th>Autor</th>
-                      <th style={{ textAlign: 'center' }}>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredCuts.map((cut) => {
-                      const isActive = activeCut && activeCut.id === cut.id;
-                      const totals = cut.totals || {};
-
-                      return (
-                        <tr 
-                          key={cut.id}
-                          style={{
-                            backgroundColor: isActive ? 'rgba(79, 70, 229, 0.08)' : 'inherit',
-                            cursor: 'pointer'
-                          }}
-                          onClick={() => handleSelectCutFromHistory(cut)}
-                        >
-                          <td>
-                            <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                              {cut.title}
-                              {cut.isLocked && <Lock size={12} style={{ color: 'var(--color-text-light)' }} />}
-                              {isActive && <span className="badge badge-primary" style={{ fontSize: '0.65rem' }}>Activo</span>}
-                              {((cut.dteStatus && cut.dteStatus !== 'UNBILLED') ||
-                                (cut.dte_status && cut.dte_status !== 'UNBILLED') ||
-                                cut.dteNumeroControl ||
-                                cut.dte_numero_control) && (
-                                <span
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '0.2rem',
-                                    fontSize: '0.65rem',
-                                    padding: '0.15rem 0.45rem',
-                                    borderRadius: '999px',
-                                    fontWeight: 700,
-                                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                                    color: '#059669',
-                                    border: '1px solid rgba(16, 185, 129, 0.35)'
-                                  }}
-                                  title={cut.dteNumeroControl || cut.dte_numero_control || 'DTE-03 Emitido en SIPE'}
-                                >
-                                  <CheckCircle2 size={10} /> Facturado DTE
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td>{formatDate(cut.cutoffDate)}</td>
-                          <td>{cut.customerName}</td>
-                          <td style={{ textAlign: 'right' }}>${formatCurrency(totals.totalInsuredValue || 0)}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--color-primary)' }}>
-                            ${formatCurrency(totals.totalPremium || 0)}
-                          </td>
-                          <td style={{ fontSize: '0.75rem', color: 'var(--color-text-light)' }}>
-                            {cut.created_by || 'admin'}
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'center' }}>
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-primary"
-                                style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
-                                onClick={() => handleSelectCutFromHistory(cut)}
-                                title="Cargar este corte en la vista"
-                              >
-                                Cargar
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-outline"
-                                style={{ padding: '0.2rem 0.4rem', color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
-                                onClick={(e) => handleDeleteCutFromHistory(e, cut)}
-                                title="Eliminar corte"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </div>
-                          </td>
+                <>
+                  <div
+                    className="show-on-mobile"
+                    style={{
+                      padding: '0.45rem 0.95rem',
+                      fontSize: '0.73rem',
+                      fontWeight: 600,
+                      color: 'var(--color-primary)',
+                      backgroundColor: 'rgba(0, 103, 192, 0.06)',
+                      borderBottom: '1px solid var(--color-border)'
+                    }}
+                  >
+                    Desliza horizontalmente la tabla para ver todos los montos y acciones ↔
+                  </div>
+                  <div
+                    className="table-container table-scroll-both"
+                    style={{ border: 'none', borderRadius: 0, margin: 0, boxShadow: 'none' }}
+                  >
+                    <table style={{ width: '100%', minWidth: '740px', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+                      <thead style={{ backgroundColor: 'var(--color-surface)' }}>
+                        <tr>
+                          <th style={{ minWidth: '185px' }}>Título</th>
+                          <th style={{ minWidth: '105px' }}>Fecha Corte</th>
+                          <th style={{ minWidth: '140px' }}>Cliente</th>
+                          <th style={{ textAlign: 'right', minWidth: '115px' }}>Valor Asegurado</th>
+                          <th style={{ textAlign: 'right', minWidth: '95px' }}>Prima</th>
+                          <th style={{ minWidth: '80px' }}>Autor</th>
+                          <th style={{ textAlign: 'center', minWidth: '115px' }}>Acciones</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                        {filteredCuts.map((cut) => {
+                          const isActive = activeCut && activeCut.id === cut.id;
+                          const totals = cut.totals || {};
+
+                          return (
+                            <tr 
+                              key={cut.id}
+                              style={{
+                                backgroundColor: isActive ? 'rgba(79, 70, 229, 0.08)' : 'inherit',
+                                cursor: 'pointer'
+                              }}
+                              onClick={() => handleSelectCutFromHistory(cut)}
+                            >
+                              <td>
+                                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                  {cut.title}
+                                  {cut.isLocked && <Lock size={12} style={{ color: 'var(--color-text-light)' }} />}
+                                  {isActive && <span className="badge badge-primary" style={{ fontSize: '0.65rem' }}>Activo</span>}
+                                  {((cut.dteStatus && cut.dteStatus !== 'UNBILLED') ||
+                                    (cut.dte_status && cut.dte_status !== 'UNBILLED') ||
+                                    cut.dteNumeroControl ||
+                                    cut.dte_numero_control) && (
+                                    <span
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.2rem',
+                                        fontSize: '0.65rem',
+                                        padding: '0.15rem 0.45rem',
+                                        borderRadius: '999px',
+                                        fontWeight: 700,
+                                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                        color: '#059669',
+                                        border: '1px solid rgba(16, 185, 129, 0.35)',
+                                        whiteSpace: 'nowrap'
+                                      }}
+                                      title={cut.dteNumeroControl || cut.dte_numero_control || 'DTE-03 Emitido en SIPE'}
+                                    >
+                                      <CheckCircle2 size={10} /> Facturado DTE
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td style={{ whiteSpace: 'nowrap' }}>{formatDate(cut.cutoffDate)}</td>
+                              <td>{cut.customerName}</td>
+                              <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>${formatCurrency(totals.totalInsuredValue || 0)}</td>
+                              <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--color-primary)', whiteSpace: 'nowrap' }}>
+                                ${formatCurrency(totals.totalPremium || 0)}
+                              </td>
+                              <td style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', whiteSpace: 'nowrap' }}>
+                                {cut.created_by || 'admin'}
+                              </td>
+                              <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center', alignItems: 'center' }}>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-primary"
+                                    style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSelectCutFromHistory(cut);
+                                    }}
+                                    title="Cargar este corte en la vista"
+                                  >
+                                    Cargar
+                                  </button>
+                                  {allowDeleteCut && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-outline"
+                                      style={{ padding: '0.25rem 0.45rem', color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
+                                      onClick={(e) => handleDeleteCutFromHistory(e, cut)}
+                                      title="Eliminar corte"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+            <div
+              className="modal-shell-footer"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '0.5rem',
+                padding: '0.85rem 1.35rem',
+                borderTop: '1px solid var(--color-border)',
+                backgroundColor: 'var(--color-surface)'
+              }}
+            >
+              <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                Mostrando <strong>{filteredCuts.length}</strong> de <strong>{cutsList.length}</strong> cortes
+              </span>
               <button
                 type="button"
                 className="btn btn-outline"
