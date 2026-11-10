@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { 
   History, X, Search, RefreshCw, Snowflake, Eye, Trash2, 
@@ -8,34 +8,44 @@ import { formatDate, formatTimestampLocal, formatCurrency } from '../../utils/fo
 import { resolveCutPeriod } from '../../utils/dailyCutDateUtils';
 import { toast } from 'react-hot-toast';
 
+export function normalizeDailyCutsList(cuts) {
+  return (Array.isArray(cuts) ? cuts : [])
+    .map((c) => {
+      const resolved = resolveCutPeriod(c);
+      return {
+        ...c,
+        title: resolved.title || c.title,
+        startDate: resolved.startDate || c.startDate,
+        endDate: resolved.endDate || c.endDate
+      };
+    })
+    .sort((a, b) => {
+      const endCmp = String(b.endDate || '').localeCompare(String(a.endDate || ''));
+      if (endCmp !== 0) return endCmp;
+      return String(b.startDate || '').localeCompare(String(a.startDate || ''));
+    });
+}
+
 export default function DailyCutsHistoryModal({ isOpen, onClose, onSelectCut, activeCutId }) {
-  const { fetchDailyCuts, deleteDailyCut, canDelete } = useInventory();
+  const { dailyCuts, fetchDailyCuts, deleteDailyCut, canDelete } = useInventory();
   const allowDeleteCut = canDelete ? canDelete('summary2') : false;
-  const [cutsList, setCutsList] = useState([]);
+  const [cutsList, setCutsList] = useState(() => normalizeDailyCutsList(dailyCuts));
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [selectingCutId, setSelectingCutId] = useState(null);
   const [historySearch, setHistorySearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'locked' | 'unlocked'
+  const wasOpenRef = useRef(false);
+
+  // Hidratación reactiva inmediata desde dailyCuts del contexto (carga instantánea al abrir)
+  useEffect(() => {
+    setCutsList(normalizeDailyCutsList(dailyCuts));
+  }, [dailyCuts]);
 
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true);
     try {
-      const cuts = await fetchDailyCuts();
-      const normalized = (Array.isArray(cuts) ? cuts : [])
-        .map((c) => {
-          const resolved = resolveCutPeriod(c);
-          return {
-            ...c,
-            title: resolved.title || c.title,
-            startDate: resolved.startDate || c.startDate,
-            endDate: resolved.endDate || c.endDate
-          };
-        })
-        .sort((a, b) => {
-          const endCmp = String(b.endDate || '').localeCompare(String(a.endDate || ''));
-          if (endCmp !== 0) return endCmp;
-          return String(b.startDate || '').localeCompare(String(a.startDate || ''));
-        });
-      setCutsList(normalized);
+      const cuts = await fetchDailyCuts({ summary: true });
+      setCutsList(normalizeDailyCutsList(cuts));
     } catch {
       toast.error('Error al cargar historial de cortes');
     } finally {
@@ -44,8 +54,12 @@ export default function DailyCutsHistoryModal({ isOpen, onClose, onSelectCut, ac
   }, [fetchDailyCuts]);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
+      wasOpenRef.current = true;
       loadHistory();
+    } else if (!isOpen) {
+      wasOpenRef.current = false;
+      setSelectingCutId(null);
     }
   }, [isOpen, loadHistory]);
 
@@ -455,7 +469,7 @@ export default function DailyCutsHistoryModal({ isOpen, onClose, onSelectCut, ac
           </div>
 
           {/* 4. LISTADO DE CORTES (TABLA ELEGANTE CON SCROLL VERTICAL Y HORIZONTAL TÁCTIL) */}
-          {loadingHistory ? (
+          {loadingHistory && cutsList.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '3.5rem 1rem' }}>
               <div 
                 className="spin" 
@@ -535,7 +549,16 @@ export default function DailyCutsHistoryModal({ isOpen, onClose, onSelectCut, ac
 
               <div
                 className="table-container table-scroll-both"
-                style={{ border: 'none', borderRadius: 0, margin: 0, boxShadow: 'none' }}
+                style={{
+                  width: '100%',
+                  maxWidth: '100%',
+                  overflowX: 'auto',
+                  WebkitOverflowScrolling: 'touch',
+                  border: 'none',
+                  borderRadius: 0,
+                  margin: 0,
+                  boxShadow: 'none'
+                }}
               >
                 <table style={{ width: '100%', minWidth: '780px', borderCollapse: 'collapse' }}>
                   <thead>
@@ -705,6 +728,7 @@ export default function DailyCutsHistoryModal({ isOpen, onClose, onSelectCut, ac
                               <button
                                 type="button"
                                 className="btn btn-primary"
+                                disabled={selectingCutId === cut.id}
                                 style={{ 
                                   padding: '0.35rem 0.75rem', 
                                   fontSize: '0.78rem', 
@@ -714,10 +738,23 @@ export default function DailyCutsHistoryModal({ isOpen, onClose, onSelectCut, ac
                                   gap: '0.35rem',
                                   borderRadius: '6px'
                                 }}
-                                onClick={() => onSelectCut && onSelectCut(cut)}
+                                onClick={async () => {
+                                  if (!onSelectCut) return;
+                                  setSelectingCutId(cut.id);
+                                  try {
+                                    await onSelectCut(cut);
+                                  } finally {
+                                    setSelectingCutId(null);
+                                  }
+                                }}
                                 title="Cargar y consultar este corte en el Resumen Diario"
                               >
-                                <Eye size={13} /> {isCurrentActive ? 'Viendo' : 'Cargar'}
+                                {selectingCutId === cut.id ? (
+                                  <RefreshCw size={13} className="spin" />
+                                ) : (
+                                  <Eye size={13} />
+                                )}
+                                {selectingCutId === cut.id ? 'Cargando...' : (isCurrentActive ? 'Viendo' : 'Cargar')}
                               </button>
                               {allowDeleteCut && (
                                 <button

@@ -152,12 +152,36 @@ export const InventoryProvider = ({ children }) => {
   const [versions, setVersions] = useState(INITIAL_VERSION_LIST);
   const [dailyCuts, setDailyCuts] = useState(() => loadLocalSnapshot('dailyCuts', []));
   const [cutHistoryModalOpen, setCutHistoryModalOpen] = useState(false);
+  const openCutHistoryModal = useCallback(() => setCutHistoryModalOpen(true), []);
+  const closeCutHistoryModal = useCallback(() => setCutHistoryModalOpen(false), []);
   const [selectedCutForSummary, setSelectedCutForSummary] = useState(null);
   const [activeDailyCutId, setActiveDailyCutId] = useState(null);
   const [contractRates, setContractRates] = useState(() => loadLocalSnapshot('contractRates', CONTRACT_INFO));
   const [sipeContractStatus, setSipeContractStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [theme, setThemeState] = useState(() => localStorage.getItem('inv_theme') || 'light');
+
+  // Referencias mutables sincronizadas para que los fetchers tengan identidad estable (useCallback([])) sin bucles de render
+  const productsRef = useRef(products);
+  const movementsRef = useRef(movements);
+  const dailyCutsRef = useRef(dailyCuts);
+  const sessionIdRef = useRef(sessionId);
+
+  useEffect(() => {
+    productsRef.current = products;
+  }, [products]);
+
+  useEffect(() => {
+    movementsRef.current = movements;
+  }, [movements]);
+
+  useEffect(() => {
+    dailyCutsRef.current = dailyCuts;
+  }, [dailyCuts]);
+
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
 
   // Estados reactivos de OnDemand (Offline + Sincronización diferida + Incremental)
   const [onDemandStatus, setOnDemandStatus] = useState(() => getOnDemandStatus());
@@ -650,74 +674,39 @@ export const InventoryProvider = ({ children }) => {
     return () => clearInterval(interval);
   }, [currentUser?.id, currentUser?.username, sessionId]);
 
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/products`);
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) setProducts(data);
+        if (Array.isArray(data)) {
+          productsRef.current = data;
+          setProducts(data);
+        }
         return data;
       }
     } catch (e) {
       console.error('Error fetching products:', e);
     }
-    return products;
-  };
+    return productsRef.current;
+  }, []);
 
-  const fetchMovements = async () => {
+  const fetchMovements = useCallback(async () => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/movements`);
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) setMovements(data);
+        if (Array.isArray(data)) {
+          movementsRef.current = data;
+          setMovements(data);
+        }
         return data;
       }
     } catch (e) {
       console.error('Error fetching movements:', e);
     }
-    return movements;
-  };
-
-  const refreshModule = async (moduleName) => {
-    if (!currentUser?.id) return;
-    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-    try {
-      switch (moduleName) {
-        case 'products':
-          await fetchProducts();
-          break;
-        case 'movements':
-          await fetchMovements();
-          break;
-        case 'inventory-count':
-          await fetchProducts();
-          break;
-        case 'dashboard':
-          await Promise.all([fetchProducts(), fetchMovements()]);
-          break;
-        case 'users':
-        case 'roles':
-        case 'security-users':
-        case 'security-roles':
-          await Promise.all([fetchUsers(), fetchRoles()]);
-          break;
-        case 'security':
-        case 'security-sessions':
-          await Promise.all([fetchUsers(), fetchRoles(), fetchActiveSessions()]);
-          break;
-        case 'summary2':
-          await fetchDailyCuts();
-          break;
-        case 'insurance':
-          await fetchInsuranceCuts();
-          break;
-        default:
-          break;
-      }
-    } catch (err) {
-      console.error(`Error al refrescar módulo ${moduleName}:`, err);
-    }
-  };
+    return movementsRef.current;
+  }, []);
 
   // Funciones públicas de sincronización y gestión de cola OnDemand
   const syncOnDemandNow = useCallback(async (onProgress) => {
@@ -1472,7 +1461,7 @@ export const InventoryProvider = ({ children }) => {
   };
 
   // Roles Management
-  const fetchRoles = async () => {
+  const fetchRoles = useCallback(async () => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/roles`);
       const data = await res.json();
@@ -1482,7 +1471,7 @@ export const InventoryProvider = ({ children }) => {
       console.error('Error fetching roles:', e);
       return [];
     }
-  };
+  }, []);
 
   const addRole = async (roleData) => {
     const guard = ensureOnlineForSensitiveAction('modificar roles y permisos');
@@ -1573,7 +1562,7 @@ export const InventoryProvider = ({ children }) => {
   };
 
   // User Management
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/users`);
       const data = await res.json();
@@ -1582,7 +1571,7 @@ export const InventoryProvider = ({ children }) => {
     } catch {
       return [];
     }
-  };
+  }, []);
 
   const addUser = async (user) => {
     const guard = ensureOnlineForSensitiveAction('administrar cuentas de usuario');
@@ -1667,7 +1656,7 @@ export const InventoryProvider = ({ children }) => {
   };
 
   // System Logs & Sessions
-  const fetchSystemLogs = async (filters = {}) => {
+  const fetchSystemLogs = useCallback(async (filters = {}) => {
     try {
       const params = new URLSearchParams(filters);
       const res = await apiFetch(`${API_BASE_URL}/api/system-logs?${params.toString()}`);
@@ -1677,25 +1666,26 @@ export const InventoryProvider = ({ children }) => {
     } catch {
       return [];
     }
-  };
+  }, []);
 
-  const fetchActiveSessions = async () => {
+  const fetchActiveSessions = useCallback(async () => {
     try {
-      if (currentUser) {
-        const storedSessionId = sessionId || localStorage.getItem('inv_session_id');
+      if (currentUserId) {
+        const storedSessionId = sessionIdRef.current || localStorage.getItem('inv_session_id');
         try {
           const hbRes = await apiFetch(`${API_BASE_URL}/api/active-sessions/heartbeat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               sessionId: storedSessionId,
-              userId: currentUser.id,
-              username: currentUser.username,
+              userId: currentUserId,
+              username: currentUsername,
               userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : ''
             })
           });
           const hbData = await hbRes.json();
-          if (hbData.sessionId && hbData.sessionId !== sessionId) {
+          if (hbData.sessionId && hbData.sessionId !== sessionIdRef.current) {
+            sessionIdRef.current = hbData.sessionId;
             setSessionId(hbData.sessionId);
             localStorage.setItem('inv_session_id', hbData.sessionId);
           }
@@ -1709,7 +1699,7 @@ export const InventoryProvider = ({ children }) => {
     } catch {
       return [];
     }
-  };
+  }, [currentUserId, currentUsername]);
 
   const disconnectSession = async (id) => {
     try {
@@ -1725,16 +1715,16 @@ export const InventoryProvider = ({ children }) => {
   };
 
   // Notifications
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
-      const res = await apiFetch(`${API_BASE_URL}/api/notifications?userId=${currentUser?.id || ''}`);
+      const res = await apiFetch(`${API_BASE_URL}/api/notifications?userId=${currentUserId || ''}`);
       const data = await res.json();
       if (Array.isArray(data)) setNotifications(data);
       return data;
     } catch {
       return [];
     }
-  };
+  }, [currentUserId]);
 
   const addNotification = async (notif) => {
     try {
@@ -1856,25 +1846,58 @@ export const InventoryProvider = ({ children }) => {
   };
 
   // Daily Cuts (Cortes Diarios Congelados)
-  const fetchDailyCuts = async () => {
+  const fetchDailyCuts = useCallback(async (options = {}) => {
+    const summaryOnly = Boolean(options && options.summary);
+    const url = summaryOnly
+      ? `${API_BASE_URL}/api/daily-cuts?summary=1`
+      : `${API_BASE_URL}/api/daily-cuts`;
     try {
-      const res = await apiFetch(`${API_BASE_URL}/api/daily-cuts`);
+      const res = await apiFetch(url);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          setDailyCuts(data);
-          saveLocalSnapshot('dailyCuts', data);
-          return data;
+          const prevList = Array.isArray(dailyCutsRef.current) ? dailyCutsRef.current : [];
+          const prevById = new Map(prevList.map(item => [String(item.id), item]));
+          const serverIds = new Set(data.map(item => String(item.id)));
+
+          const mergedServer = data.map(item => {
+            const existing = prevById.get(String(item.id));
+            if (existing && item.isSummaryOnly) {
+              const keepCongelados = Array.isArray(existing.congeladosData) && existing.congeladosData.length > 0;
+              const keepPreparados = Array.isArray(existing.preparadosData) && existing.preparadosData.length > 0;
+              const keepServices = Array.isArray(existing.servicesData) && existing.servicesData.length > 0;
+              if (keepCongelados || keepPreparados || keepServices) {
+                return {
+                  ...existing,
+                  ...item,
+                  isSummaryOnly: false,
+                  congeladosData: keepCongelados ? existing.congeladosData : (item.congeladosData || []),
+                  preparadosData: keepPreparados ? existing.preparadosData : (item.preparadosData || []),
+                  servicesData: keepServices ? existing.servicesData : (item.servicesData || [])
+                };
+              }
+            }
+            return item;
+          });
+
+          const pendingLocalOnly = prevList.filter(
+            item => item?.offlinePending && !serverIds.has(String(item.id))
+          );
+          const nextCuts = [...pendingLocalOnly, ...mergedServer];
+          dailyCutsRef.current = nextCuts;
+          setDailyCuts(nextCuts);
+          saveLocalSnapshot('dailyCuts', nextCuts);
+          return nextCuts;
         }
       }
-      return dailyCuts;
+      return dailyCutsRef.current;
     } catch (e) {
       console.error('Error fetching daily cuts:', e);
-      return dailyCuts;
+      return dailyCutsRef.current;
     }
-  };
+  }, []);
 
-  const fetchDailyCutById = async (id) => {
+  const fetchDailyCutById = useCallback(async (id) => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/daily-cuts/${id}`);
       if (res.ok) {
@@ -1887,7 +1910,7 @@ export const InventoryProvider = ({ children }) => {
       console.error('Error fetching daily cut by id:', e);
       return loadLocalSnapshot(`dailyCut_${id}`, null);
     }
-  };
+  }, []);
 
   const createDailyCut = async (cutData) => {
     const payload = {
@@ -2043,7 +2066,7 @@ export const InventoryProvider = ({ children }) => {
   };
 
   // Insurance Cuts (Cortes de Seguro Congelados)
-  const fetchInsuranceCuts = async () => {
+  const fetchInsuranceCuts = useCallback(async () => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/insurance-cuts`);
       if (res.ok) {
@@ -2058,9 +2081,9 @@ export const InventoryProvider = ({ children }) => {
       console.error('Error fetching insurance cuts:', e);
       return loadLocalSnapshot('insuranceCuts', []);
     }
-  };
+  }, []);
 
-  const fetchInsuranceCutById = async (id) => {
+  const fetchInsuranceCutById = useCallback(async (id) => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/insurance-cuts/${id}`);
       if (res.ok) {
@@ -2073,7 +2096,57 @@ export const InventoryProvider = ({ children }) => {
       console.error('Error fetching insurance cut by id:', e);
       return loadLocalSnapshot(`insuranceCut_${id}`, null);
     }
-  };
+  }, []);
+
+  const refreshModule = useCallback(async (moduleName) => {
+    if (!currentUserId) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    try {
+      switch (moduleName) {
+        case 'products':
+          await fetchProducts();
+          break;
+        case 'movements':
+          await fetchMovements();
+          break;
+        case 'inventory-count':
+          await fetchProducts();
+          break;
+        case 'dashboard':
+          await Promise.all([fetchProducts(), fetchMovements()]);
+          break;
+        case 'users':
+        case 'roles':
+        case 'security-users':
+        case 'security-roles':
+          await Promise.all([fetchUsers(), fetchRoles()]);
+          break;
+        case 'security':
+        case 'security-sessions':
+          await Promise.all([fetchUsers(), fetchRoles(), fetchActiveSessions()]);
+          break;
+        case 'summary2':
+          await fetchDailyCuts({ summary: true });
+          break;
+        case 'insurance':
+          await fetchInsuranceCuts();
+          break;
+        default:
+          break;
+      }
+    } catch (err) {
+      console.error(`Error al refrescar módulo ${moduleName}:`, err);
+    }
+  }, [
+    currentUserId,
+    fetchProducts,
+    fetchMovements,
+    fetchUsers,
+    fetchRoles,
+    fetchActiveSessions,
+    fetchDailyCuts,
+    fetchInsuranceCuts
+  ]);
 
   const createInsuranceCut = async (cutData) => {
     const payload = {
@@ -2419,8 +2492,8 @@ export const InventoryProvider = ({ children }) => {
       deleteDailyCut,
       cutHistoryModalOpen,
       setCutHistoryModalOpen,
-      openCutHistoryModal: () => setCutHistoryModalOpen(true),
-      closeCutHistoryModal: () => setCutHistoryModalOpen(false),
+      openCutHistoryModal,
+      closeCutHistoryModal,
       selectedCutForSummary,
       setSelectedCutForSummary,
       activeDailyCutId,

@@ -97,7 +97,7 @@ const Dashboard = ({ onNavigate }) => {
     : 100;
 
   return (
-    <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+    <div style={{ width: '100%', minWidth: 0, maxWidth: '1400px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       
       {/* Stitch Editorial Header Section */}
       <section style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -352,30 +352,30 @@ const Dashboard = ({ onNavigate }) => {
       </div>
 
       {/* Today's Activity Table with Stitch Flow Architecture */}
-      <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+      <div className="card card-flush" style={{ padding: 0, overflow: 'hidden', width: '100%', minWidth: 0 }}>
         {/* Table Header Controls */}
-        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--color-border)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', background: 'var(--color-surface)' }}>
-          <div>
+        <div style={{ padding: 'clamp(0.95rem, 2.5vw, 1.25rem) clamp(0.9rem, 2.5vw, 1.5rem)', borderBottom: '1px solid var(--color-border)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.85rem', background: 'var(--color-surface)', minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: '1 1 240px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <h2 className="font-headline" style={{ fontSize: '1.35rem', fontWeight: '700', color: 'var(--color-text)' }}>
+              <h2 className="font-headline" style={{ fontSize: 'clamp(1.15rem, 3.5vw, 1.35rem)', fontWeight: '700', color: 'var(--color-text)' }}>
                 Actividad de Hoy
               </h2>
               <span className="badge badge-primary">{todaysItems.length} registros</span>
             </div>
-            <p style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', marginTop: '0.2rem' }}>
+            <p style={{ fontSize: '0.8rem', color: 'var(--color-text-light)', marginTop: '0.2rem', wordBreak: 'break-word' }}>
               Detalle en tiempo real de entradas y salidas para el día {formatDate(today)}
             </p>
           </div>
 
           {/* Filters & Search */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', width: '100%', maxWidth: '560px', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap', flex: '1 1 300px', minWidth: 0, maxWidth: '100%', justifyContent: 'flex-start' }}>
             {/* Filter Pills */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', background: 'var(--color-card)', padding: '0.25rem', borderRadius: 'var(--radius)', border: '1px solid var(--color-border)' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.15rem', maxWidth: '100%', background: 'var(--color-card)', padding: '0.25rem', borderRadius: 'var(--radius)', border: '1px solid var(--color-border)' }}>
               <button
                 type="button"
                 onClick={() => setFilterType('all')}
                 style={{
-                  padding: '0.35rem 0.75rem',
+                  padding: '0.35rem 0.65rem',
                   fontSize: '0.75rem',
                   fontWeight: '600',
                   border: 'none',
@@ -383,6 +383,7 @@ const Dashboard = ({ onNavigate }) => {
                   background: filterType === 'all' ? 'var(--color-primary)' : 'transparent',
                   color: filterType === 'all' ? '#ffffff' : 'var(--color-text-light)',
                   cursor: 'pointer',
+                  whiteSpace: 'nowrap',
                   transition: 'var(--transition)'
                 }}
               >
@@ -392,7 +393,7 @@ const Dashboard = ({ onNavigate }) => {
                 type="button"
                 onClick={() => setFilterType('in')}
                 style={{
-                  padding: '0.35rem 0.75rem',
+                  padding: '0.35rem 0.65rem',
                   fontSize: '0.75rem',
                   fontWeight: '600',
                   border: 'none',
@@ -400,6 +401,7 @@ const Dashboard = ({ onNavigate }) => {
                   background: filterType === 'in' ? 'var(--color-success)' : 'transparent',
                   color: filterType === 'in' ? '#ffffff' : 'var(--color-text-light)',
                   cursor: 'pointer',
+                  whiteSpace: 'nowrap',
                   transition: 'var(--transition)'
                 }}
               >
@@ -409,7 +411,7 @@ const Dashboard = ({ onNavigate }) => {
                 type="button"
                 onClick={() => setFilterType('out')}
                 style={{
-                  padding: '0.35rem 0.75rem',
+                  padding: '0.35rem 0.65rem',
                   fontSize: '0.75rem',
                   fontWeight: '600',
                   border: 'none',
@@ -417,6 +419,7 @@ const Dashboard = ({ onNavigate }) => {
                   background: filterType === 'out' ? 'var(--color-danger)' : 'transparent',
                   color: filterType === 'out' ? '#ffffff' : 'var(--color-text-light)',
                   cursor: 'pointer',
+                  whiteSpace: 'nowrap',
                   transition: 'var(--transition)'
                 }}
               >
@@ -425,7 +428,7 @@ const Dashboard = ({ onNavigate }) => {
             </div>
 
             {/* Quick Search Input */}
-            <div style={{ position: 'relative', minWidth: '180px', flex: '1 1 180px' }}>
+            <div style={{ position: 'relative', minWidth: '160px', flex: '1 1 180px', maxWidth: '100%' }}>
               <Search size={15} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
               <input
                 type="text"
@@ -446,19 +449,47 @@ const Dashboard = ({ onNavigate }) => {
           </div>
         </div>
 
+        {filteredItems.length > 0 && (
+          <div
+            className="show-on-mobile"
+            style={{
+              padding: '0.42rem 0.9rem',
+              fontSize: '0.73rem',
+              fontWeight: 600,
+              color: 'var(--color-primary)',
+              backgroundColor: 'rgba(0, 109, 50, 0.06)',
+              borderBottom: '1px solid var(--color-border)'
+            }}
+          >
+            Desliza horizontalmente la tabla para ver unidades, libras, cestas y responsable ↔
+          </div>
+        )}
+
         {/* Table View */}
-        <div className="table-container" style={{ border: 'none', borderRadius: '0', boxShadow: 'none' }}>
-          <table>
+        <div
+          className="table-container table-scroll-both"
+          style={{
+            width: '100%',
+            maxWidth: '100%',
+            overflowX: 'auto',
+            WebkitOverflowScrolling: 'touch',
+            border: 'none',
+            borderRadius: '0',
+            boxShadow: 'none',
+            margin: 0
+          }}
+        >
+          <table style={{ width: '100%', minWidth: '720px' }}>
             <thead>
               <tr>
-                <th>Hora</th>
-                <th>Referencia</th>
-                <th>Producto / SKU</th>
-                <th>Tipo</th>
-                <th style={{ textAlign: 'right' }}>Unidades</th>
-                <th style={{ textAlign: 'right' }}>Libras</th>
-                <th style={{ textAlign: 'right' }}>Cestas</th>
-                <th>Responsable</th>
+                <th style={{ whiteSpace: 'nowrap' }}>Hora</th>
+                <th style={{ whiteSpace: 'nowrap' }}>Referencia</th>
+                <th style={{ minWidth: '185px' }}>Producto / SKU</th>
+                <th style={{ whiteSpace: 'nowrap' }}>Tipo</th>
+                <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Unidades</th>
+                <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Libras</th>
+                <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Cestas</th>
+                <th style={{ whiteSpace: 'nowrap' }}>Responsable</th>
               </tr>
             </thead>
             <tbody>
@@ -481,13 +512,13 @@ const Dashboard = ({ onNavigate }) => {
               ) : (
                 filteredItems.map(item => (
                   <tr key={item.id}>
-                    <td style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem', fontFamily: 'monospace' }}>
+                    <td style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
                       {item.time || '--:--'}
                     </td>
-                    <td style={{ fontWeight: '600', color: 'var(--color-text)' }}>
+                    <td style={{ fontWeight: '600', color: 'var(--color-text)', whiteSpace: 'nowrap' }}>
                       {item.ref}
                     </td>
-                    <td>
+                    <td style={{ minWidth: '185px' }}>
                       <div style={{ display: 'flex', flexDirection: 'column' }}>
                         <span style={{ fontWeight: '600', color: 'var(--color-text)' }}>
                           {getProductName(item.productId)}
@@ -497,24 +528,24 @@ const Dashboard = ({ onNavigate }) => {
                         </span>
                       </div>
                     </td>
-                    <td>
-                      <span className={`badge ${item.type === 'in' ? 'badge-success' : 'badge-danger'}`}>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <span className={`badge ${item.type === 'in' ? 'badge-success' : 'badge-danger'}`} style={{ whiteSpace: 'nowrap' }}>
                         {item.type === 'in' ? <ArrowDownLeft size={13} /> : <ArrowUpRight size={13} />}
                         {item.type === 'in' ? 'Entrada' : 'Salida'}
                       </span>
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: '700', fontFamily: 'var(--font-headline)', fontSize: '1rem', color: item.type === 'in' ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                    <td style={{ textAlign: 'right', fontWeight: '700', fontFamily: 'var(--font-headline)', fontSize: '1rem', color: item.type === 'in' ? 'var(--color-success)' : 'var(--color-danger)', whiteSpace: 'nowrap' }}>
                       {item.type === 'in' ? `+${item.qtyUnits}` : `-${item.qtyUnits}`}
                     </td>
-                    <td style={{ textAlign: 'right', color: 'var(--color-text-light)' }}>
+                    <td style={{ textAlign: 'right', color: 'var(--color-text-light)', whiteSpace: 'nowrap' }}>
                       {item.qtyPounds ? Number(item.qtyPounds).toLocaleString() : '-'}
                     </td>
-                    <td style={{ textAlign: 'right', color: 'var(--color-text-light)' }}>
+                    <td style={{ textAlign: 'right', color: 'var(--color-text-light)', whiteSpace: 'nowrap' }}>
                       {item.qtyBaskets ? Number(item.qtyBaskets).toLocaleString() : '-'}
                     </td>
-                    <td>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.2rem 0.5rem', background: 'var(--color-surface)', borderRadius: '999px', fontSize: '0.75rem', fontWeight: '500' }}>
-                        <span style={{ width: '18px', height: '18px', borderRadius: '50%', background: 'var(--color-primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: '700' }}>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.2rem 0.5rem', background: 'var(--color-surface)', borderRadius: '999px', fontSize: '0.75rem', fontWeight: '500', whiteSpace: 'nowrap' }}>
+                        <span style={{ width: '18px', height: '18px', borderRadius: '50%', background: 'var(--color-primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: '700', flexShrink: 0 }}>
                           {(item.user || 'U').charAt(0).toUpperCase()}
                         </span>
                         <span>{item.user}</span>

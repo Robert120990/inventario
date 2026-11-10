@@ -60,7 +60,7 @@ const ProductForm = ({ onCancel, initialData }) => {
         </button>
       </div>
 
-      <div className="card" style={{ maxWidth: '800px', margin: '0 auto' }}>
+      <div className="card" style={{ width: '100%', maxWidth: '800px', margin: '0 auto' }}>
         <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-2">
             <div className="form-group">

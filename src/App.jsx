@@ -157,8 +157,9 @@ function AppContent() {
   const handleSelectCutFromModal = async (cutSummary) => {
     try {
       const fullCut = await fetchDailyCutById(cutSummary.id);
-      if (fullCut) {
-        setSelectedCutForSummary(fullCut);
+      const targetCut = fullCut || cutSummary;
+      if (targetCut) {
+        setSelectedCutForSummary(targetCut);
         closeCutHistoryModal();
         setCurrentView('summary2');
       }
@@ -338,7 +339,7 @@ function AppContent() {
 
 function UnauthorizedView({ onGoHome }) {
   return (
-    <div className="card" style={{ textAlign: 'center', padding: '3rem', margin: '2rem auto', maxWidth: '500px' }}>
+    <div className="card" style={{ textAlign: 'center', padding: '3rem', margin: '2rem auto', width: '100%', maxWidth: '500px' }}>
       <ShieldAlert size={48} style={{ color: 'var(--color-danger)', margin: '0 auto 1rem' }} />
       <h2 style={{ color: 'var(--color-text)', marginBottom: '0.5rem' }}>Acceso Restringido</h2>
       <p style={{ color: 'var(--color-text-light)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>

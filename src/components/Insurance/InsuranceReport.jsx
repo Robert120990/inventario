@@ -1399,7 +1399,7 @@ const InsuranceReport = () => {
               </div>
 
               {/* Lista / Tabla de Cortes */}
-              {loadingHistory ? (
+              {loadingHistory && cutsList.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
                   <RefreshCw size={28} className="spin" style={{ color: 'var(--color-primary)', margin: '0 auto 0.5rem' }} />
                   <p style={{ color: 'var(--color-text-light)', margin: 0 }}>Cargando cortes guardados...</p>
