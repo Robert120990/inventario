@@ -19,8 +19,9 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { useInventory } from '../../context/InventoryContext';
+import { useSyncStatus } from '../../context/InventoryContext';
 import { formatDate } from '../../utils/formatUtils';
+import { confirmAction } from './ConfirmDialog';
 
 const formatSyncTimeLabel = (isoStr) => {
   if (!isoStr) return 'Activa en sesión';
@@ -54,7 +55,7 @@ export function OnDemand() {
     removeOfflineQueueItem,
     clearAllOfflineQueue,
     importOfflineQueueItems
-  } = useInventory();
+  } = useSyncStatus();
 
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('queue'); // 'queue' | 'history'
@@ -142,7 +143,7 @@ export function OnDemand() {
       if (pendingOnlyCount > 0) {
         await handleManualSync();
       } else if (typeof fetchIncrementalChanges === 'function') {
-        await fetchIncrementalChanges();
+        await fetchIncrementalChanges({ forceSyncTimestamp: true });
         toast.success(' Estado sincronizado con el servidor.');
       }
     } finally {
@@ -916,8 +917,14 @@ export function OnDemand() {
                   <button
                     type="button"
                     className="btn btn-danger"
-                    onClick={() => {
-                      if (window.confirm('¿Seguro que deseas vaciar todas las operaciones pendientes de tu cuenta en OnDemand?')) {
+                    onClick={async () => {
+                      const confirmed = await confirmAction({
+                        title: 'Vaciar cola OnDemand',
+                        message: '¿Seguro que deseas vaciar todas las operaciones pendientes de tu cuenta en OnDemand?',
+                        confirmLabel: 'Vaciar cola',
+                        variant: 'danger'
+                      });
+                      if (confirmed) {
                         clearAllOfflineQueue();
                         toast.success('Cola OnDemand vaciada.');
                       }

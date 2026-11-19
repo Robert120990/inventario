@@ -4,6 +4,7 @@ import { Plus, UserCheck, UserX, User, Shield, Key, Edit2, Trash2, GitBranch } f
 import { toast } from 'react-hot-toast';
 import UserForm from './UserForm';
 import { formatDate } from '../../utils/formatUtils';
+import { confirmAction } from '../Common/ConfirmDialog';
 
 const UserList = ({ onConfigureAccess }) => {
   const { users, currentUser, updateUser, deleteUser, canCreate, canEdit, canDelete, canView } = useInventory();
@@ -34,7 +35,13 @@ const UserList = ({ onConfigureAccess }) => {
       toast.error("No puedes eliminar tu propio usuario.");
       return;
     }
-    if (window.confirm(`¿Estás seguro de eliminar permanentemente al usuario '${user.username}'?`)) {
+    const confirmed = await confirmAction({
+      title: 'Eliminar usuario',
+      message: `¿Estás seguro de eliminar permanentemente al usuario '${user.username}'?`,
+      confirmLabel: 'Eliminar',
+      variant: 'danger'
+    });
+    if (confirmed) {
       const res = await deleteUser(user.id);
       if (res?.success) {
         toast.success('Usuario eliminado del sistema');

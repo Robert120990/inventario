@@ -10,6 +10,7 @@ import { toast } from 'react-hot-toast';
 import { DatePicker, getLocalDateStr } from '../Common/DatePicker';
 import { normalizeDateOnly, addDaysToDateStr } from '../../utils/dailyCutDateUtils';
 import SipeBillingModal from '../Billing/SipeBillingModal';
+import { confirmAction } from '../Common/ConfirmDialog';
 
 const InsuranceReport = () => {
   const { 
@@ -569,7 +570,13 @@ const InsuranceReport = () => {
   // Eliminar un corte desde el historial
   const handleDeleteCutFromHistory = async (e, cut) => {
     e.stopPropagation();
-    if (!window.confirm(`¿Estás seguro de eliminar el corte "${cut.title}"? Esta acción no se puede deshacer.`)) {
+    const confirmed = await confirmAction({
+      title: 'Eliminar corte de seguro',
+      message: `¿Estás seguro de eliminar el corte "${cut.title}"? Esta acción no se puede deshacer.`,
+      confirmLabel: 'Eliminar',
+      variant: 'danger'
+    });
+    if (!confirmed) {
       return;
     }
 

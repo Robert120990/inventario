@@ -28,9 +28,9 @@ const Dashboard = ({ onNavigate }) => {
   // Flatten items for display
   const todaysItems = useMemo(() => {
     return todaysMovements.flatMap(mov =>
-      (mov.items || []).map(item => ({
+      (mov.items || []).map((item, idx) => ({
         ...item,
-        id: `${mov.id}-${item.productId}`,
+        id: `${mov.id}-${item.productId}-${idx}`,
         movementId: mov.id,
         date: mov.date,
         time: mov.timeStart,
@@ -91,7 +91,13 @@ const Dashboard = ({ onNavigate }) => {
   };
 
   // Dial Progress percentage calculation (ratio of active references / capacity estimation)
-  const activeProductsCount = products.filter(p => (p.currentStock || 0) > 0).length;
+  const activeProductsCount = useMemo(() => (
+    products.filter(p =>
+      Number(p.stockUnits || 0) > 0 ||
+      Number(p.stockPounds || 0) > 0 ||
+      Number(p.stockBaskets || 0) > 0
+    ).length
+  ), [products]);
   const stockHealthPercent = products.length > 0
     ? Math.min(100, Math.round((activeProductsCount / products.length) * 100))
     : 100;

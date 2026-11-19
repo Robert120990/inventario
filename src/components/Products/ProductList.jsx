@@ -5,6 +5,7 @@ import { toast } from 'react-hot-toast';
 import { exportProductos } from '../../utils/exportManager';
 import ProductForm from './ProductForm';
 import { formatPrice } from '../../utils/formatUtils';
+import { confirmAction } from '../Common/ConfirmDialog';
 
 const ProductExcelImportModal = React.lazy(() => import('./ProductExcelImportModal'));
 const ProductLabelModal = React.lazy(() => import('./ProductLabelModal'));
@@ -320,7 +321,13 @@ const ProductList = () => {
                         )}
                         {allowDelete && (
                           <button onClick={async () => {
-                            if (window.confirm('¿Seguro que deseas eliminar este producto?')) {
+                            const confirmed = await confirmAction({
+                              title: 'Eliminar producto',
+                              message: '¿Seguro que deseas eliminar este producto?',
+                              confirmLabel: 'Eliminar',
+                              variant: 'danger'
+                            });
+                            if (confirmed) {
                               const res = await deleteProduct(product.id);
                               if (res?.success) {
                                 toast.success('Producto eliminado');

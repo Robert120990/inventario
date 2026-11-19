@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useInventory } from '../../../context/InventoryContext';
 import { Users, Wifi, LogOut, Clock, Globe, Shield, RefreshCw, Smartphone, Monitor } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { confirmAction } from '../../Common/ConfirmDialog';
 
 const ConnectedUsers = () => {
   const { activeSessions, fetchActiveSessions, disconnectSession, currentUser } = useInventory();
@@ -25,7 +26,13 @@ const ConnectedUsers = () => {
   }, []);
 
   const handleDisconnect = async (session) => {
-    if (window.confirm(`¿Deseas cerrar la sesión remota del usuario '${session.username}'?`)) {
+    const confirmed = await confirmAction({
+      title: 'Cerrar sesión remota',
+      message: `¿Deseas cerrar la sesión remota del usuario '${session.username}'?`,
+      confirmLabel: 'Cerrar sesión',
+      variant: 'danger'
+    });
+    if (confirmed) {
       const res = await disconnectSession(session.id);
       if (res.success) {
         toast.success('Sesión finalizada con éxito');

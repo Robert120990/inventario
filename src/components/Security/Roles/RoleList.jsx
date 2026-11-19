@@ -3,6 +3,7 @@ import { useInventory } from '../../../context/InventoryContext';
 import { Shield, Plus, Edit2, Trash2, ShieldCheck, Users } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import RoleForm from './RoleForm';
+import { confirmAction } from '../../Common/ConfirmDialog';
 
 const RoleList = () => {
   const { roles, users, fetchRoles, deleteRole } = useInventory();
@@ -23,7 +24,13 @@ const RoleList = () => {
       toast.error(`No se puede eliminar: hay ${usersWithRole.length} usuarios asignados a este rol.`);
       return;
     }
-    if (window.confirm(`¿Estás seguro de eliminar el rol '${role.name}'?`)) {
+    const confirmed = await confirmAction({
+      title: 'Eliminar rol',
+      message: `¿Estás seguro de eliminar el rol '${role.name}'?`,
+      confirmLabel: 'Eliminar',
+      variant: 'danger'
+    });
+    if (confirmed) {
       const res = await deleteRole(role.id);
       if (res.success) {
         toast.success('Rol eliminado con éxito');

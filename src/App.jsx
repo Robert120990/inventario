@@ -10,6 +10,7 @@ import UpdateNotifier from './components/Common/UpdateNotifier';
 import OnDemand from './components/Common/OnDemand';
 import ErrorBoundary from './components/Common/ErrorBoundary';
 import DailyCutsHistoryModal from './components/Summary/DailyCutsHistoryModal';
+import { ConfirmDialogHost } from './components/Common/ConfirmDialog';
 import { APP_DISPLAY_VERSION, APP_BUILD_NUMBER, APP_COMMIT_HASH } from './config/version';
 import './App.css';
 
@@ -355,6 +356,7 @@ function UnauthorizedView({ onGoHome }) {
 function App() {
   return (
     <InventoryProvider>
+      <ConfirmDialogHost />
       <AppContent />
     </InventoryProvider>
   );

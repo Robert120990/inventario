@@ -8,8 +8,6 @@ const rootDir = path.resolve(__dirname, '..');
 const versionFilePath = path.join(rootDir, 'src', 'config', 'version.json');
 const publicVersionPath = path.join(rootDir, 'public', 'version.json');
 const distVersionPath = path.join(rootDir, 'dist', 'version.json');
-const changelogJsPath = path.join(rootDir, 'src', 'config', 'changelog.js');
-const changelogJsonPath = path.join(rootDir, 'src', 'config', 'changelog.json');
 const publicChangelogJsonPath = path.join(rootDir, 'public', 'changelog.json');
 
 // Leer versión previa
@@ -213,14 +211,9 @@ if (generatedChangelog.length === 0) {
   });
 }
 
-// Escribir changelog.json y changelog.js
-const changelogJsContent = `// Registro cronológico maestro y automático de versiones del sistema generado desde Git\n` +
-  `export const SYSTEM_CHANGELOG = ${JSON.stringify(generatedChangelog, null, 2)};\n\n` +
-  `export default SYSTEM_CHANGELOG;\n`;
-
-fs.writeFileSync(changelogJsPath, changelogJsContent, 'utf8');
-fs.writeFileSync(changelogJsonPath, JSON.stringify(generatedChangelog, null, 2) + '\n', 'utf8');
+// Escribir únicamente public/changelog.json para evitar duplicación en el bundle JS
+fs.mkdirSync(path.dirname(publicChangelogJsonPath), { recursive: true });
 fs.writeFileSync(publicChangelogJsonPath, JSON.stringify(generatedChangelog, null, 2) + '\n', 'utf8');
 
 console.log(`[Version Auto-Increment] Updated version to ${displayVersion} (commit #${envCommit}, build #${buildNumber})`);
-console.log(`[Changelog Auto-Sync] Generated ${generatedChangelog.length} commits in SYSTEM_CHANGELOG from Git repository.`);
+console.log(`[Changelog Auto-Sync] Generated ${generatedChangelog.length} commits in public/changelog.json from Git repository.`);

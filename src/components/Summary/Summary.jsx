@@ -3,6 +3,7 @@ import { useInventory } from '../../context/InventoryContext';
 import { FileText, Download, FileSpreadsheet, FileOutput } from 'lucide-react';
 import { formatDate, formatCurrency, formatPrice } from '../../utils/formatUtils';
 import { CONTRACT_INFO, resolveServiceDetails } from '../../utils/contractRates';
+import { calculateSummaryReport } from '../../utils/summaryReportUtils';
 
 import { toast } from 'react-hot-toast';
 import { DatePicker, DateQuickPresets, getLocalDateStr } from '../Common/DatePicker';
@@ -37,70 +38,15 @@ const Summary = () => {
     setEndDate(end);
   };
 
-  const summaryData = useMemo(() => {
-    if (!startDate || !endDate || products.length === 0) return [];
-
-    // Pre-indexar movimientos por producto en una sola pasada O(M) con fecha normalizada YYYY-MM-DD
-    const movsByProduct = new Map();
-    movements.forEach(m => {
-      if (!Array.isArray(m.items) || m.items.length === 0) return;
-      const mDateStr = String(m.date || '').split('T')[0];
-      if (!mDateStr) return;
-      m.items.forEach(it => {
-        const key = String(it.productId);
-        let bucket = movsByProduct.get(key);
-        if (!bucket) {
-          bucket = [];
-          movsByProduct.set(key, bucket);
-        }
-        bucket.push({ type: m.type, dateStr: mDateStr, item: it });
-      });
-    });
-
-    return products.map(p => {
-      const unitType = categoryUnits[p.category] || 'units';
-      const qtyField = unitType === 'units' ? 'qtyUnits' : 
-                      unitType === 'pounds' ? 'qtyPounds' : 'qtyBaskets';
-      const stockField = unitType === 'units' ? 'stockUnits' : 
-                        unitType === 'pounds' ? 'stockPounds' : 'stockBaskets';
-      const unitLabel = unitType === 'units' ? 'Und' : 
-                       unitType === 'pounds' ? 'Lbs' : 'Cst';
-
-      const pEntries = movsByProduct.get(String(p.id)) || [];
-      const currentStock = Number(p[stockField] || 0);
-      let stockAtEnd = currentStock;
-      let entradas = 0;
-      let salidas = 0;
-
-      pEntries.forEach(({ type, dateStr, item }) => {
-        const qty = Number(item[qtyField] || 0);
-        if (dateStr > endDate) {
-          if (type === 'in') stockAtEnd -= qty;
-          if (type === 'out') stockAtEnd += qty;
-        } else if (dateStr >= startDate && dateStr <= endDate) {
-          if (type === 'in') entradas += qty;
-          if (type === 'out') salidas += qty;
-        }
-      });
-
-      const stockInicial = stockAtEnd - entradas + salidas;
-      const precio = Number(p.price || 0);
-      const total = stockAtEnd * precio;
-
-      return {
-        id: p.id,
-        producto: `${p.sku} - ${p.description}`,
-        categoria: p.category,
-        unidad: unitLabel,
-        stockInicial,
-        entradas,
-        salidas,
-        stockFinal: stockAtEnd,
-        precio,
-        total
-      };
-    }).filter(row => row.entradas > 0 || row.salidas > 0);
-  }, [products, movements, startDate, endDate, categoryUnits]);
+  const summaryData = useMemo(() => (
+    calculateSummaryReport({
+      products,
+      movements,
+      categoryUnits,
+      startDate,
+      endDate
+    })
+  ), [products, movements, categoryUnits, startDate, endDate]);
 
   const groupedData = useMemo(() => {
     const groups = {};

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import versionInfo from '../config/version.json';
 import { CONTRACT_INFO, applyDynamicContractRates } from '../utils/contractRates';
 import {
@@ -25,8 +25,12 @@ import {
 } from '../utils/onDemandOffline';
 
 const InventoryContext = createContext();
+const ThemeContext = createContext();
+const SyncStatusContext = createContext();
 
 export const useInventory = () => useContext(InventoryContext);
+export const useTheme = () => useContext(ThemeContext);
+export const useSyncStatus = () => useContext(SyncStatusContext);
 
 // Base API URL from environment variable or empty for local proxy
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -91,12 +95,20 @@ let cachedSystemChangelog = null;
 const loadSystemChangelog = async () => {
   if (cachedSystemChangelog) return cachedSystemChangelog;
   try {
-    const mod = await import('../config/changelog');
-    cachedSystemChangelog = Array.isArray(mod.SYSTEM_CHANGELOG) ? mod.SYSTEM_CHANGELOG : INITIAL_VERSION_LIST;
+    const res = await window.fetch('/changelog.json', { cache: 'no-cache' });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        cachedSystemChangelog = data;
+        saveLocalSnapshot('systemChangelog', data);
+        return cachedSystemChangelog;
+      }
+    }
   } catch {
-    cachedSystemChangelog = INITIAL_VERSION_LIST;
+    // Fallback a snapshot local OnDemand
   }
-  return cachedSystemChangelog;
+  const fallback = loadLocalSnapshot('systemChangelog', INITIAL_VERSION_LIST);
+  return Array.isArray(fallback) && fallback.length > 0 ? fallback : INITIAL_VERSION_LIST;
 };
 
 // Fusionador seguro de versiones oficiales y creadas dinámicamente en BD
@@ -267,11 +279,11 @@ export const InventoryProvider = ({ children }) => {
   };
 
 
-  const setTheme = (newTheme) => {
+  const setTheme = useCallback((newTheme) => {
     setThemeState(newTheme);
     localStorage.setItem('inv_theme', newTheme);
     document.documentElement.setAttribute('data-theme', newTheme);
-  };
+  }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -459,7 +471,7 @@ export const InventoryProvider = ({ children }) => {
    * Sincronización incremental desde el servidor (/api/sync/changes?since=...)
    * Obtiene solo los deltas modificados o eliminados sin pisar entidades pendientes en cola local.
    */
-  const fetchIncrementalChanges = useCallback(async () => {
+  const fetchIncrementalChanges = useCallback(async (options = {}) => {
     if (!currentUserId) return null;
     if (typeof navigator !== 'undefined' && !navigator.onLine) return null;
     const status = getOnDemandStatus();
@@ -533,7 +545,13 @@ export const InventoryProvider = ({ children }) => {
           syncCursorRef.current = data.syncCursor;
           updateOnDemandMeta({ syncCursor: data.syncCursor });
         }
-        setLastServerSyncAt(prev => prev || (data?.syncCursor || new Date().toISOString()));
+        if (options?.forceSyncTimestamp === true) {
+          const ts = data?.syncCursor || new Date().toISOString();
+          updateOnDemandMeta({ lastServerSyncAt: ts });
+          setLastServerSyncAt(ts);
+        } else {
+          setLastServerSyncAt(prev => prev || (data?.syncCursor || new Date().toISOString()));
+        }
       }
       return data;
     } catch {
@@ -722,7 +740,7 @@ export const InventoryProvider = ({ children }) => {
       }
       await refreshData();
     } else if (!result.offline && !result.waitingAuth) {
-      await fetchIncrementalChanges();
+      await fetchIncrementalChanges({ forceSyncTimestamp: true });
     }
     return result;
   }, [currentUser, refreshData, fetchIncrementalChanges]);
@@ -733,7 +751,7 @@ export const InventoryProvider = ({ children }) => {
       if (getOfflineQueue(currentUserId).length > 0) {
         await syncOnDemandNow();
       } else {
-        await fetchIncrementalChanges();
+        await fetchIncrementalChanges({ forceSyncTimestamp: true });
       }
     }
     return status;
@@ -1401,6 +1419,21 @@ export const InventoryProvider = ({ children }) => {
       return { success: false, message: 'No se pudo conectar con el servidor.' };
     }
   };
+
+  const fetchInventoryAdjustments = useCallback(async (productId = null) => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return [];
+    try {
+      const qs = productId ? `?productId=${encodeURIComponent(productId)}` : '';
+      const res = await apiFetch(`${API_BASE_URL}/api/inventory-adjustments${qs}`);
+      if (res.ok) {
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      }
+    } catch (error) {
+      console.error('Error fetching inventory adjustments:', error);
+    }
+    return [];
+  }, []);
 
   const addCategory = async (category, unit_type = 'units') => {
     try {
@@ -2358,7 +2391,10 @@ export const InventoryProvider = ({ children }) => {
     }
   };
 
-  const totalStock = products.reduce((acc, curr) => acc + Number(curr.stockUnits || 0), 0);
+  const totalStock = useMemo(
+    () => products.reduce((acc, curr) => acc + Number(curr.stockUnits || 0), 0),
+    [products]
+  );
   const downloadBackup = async () => {
     try {
       const res = await apiFetch(`${API_BASE_URL}/api/system/backup`);
@@ -2419,122 +2455,228 @@ export const InventoryProvider = ({ children }) => {
   };
 
   const currentVersion = versions.length > 0 ? versions[0] : null;
-  const unreadNotificationsCount = notifications.filter(n => !n.isRead).length;
+  const unreadNotificationsCount = useMemo(
+    () => notifications.filter(n => !n.isRead).length,
+    [notifications]
+  );
+
+  const themeContextValue = useMemo(
+    () => ({ theme, setTheme }),
+    [theme, setTheme]
+  );
+
+  const syncStatusContextValue = useMemo(() => ({
+    currentUser,
+    onDemandStatus,
+    offlineQueue,
+    syncedHistory,
+    otherUsersPending,
+    lastServerSyncAt,
+    fetchIncrementalChanges,
+    getEntitySyncState,
+    retryOfflineQueueItem,
+    ensureOnlineForSensitiveAction,
+    syncOnDemandNow,
+    checkOnDemandConnection,
+    removeOfflineQueueItem,
+    clearAllOfflineQueue,
+    importOfflineQueueItems
+  }), [
+    currentUser,
+    onDemandStatus,
+    offlineQueue,
+    syncedHistory,
+    otherUsersPending,
+    lastServerSyncAt,
+    fetchIncrementalChanges,
+    getEntitySyncState,
+    retryOfflineQueueItem,
+    ensureOnlineForSensitiveAction,
+    syncOnDemandNow,
+    checkOnDemandConnection,
+    removeOfflineQueueItem,
+    clearAllOfflineQueue,
+    importOfflineQueueItems
+  ]);
+
+  const contextValue = useMemo(() => ({
+    products,
+    movements,
+    categories,
+    documentTypes,
+    users,
+    roles,
+    currentUser,
+    isAdmin: isUserAdmin(currentUser),
+    isUserAdmin,
+    settings,
+    categoryUnits,
+    versions,
+    currentVersion,
+    dailyCuts,
+    systemLogs,
+    activeSessions,
+    notifications,
+    unreadNotificationsCount,
+    loading,
+    hasPermission,
+    canView,
+    canCreate,
+    canEdit,
+    canDelete,
+    canExport,
+    downloadBackup,
+    restoreBackup,
+    getDatabaseStats,
+    logAuditEvent,
+    addProduct,
+    updateProduct,
+    adjustProductStock,
+    fetchInventoryAdjustments,
+    deleteProduct,
+    bulkSyncProducts,
+    addMovement,
+    updateMovement,
+    deleteMovement,
+    addCategory,
+    deleteCategory,
+    addDocumentType,
+    deleteDocumentType,
+    addUser,
+    updateUser,
+    deleteUser,
+    updateUserPermissions,
+    fetchUsers,
+    fetchRoles,
+    addRole,
+    updateRole,
+    deleteRole,
+    fetchSystemLogs,
+    fetchActiveSessions,
+    disconnectSession,
+    fetchNotifications,
+    addNotification,
+    markNotificationAsRead,
+    markAllNotificationsAsRead,
+    addVersion,
+    deleteVersion,
+    updateSettings,
+    updateCategoryUnit,
+    fetchDailyCuts,
+    fetchDailyCutById,
+    createDailyCut,
+    updateDailyCut,
+    setDailyCutLockStatus,
+    deleteDailyCut,
+    cutHistoryModalOpen,
+    setCutHistoryModalOpen,
+    openCutHistoryModal,
+    closeCutHistoryModal,
+    selectedCutForSummary,
+    setSelectedCutForSummary,
+    activeDailyCutId,
+    setActiveDailyCutId,
+    fetchInsuranceCuts,
+    fetchInsuranceCutById,
+    createInsuranceCut,
+    updateInsuranceCut,
+    setInsuranceCutLockStatus,
+    deleteInsuranceCut,
+    contractRates,
+    fetchContractRates,
+    sipeContractStatus,
+    checkSipeContract,
+    fetchProducts,
+    fetchMovements,
+    refreshModule,
+    refreshData,
+    login,
+    logout,
+    totalStock,
+    theme,
+    setTheme,
+    // OnDemand Offline-First & Sync API
+    onDemandStatus,
+    offlineQueue,
+    syncedHistory,
+    otherUsersPending,
+    lastServerSyncAt,
+    fetchIncrementalChanges,
+    getEntitySyncState,
+    retryOfflineQueueItem,
+    ensureOnlineForSensitiveAction,
+    syncOnDemandNow,
+    checkOnDemandConnection,
+    removeOfflineQueueItem,
+    clearAllOfflineQueue,
+    importOfflineQueueItems
+  }), [
+    products,
+    movements,
+    categories,
+    documentTypes,
+    users,
+    roles,
+    currentUser,
+    settings,
+    categoryUnits,
+    versions,
+    currentVersion,
+    dailyCuts,
+    systemLogs,
+    activeSessions,
+    notifications,
+    unreadNotificationsCount,
+    loading,
+    sessionId,
+    cutHistoryModalOpen,
+    openCutHistoryModal,
+    closeCutHistoryModal,
+    selectedCutForSummary,
+    activeDailyCutId,
+    contractRates,
+    sipeContractStatus,
+    fetchUsers,
+    fetchRoles,
+    fetchSystemLogs,
+    fetchActiveSessions,
+    fetchNotifications,
+    fetchDailyCuts,
+    fetchDailyCutById,
+    fetchInsuranceCuts,
+    fetchInsuranceCutById,
+    fetchContractRates,
+    fetchProducts,
+    fetchMovements,
+    fetchInventoryAdjustments,
+    refreshModule,
+    refreshData,
+    totalStock,
+    theme,
+    setTheme,
+    onDemandStatus,
+    offlineQueue,
+    syncedHistory,
+    otherUsersPending,
+    lastServerSyncAt,
+    fetchIncrementalChanges,
+    getEntitySyncState,
+    retryOfflineQueueItem,
+    ensureOnlineForSensitiveAction,
+    syncOnDemandNow,
+    checkOnDemandConnection,
+    removeOfflineQueueItem,
+    clearAllOfflineQueue,
+    importOfflineQueueItems
+  ]);
 
   return (
-    <InventoryContext.Provider value={{
-      products,
-      movements,
-      categories,
-      documentTypes,
-      users,
-      roles,
-      currentUser,
-      isAdmin: isUserAdmin(currentUser),
-      isUserAdmin,
-      settings,
-      categoryUnits,
-      versions,
-      currentVersion,
-      dailyCuts,
-      systemLogs,
-      activeSessions,
-      notifications,
-      unreadNotificationsCount,
-      loading,
-      hasPermission,
-      canView,
-      canCreate,
-      canEdit,
-      canDelete,
-      canExport,
-      downloadBackup,
-      restoreBackup,
-      getDatabaseStats,
-      logAuditEvent,
-      addProduct,
-      updateProduct,
-      adjustProductStock,
-      deleteProduct,
-      bulkSyncProducts,
-      addMovement,
-      updateMovement,
-      deleteMovement,
-      addCategory,
-      deleteCategory,
-      addDocumentType,
-      deleteDocumentType,
-      addUser,
-      updateUser,
-      deleteUser,
-      updateUserPermissions,
-      fetchUsers,
-      fetchRoles,
-      addRole,
-      updateRole,
-      deleteRole,
-      fetchSystemLogs,
-      fetchActiveSessions,
-      disconnectSession,
-      fetchNotifications,
-      addNotification,
-      markNotificationAsRead,
-      markAllNotificationsAsRead,
-      addVersion,
-      deleteVersion,
-      updateSettings,
-      updateCategoryUnit,
-      fetchDailyCuts,
-      fetchDailyCutById,
-      createDailyCut,
-      updateDailyCut,
-      setDailyCutLockStatus,
-      deleteDailyCut,
-      cutHistoryModalOpen,
-      setCutHistoryModalOpen,
-      openCutHistoryModal,
-      closeCutHistoryModal,
-      selectedCutForSummary,
-      setSelectedCutForSummary,
-      activeDailyCutId,
-      setActiveDailyCutId,
-      fetchInsuranceCuts,
-      fetchInsuranceCutById,
-      createInsuranceCut,
-      updateInsuranceCut,
-      setInsuranceCutLockStatus,
-      deleteInsuranceCut,
-      contractRates,
-      fetchContractRates,
-      sipeContractStatus,
-      checkSipeContract,
-      fetchProducts,
-      fetchMovements,
-      refreshModule,
-      refreshData,
-      login,
-      logout,
-      totalStock,
-      theme,
-      setTheme,
-      // OnDemand Offline-First & Sync API
-      onDemandStatus,
-      offlineQueue,
-      syncedHistory,
-      otherUsersPending,
-      lastServerSyncAt,
-      fetchIncrementalChanges,
-      getEntitySyncState,
-      retryOfflineQueueItem,
-      ensureOnlineForSensitiveAction,
-      syncOnDemandNow,
-      checkOnDemandConnection,
-      removeOfflineQueueItem,
-      clearAllOfflineQueue,
-      importOfflineQueueItems
-    }}>
-
-      {children}
-    </InventoryContext.Provider>
+    <ThemeContext.Provider value={themeContextValue}>
+      <SyncStatusContext.Provider value={syncStatusContextValue}>
+        <InventoryContext.Provider value={contextValue}>
+          {children}
+        </InventoryContext.Provider>
+      </SyncStatusContext.Provider>
+    </ThemeContext.Provider>
   );
 };

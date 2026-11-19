@@ -7,6 +7,7 @@ import {
 import { formatDate, formatTimestampLocal, formatCurrency } from '../../utils/formatUtils';
 import { resolveCutPeriod } from '../../utils/dailyCutDateUtils';
 import { toast } from 'react-hot-toast';
+import { confirmAction } from '../Common/ConfirmDialog';
 
 export function normalizeDailyCutsList(cuts) {
   return (Array.isArray(cuts) ? cuts : [])
@@ -116,7 +117,13 @@ export default function DailyCutsHistoryModal({ isOpen, onClose, onSelectCut, ac
   }, [cutsList, historySearch, filterStatus]);
 
   const handleDeleteCut = async (cut) => {
-    if (!window.confirm(`¿Estás seguro de que deseas eliminar permanentemente el corte '${cut.title}'?`)) {
+    const confirmed = await confirmAction({
+      title: 'Eliminar corte diario',
+      message: `¿Estás seguro de que deseas eliminar permanentemente el corte '${cut.title}'?`,
+      confirmLabel: 'Eliminar',
+      variant: 'danger'
+    });
+    if (!confirmed) {
       return;
     }
 

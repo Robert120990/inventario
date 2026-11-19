@@ -5,6 +5,7 @@ import { toast } from 'react-hot-toast';
 import { formatDate } from '../../utils/formatUtils';
 import { WINDOWS_THEMES } from '../../config/themes';
 import BackupRestore from './BackupRestore';
+import { confirmAction } from '../Common/ConfirmDialog';
 
 const Settings = () => {
   const { categories, documentTypes, settings, categoryUnits, versions, addCategory, deleteCategory, addDocumentType, deleteDocumentType, updateSettings, updateCategoryUnit, addVersion, deleteVersion, theme, setTheme } = useInventory();
@@ -65,8 +66,14 @@ const Settings = () => {
     }
   };
 
-  const handleDeleteVersion = (id) => {
-    if (window.confirm('¿Seguro que deseas eliminar esta versión del log?')) {
+  const handleDeleteVersion = async (id) => {
+    const confirmed = await confirmAction({
+      title: 'Eliminar versión',
+      message: '¿Seguro que deseas eliminar esta versión del log?',
+      confirmLabel: 'Eliminar',
+      variant: 'danger'
+    });
+    if (confirmed) {
       deleteVersion(id);
       toast.success('Versión eliminada');
     }

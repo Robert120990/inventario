@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Palette, Check } from 'lucide-react';
-import { useInventory } from '../../context/InventoryContext';
+import { useTheme } from '../../context/InventoryContext';
 import { WINDOWS_THEMES } from '../../config/themes';
 
 export const ThemeToggle = ({ variant = 'button' }) => {
-  const { theme, setTheme } = useInventory();
+  const { theme, setTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 

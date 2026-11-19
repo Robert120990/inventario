@@ -1,7 +1,9 @@
-import React, { useMemo, useState } from 'react';
-import { ClipboardCheck, Search, Save, RotateCcw, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { ClipboardCheck, Search, Save, RotateCcw, AlertTriangle, CheckCircle2, History, RefreshCw } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useInventory } from '../../context/InventoryContext';
+import { confirmAction } from '../Common/ConfirmDialog';
+import { formatTimestampLocal } from '../../utils/formatUtils';
 
 const normalize = (value) => String(value ?? '')
   .normalize('NFD')
@@ -25,14 +27,32 @@ const toStock = (product) => ({
 });
 
 const InventoryCount = () => {
-  const { products, currentUser, adjustProductStock, canCreate, canEdit } = useInventory();
+  const { products, currentUser, adjustProductStock, fetchInventoryAdjustments, canCreate, canEdit } = useInventory();
   const [query, setQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [counted, setCounted] = useState(toStock());
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [lastAdjustment, setLastAdjustment] = useState(null);
+  const [adjustments, setAdjustments] = useState([]);
+  const [loadingAdjustments, setLoadingAdjustments] = useState(false);
+  const [onlySelectedProduct, setOnlySelectedProduct] = useState(false);
   const allowEdit = canCreate('inventory-count') || canEdit('inventory-count');
+
+  const loadAdjustments = useCallback(async (productId = null) => {
+    if (typeof fetchInventoryAdjustments !== 'function') return;
+    setLoadingAdjustments(true);
+    try {
+      const rows = await fetchInventoryAdjustments(productId);
+      setAdjustments(Array.isArray(rows) ? rows : []);
+    } finally {
+      setLoadingAdjustments(false);
+    }
+  }, [fetchInventoryAdjustments]);
+
+  useEffect(() => {
+    loadAdjustments(onlySelectedProduct && selectedProduct ? selectedProduct.id : null);
+  }, [loadAdjustments, onlySelectedProduct, selectedProduct]);
 
   const results = useMemo(() => {
     if (!query.trim()) return [];
@@ -72,9 +92,12 @@ const InventoryCount = () => {
     event.preventDefault();
     if (!selectedProduct || !hasChanges || !reason.trim()) return;
 
-    const confirmed = window.confirm(
-      `¿Actualizar el inventario de ${selectedProduct.sku}? Esta acción reemplazará las existencias actuales por el conteo físico.`
-    );
+    const confirmed = await confirmAction({
+      title: 'Confirmar ajuste de inventario',
+      message: `¿Actualizar el inventario de ${selectedProduct.sku}? Esta acción reemplazará las existencias actuales por el conteo físico.`,
+      confirmLabel: 'Actualizar inventario',
+      variant: 'primary'
+    });
     if (!confirmed) return;
 
     setSaving(true);
@@ -97,6 +120,7 @@ const InventoryCount = () => {
     setReason('');
     setLastAdjustment(result.adjustment);
     toast.success('Inventario actualizado y auditado');
+    loadAdjustments(onlySelectedProduct && result.product ? result.product.id : null);
   };
 
   const difference = (value, decimals = 0) => {
@@ -291,6 +315,151 @@ const InventoryCount = () => {
           </div>
         </div>
       )}
+
+      {/* Historial Reciente de Ajustes Físicos */}
+      <div className="card" style={{ marginTop: '1.5rem', padding: '1rem 1.25rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.9rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <History size={18} style={{ color: 'var(--color-primary)' }} />
+            <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--color-text)' }}>
+              Historial Reciente de Ajustes Físicos
+            </h3>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', backgroundColor: 'var(--color-bg)', padding: '3px', borderRadius: 'var(--radius)', border: '1px solid var(--color-border)' }}>
+              <button
+                type="button"
+                onClick={() => setOnlySelectedProduct(false)}
+                style={{
+                  padding: '0.28rem 0.65rem',
+                  fontSize: '0.76rem',
+                  borderRadius: '5px',
+                  border: 'none',
+                  background: !onlySelectedProduct ? 'var(--color-primary)' : 'transparent',
+                  color: !onlySelectedProduct ? 'white' : 'var(--color-text-light)',
+                  cursor: 'pointer',
+                  fontWeight: !onlySelectedProduct ? '600' : 'normal'
+                }}
+              >
+                Todos los recientes
+              </button>
+              <button
+                type="button"
+                disabled={!selectedProduct}
+                onClick={() => setOnlySelectedProduct(true)}
+                style={{
+                  padding: '0.28rem 0.65rem',
+                  fontSize: '0.76rem',
+                  borderRadius: '5px',
+                  border: 'none',
+                  background: onlySelectedProduct && selectedProduct ? 'var(--color-primary)' : 'transparent',
+                  color: onlySelectedProduct && selectedProduct ? 'white' : 'var(--color-text-light)',
+                  cursor: selectedProduct ? 'pointer' : 'not-allowed',
+                  opacity: selectedProduct ? 1 : 0.5,
+                  fontWeight: onlySelectedProduct && selectedProduct ? '600' : 'normal'
+                }}
+              >
+                Solo producto seleccionado
+              </button>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-outline"
+              disabled={loadingAdjustments}
+              onClick={() => loadAdjustments(onlySelectedProduct && selectedProduct ? selectedProduct.id : null)}
+              style={{ padding: '0.32rem 0.65rem', fontSize: '0.78rem' }}
+            >
+              <RefreshCw size={14} className={loadingAdjustments ? 'spin-icon' : ''} /> Actualizar
+            </button>
+          </div>
+        </div>
+
+        <div className="table-container" style={{ border: 'none', boxShadow: 'none', marginBottom: 0 }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Producto</th>
+                <th>Unidades</th>
+                <th>Libras</th>
+                <th>Cestas</th>
+                <th>Motivo</th>
+                <th>Auditor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loadingAdjustments ? (
+                <tr>
+                  <td colSpan="7" style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--color-text-light)' }}>
+                    Cargando historial de ajustes...
+                  </td>
+                </tr>
+              ) : adjustments.length === 0 ? (
+                <tr>
+                  <td colSpan="7" style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--color-text-light)' }}>
+                    No hay ajustes físicos registrados para este filtro.
+                  </td>
+                </tr>
+              ) : (
+                adjustments.map((adj) => {
+                  const diffU = Number(adj.countedUnits || 0) - Number(adj.previousUnits || 0);
+                  const diffP = Number(adj.countedPounds || 0) - Number(adj.previousPounds || 0);
+                  const diffB = Number(adj.countedBaskets || 0) - Number(adj.previousBaskets || 0);
+                  const createdStr = adj.created_at
+                    ? `${formatTimestampLocal(adj.created_at)} ${new Date(String(adj.created_at).includes('T') ? adj.created_at : String(adj.created_at).replace(' ', 'T')).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' })}`
+                    : '—';
+
+                  const renderDeltaCell = (prev, curr, delta, decimals = 0) => (
+                    <div style={{ fontSize: '0.78rem', fontVariantNumeric: 'tabular-nums' }}>
+                      <div>
+                        <span style={{ color: 'var(--color-text-muted)' }}>
+                          {Number(prev || 0).toLocaleString('es-SV', { maximumFractionDigits: decimals })}
+                        </span>
+                        {' → '}
+                        <strong>
+                          {Number(curr || 0).toLocaleString('es-SV', { maximumFractionDigits: decimals })}
+                        </strong>
+                      </div>
+                      <div style={{
+                        fontSize: '0.71rem',
+                        fontWeight: 600,
+                        color: Math.abs(delta) < 0.0001
+                          ? 'var(--color-text-muted)'
+                          : delta > 0
+                            ? '#00b894'
+                            : 'var(--color-danger)'
+                      }}>
+                        {difference(delta, decimals)}
+                      </div>
+                    </div>
+                  );
+
+                  return (
+                    <tr key={adj.id}>
+                      <td style={{ whiteSpace: 'nowrap', fontSize: '0.78rem' }}>{createdStr}</td>
+                      <td>
+                        <div style={{ fontWeight: 700, fontSize: '0.76rem', color: 'var(--color-primary)', fontFamily: 'monospace' }}>
+                          {adj.sku || adj.productId}
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--color-text)' }}>
+                          {adj.description || ''}
+                        </div>
+                      </td>
+                      <td>{renderDeltaCell(adj.previousUnits, adj.countedUnits, diffU, 0)}</td>
+                      <td>{renderDeltaCell(adj.previousPounds, adj.countedPounds, diffP, 3)}</td>
+                      <td>{renderDeltaCell(adj.previousBaskets, adj.countedBaskets, diffB, 0)}</td>
+                      <td style={{ maxWidth: '240px', fontSize: '0.78rem' }}>{adj.reason || '—'}</td>
+                      <td style={{ whiteSpace: 'nowrap', fontSize: '0.78rem', fontWeight: 500 }}>{adj.auditUser || 'Sistema'}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 };

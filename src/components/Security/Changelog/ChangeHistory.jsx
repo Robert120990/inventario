@@ -8,7 +8,8 @@ import {
 } from 'lucide-react';
 import { formatDate } from '../../../utils/formatUtils';
 import { toast } from 'react-hot-toast';
-import { SYSTEM_CHANGELOG } from '../../../config/changelog';
+import { loadLocalSnapshot } from '../../../utils/onDemandOffline';
+import { confirmAction } from '../../Common/ConfirmDialog';
 
 const TYPE_CONFIG = {
   feature: { label: 'Nueva Función', color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)' },
@@ -54,6 +55,22 @@ const ChangeHistory = () => {
   const [syncingGithub, setSyncingGithub] = useState(false);
   const [githubCommits, setGithubCommits] = useState([]);
   const [visibleCount, setVisibleCount] = useState(25);
+  const [localChangelog, setLocalChangelog] = useState(() => loadLocalSnapshot('systemChangelog', []));
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/changelog.json', { cache: 'no-cache' })
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!cancelled && Array.isArray(data) && data.length > 0) {
+          setLocalChangelog(data);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const allowCreate = canCreate('security-changelog');
   const allowDelete = canDelete('security-changelog');
@@ -184,13 +201,15 @@ const ChangeHistory = () => {
       });
     }
 
-    // 2. Usar SYSTEM_CHANGELOG local de Git
-    SYSTEM_CHANGELOG.forEach(v => {
-      const key = (v.commit || v.version || v.id || '').toLowerCase();
-      if (key && !map.has(key)) {
-        map.set(key, v);
-      }
-    });
+    // 2. Usar changelog local (/changelog.json)
+    if (Array.isArray(localChangelog)) {
+      localChangelog.forEach(v => {
+        const key = (v.commit || v.version || v.id || '').toLowerCase();
+        if (key && !map.has(key)) {
+          map.set(key, v);
+        }
+      });
+    }
 
     // 3. Agregar versiones de la base de datos
     if (Array.isArray(contextVersions)) {
@@ -204,7 +223,7 @@ const ChangeHistory = () => {
     }
 
     return Array.from(map.values());
-  }, [githubCommits, contextVersions]);
+  }, [githubCommits, localChangelog, contextVersions]);
 
   // Filtrado reactivo de versiones y cambios
   const filteredVersions = useMemo(() => {
@@ -288,8 +307,14 @@ const ChangeHistory = () => {
     }
   };
 
-  const handleDelete = (id, version) => {
-    if (window.confirm(`¿Seguro que deseas eliminar la versión ${version} del historial?`)) {
+  const handleDelete = async (id, version) => {
+    const confirmed = await confirmAction({
+      title: 'Eliminar versión',
+      message: `¿Seguro que deseas eliminar la versión ${version} del historial?`,
+      confirmLabel: 'Eliminar',
+      variant: 'danger'
+    });
+    if (confirmed) {
       deleteVersion(id);
       toast.success('Versión eliminada del historial');
     }

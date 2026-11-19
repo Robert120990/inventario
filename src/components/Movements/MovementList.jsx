@@ -10,6 +10,7 @@ import {
 import MovementForm from './MovementForm';
 import { formatDate, formatTimeShort, findProductForMovementItem } from '../../utils/formatUtils';
 import { toast } from 'react-hot-toast';
+import { confirmAction } from '../Common/ConfirmDialog';
 
 const MovementDetailModal = React.lazy(() => import('./MovementDetailModal'));
 
@@ -42,6 +43,8 @@ const MovementList = () => {
   // Filters & Pagination State (Default: 10 most recent movements)
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all'); // 'all', 'in', 'out'
+  const [startDateFilter, setStartDateFilter] = useState('');
+  const [endDateFilter, setEndDateFilter] = useState('');
   const [pageSize, setPageSize] = useState(10); // Default to 10 items
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -95,6 +98,16 @@ const MovementList = () => {
         return false;
       }
 
+      if (startDateFilter || endDateFilter) {
+        const movDate = String(mov.date || '').slice(0, 10);
+        if (startDateFilter && (!movDate || movDate < startDateFilter)) {
+          return false;
+        }
+        if (endDateFilter && (!movDate || movDate > endDateFilter)) {
+          return false;
+        }
+      }
+
       if (!trimmed) return true;
 
       // Buscar en datos generales del movimiento
@@ -116,7 +129,7 @@ const MovementList = () => {
         return (p.sku || '').toLowerCase().includes(searchLow) || (p.description || '').toLowerCase().includes(searchLow);
       }));
     });
-  }, [movements, typeFilter, searchTerm, products, productsMap]);
+  }, [movements, typeFilter, startDateFilter, endDateFilter, searchTerm, products, productsMap]);
 
   // Sort movements by date & time descending (newest first)
   const sortedMovements = useMemo(() => {
@@ -132,7 +145,7 @@ const MovementList = () => {
   // Reset to page 1 whenever search, filter or pageSize changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, typeFilter, pageSize]);
+  }, [searchTerm, typeFilter, startDateFilter, endDateFilter, pageSize]);
 
   // Pagination calculation
   const totalItems = sortedMovements.length;
@@ -566,6 +579,56 @@ const MovementList = () => {
               </button>
             </div>
 
+            {/* Date Range Filter */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', whiteSpace: 'nowrap' }}>
+                Desde:
+              </label>
+              <input
+                type="date"
+                aria-label="Fecha desde"
+                value={startDateFilter}
+                max={endDateFilter || undefined}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setStartDateFilter(val);
+                  if (endDateFilter && val && val > endDateFilter) {
+                    setEndDateFilter(val);
+                  }
+                }}
+                className="form-input"
+                style={{ width: '130px', padding: '0.28rem 0.45rem', fontSize: '0.76rem', marginBottom: 0 }}
+              />
+              <label style={{ fontSize: '0.75rem', color: 'var(--color-text-light)', whiteSpace: 'nowrap' }}>
+                Hasta:
+              </label>
+              <input
+                type="date"
+                aria-label="Fecha hasta"
+                value={endDateFilter}
+                min={startDateFilter || undefined}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setEndDateFilter(val);
+                  if (startDateFilter && val && val < startDateFilter) {
+                    setStartDateFilter(val);
+                  }
+                }}
+                className="form-input"
+                style={{ width: '130px', padding: '0.28rem 0.45rem', fontSize: '0.76rem', marginBottom: 0 }}
+              />
+              {(startDateFilter || endDateFilter) && (
+                <button
+                  type="button"
+                  onClick={() => { setStartDateFilter(''); setEndDateFilter(''); }}
+                  className="btn btn-outline"
+                  style={{ padding: '0.28rem 0.55rem', fontSize: '0.74rem', whiteSpace: 'nowrap' }}
+                >
+                  Limpiar fechas
+                </button>
+              )}
+            </div>
+
             {/* Page Size Selector */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               <span style={{ fontSize: '0.78rem', color: 'var(--color-text-light)', whiteSpace: 'nowrap' }}>Mostrar:</span>
@@ -638,15 +701,23 @@ const MovementList = () => {
                   <td colSpan={showActions ? 6 : 5} style={{ textAlign: 'center', padding: '2.75rem 1rem' }}>
                     <div style={{ color: 'var(--color-text-light)' }}>
                       <p style={{ fontWeight: '500', marginBottom: '0.25rem' }}>
-                        {searchTerm ? 'No se encontraron movimientos con ese criterio.' : 'No hay movimientos registrados.'}
+                        {(searchTerm || startDateFilter || endDateFilter || typeFilter !== 'all')
+                          ? 'No se encontraron movimientos con esos filtros.'
+                          : 'No hay movimientos registrados.'}
                       </p>
-                      {searchTerm && (
+                      {(searchTerm || startDateFilter || endDateFilter || typeFilter !== 'all') && (
                         <button
-                          onClick={() => setSearchTerm('')}
+                          type="button"
+                          onClick={() => {
+                            setSearchTerm('');
+                            setStartDateFilter('');
+                            setEndDateFilter('');
+                            setTypeFilter('all');
+                          }}
                           className="btn btn-outline"
                           style={{ marginTop: '0.5rem', padding: '0.25rem 0.75rem', fontSize: '0.8rem' }}
                         >
-                          Limpiar búsqueda
+                          Limpiar filtros
                         </button>
                       )}
                     </div>
@@ -851,7 +922,13 @@ const MovementList = () => {
                               <button
                                 type="button"
                                 onClick={async () => {
-                                  if (window.confirm('¿Seguro que deseas eliminar este movimiento? Afectará el stock disponible.')) {
+                                  const confirmed = await confirmAction({
+                                    title: 'Eliminar movimiento',
+                                    message: '¿Seguro que deseas eliminar este movimiento? Afectará el stock disponible.',
+                                    confirmLabel: 'Eliminar',
+                                    variant: 'danger'
+                                  });
+                                  if (confirmed) {
                                     const res = await deleteMovement(mov.id);
                                     if (res?.success) {
                                       toast.success('Movimiento eliminado correctamente');

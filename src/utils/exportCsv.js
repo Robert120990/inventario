@@ -5,8 +5,7 @@ import { downloadCSV, escapeCsvCell } from './exportManager.js';
  */
 export const exportToCsv = (data, filename) => {
   if (!data || !data.length) {
-    alert('No hay datos para exportar');
-    return;
+    throw new Error('No hay datos para exportar');
   }
   
   const headers = Object.keys(data[0]);

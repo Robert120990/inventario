@@ -196,7 +196,7 @@ const downloadFile = (blob, filename) => {
     }, 500);
   } catch (err) {
     console.error('Error al descargar archivo:', err);
-    alert('Error al descargar el archivo: ' + err.message);
+    throw err;
   }
 };
 
